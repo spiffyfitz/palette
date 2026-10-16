@@ -1,0 +1,23 @@
+[package]
+name = "palette"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A native Paint-style raster editor with a nondestructive document model"
+license = "MIT"
+
+[workspace]
+members = ["crates/palette-core"]
+resolver = "3"
+
+[dependencies]
+palette-core = { path = "crates/palette-core" }
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "wgpu", "x11", "wayland", "accesskit", "clipboard"] }
+rfd = "0.17.2"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "gif", "tiff", "webp"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,58 @@
+# Palette
+
+A native Rust raster editor with a Paint-style ribbon and a UI-independent, layered editing engine. This is the first runnable milestone, not the complete application described in the roadmap.
+
+## Run
+
+Install stable Rust **1.95 or newer**, then:
+
+```sh
+cargo run --locked
+# Open a file from the command line:
+cargo run --locked -- path/to/image.png
+```
+
+Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Command Line Tools. On Linux, install a C/C++ toolchain, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. See [build and packaging notes](docs/BUILD.md).
+
+## Working now
+
+- Dark Paint-style menu bar, compact document tabs, ribbon, floating layers panel, three vertical brush controls and status bar.
+- New/open documents; switch, drag to reorder and close tabs; independent zoom, layers and history; modified-document close prompts.
+- Pencil, continuous round brush, soft eraser, color picker, magnifier, lines, outlined/filled rectangles and ellipses. Left mouse uses foreground; right mouse paints with background.
+- Size, opacity and hardness controls, including exact numerical input. Erasing reduces alpha.
+- Add, duplicate, rename, show/hide, lock, reorder and delete layers; opacity; Normal, Multiply and Screen compositing.
+- Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; actual size, fit and canvas corner resize.
+- Native open/save dialogs, file drop, atomic `.palette` saving and flattened raster export. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec round-trip tests.
+- Two live filters, Invert and Brightness, with editable, enabled/disabled, duplicated and reordered stacks. Source pixels are retained.
+
+Unavailable ribbon tools and filter categories are visibly disabled. **Microsoft `.paint`, AVIF, advanced selections, mask painting and most filters/effects are not available yet.** The `.paint` specimen was not attached; its reported structure has not been verified. Do not use this build for irreplaceable work; recovery/autosave is still pending.
+
+Save/Save As preserve editable state in `.palette`. Export writes a composite image and does not mark the editable project saved. GIF imports its first frame; export does not create an animation. JPEG composites transparency over white.
+
+## Shortcuts
+
+| Action | Shortcut |
+|---|---|
+| New / Open / Save | Ctrl+N / Ctrl+O / Ctrl+S |
+| Save As / Close tab | Ctrl+Shift+S / Ctrl+W |
+| Undo / Redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y |
+| Next / Previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
+
+Use Command in place of Ctrl for file/edit shortcuts on macOS; tab cycling uses Control.
+
+## Verify
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo build --workspace --locked
+# Requires an interactive Windows desktop:
+cargo test --test screenshot -- --ignored
+```
+
+Capture the actual wgpu window with `palette --screenshot output.png`. The screenshot comparison uses a reviewed Windows baseline at 1386 × 963, not a claim of exact equivalence to Microsoft Paint. See [visual comparison](docs/UI_REFERENCE.md).
+
+See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [milestone validation](docs/VALIDATION.md).
+
+Palette source is MIT licensed. Icons are original geometric Rust drawings; Microsoft and Adobe branding/resources are not bundled.

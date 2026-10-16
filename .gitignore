@@ -1,0 +1,4 @@
+/target/
+/.idea/
+*.tmp
+/screenshots/actual*.png
