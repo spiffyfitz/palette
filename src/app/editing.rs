@@ -12,6 +12,7 @@ pub(super) struct EditResult {
     generation: u64,
     label: &'static str,
     result: Result<Option<Document>, String>,
+    select_tool: Option<Tool>,
 }
 
 /// Image/selection edits available from menus, canvas and shortcuts.
@@ -26,8 +27,16 @@ pub enum Edit {
     Crop,
     Move([i32; 2]),
     Transform(Orthogonal),
+    Rotate(f64),
+    Path(palette_core::shapes::Path, palette_core::shapes::Style),
     Resize(u32, u32, Resample),
     Canvas(u32, u32),
+    Shape(
+        palette_core::shapes::Kind,
+        [f32; 2],
+        [f32; 2],
+        palette_core::shapes::Style,
+    ),
 }
 
 impl PaletteApp {
@@ -50,7 +59,13 @@ impl PaletteApp {
         self.current_mut().redo();
     }
     pub(super) fn edit_shortcuts(&mut self, ctx: &Context) {
-        if !self.close_pending_none() {
+        if !self.close_pending_none()
+            || self.interface.popup_was_open
+            || egui::Popup::is_any_open(ctx)
+        {
+            return;
+        }
+        if self.current().construction.is_some() {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
@@ -113,9 +128,28 @@ impl PaletteApp {
         if delete && !command {
             self.edit(Edit::Clear, ctx);
         }
-        if escape {
-            self.stroke = None;
-            self.deselect();
+        if escape && !self.interface.popup_was_open {
+            let cancelled_shape = self.stroke.take().is_some() && self.tool.shape();
+            if !self.current_mut().cancel_selection_transform()
+                && !self.current_mut().cancel_layer_move()
+                && !cancelled_shape
+                && self.tool != Tool::MoveLayer
+            {
+                self.deselect();
+            }
+        }
+        if !command && arrows != [0, 0] && self.tool == Tool::MoveLayer {
+            self.current_mut().end_gesture();
+            let delta = arrows.map(|v| v * if shift { 10 } else { 1 });
+            let mut document = self.current().document.clone();
+            match editing::translate_layer(&mut document, delta) {
+                Ok(true) => self
+                    .current_mut()
+                    .command("Nudge layer", |doc| *doc = document),
+                Ok(false) => {}
+                Err(error) => self.error = Some(error),
+            }
+            return;
         }
         if !command && arrows != [0, 0] && self.current().document.selection.is_some() {
             self.edit(
@@ -137,14 +171,31 @@ impl PaletteApp {
         let session = self.current();
         let (id, generation) = (session.id, session.generation);
         let mut document = session.document.clone();
+        let select_tool =
+            matches!(operation, Edit::Shape(..) | Edit::Path(..)).then_some(self.tool);
         let label = match operation {
             Edit::Fill { .. } => "Fill",
             Edit::Clear => "Clear selection",
             Edit::Crop => "Crop",
             Edit::Move(_) => "Move selection",
-            Edit::Transform(_) => "Transform image",
+            Edit::Transform(_) => {
+                if document.selection.is_some() {
+                    "Transform selection"
+                } else {
+                    "Transform image"
+                }
+            }
+            Edit::Rotate(_) => "Rotate custom",
+            Edit::Path(ref path, _) => {
+                if path.closed {
+                    "Polygon"
+                } else {
+                    "Curve"
+                }
+            }
             Edit::Resize(..) => "Resize image",
             Edit::Canvas(..) => "Canvas properties",
+            Edit::Shape(kind, ..) => kind.label(),
         };
         let sender = self.edit_tx.clone();
         let repaint = ctx.clone();
@@ -159,12 +210,25 @@ impl PaletteApp {
                         opacity,
                         tolerance,
                     } => editing::flood_fill(&mut document, point, color, opacity, tolerance)?,
+                    Edit::Shape(kind, from, to, style) => palette_core::shapes::paint_selected(
+                        &mut document,
+                        &palette_core::shapes::path(kind, from, to),
+                        style,
+                    )?,
+                    Edit::Path(path, style) => {
+                        palette_core::shapes::paint_selected(&mut document, &path, style)?
+                    }
+                    Edit::Rotate(degrees) => transform::rotate(&mut document, degrees)?,
                     Edit::Clear => editing::clear(&mut document),
                     Edit::Crop => transform::crop(&mut document)?,
                     Edit::Move(delta) => editing::move_selection(&mut document, delta)?,
                     Edit::Transform(operation) => {
-                        transform::orthogonal(&mut document, operation)?;
-                        true
+                        if document.selection.is_some() {
+                            transform::selected_orthogonal(&mut document, operation)?
+                        } else {
+                            transform::orthogonal(&mut document, operation)?;
+                            true
+                        }
                     }
                     Edit::Canvas(width, height) => {
                         if width == document.width && height == document.height {
@@ -191,6 +255,7 @@ impl PaletteApp {
                 generation,
                 label,
                 result,
+                select_tool,
             });
             repaint.request_repaint();
         });
@@ -211,6 +276,9 @@ impl PaletteApp {
                 Ok(Some(document)) => {
                     session.command(result.label, |current| *current = document);
                     self.message = result.label.into();
+                    if self.current().id == result.id && result.select_tool == Some(self.tool) {
+                        self.tool = Tool::Select;
+                    }
                 }
                 Ok(None) => self.message = "No pixels changed".into(),
                 Err(error) => self.error = Some(error),
@@ -324,6 +392,7 @@ impl PaletteApp {
             self.after_text = Some(text::AfterText::ResizeDialog);
             return;
         }
+        self.current_mut().end_gesture();
         let session = self.current();
         self.resize_dialog = Some(ResizeDialog {
             session: session.id,
@@ -417,4 +486,99 @@ pub(super) struct ResizeDialog {
     original: [u32; 2],
     linked: bool,
     method: Resample,
+}
+
+impl PaletteApp {
+    pub(crate) fn show_rotation(&mut self) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::RotateDialog);
+            return;
+        }
+        self.current_mut().end_gesture();
+        self.rotation_dialog = Some(RotationDialog {
+            session: self.current().id,
+            generation: self.current().generation,
+            degrees: "0".into(),
+            focus: true,
+        });
+    }
+    pub(super) fn rotation_window(&mut self, ctx: &Context) {
+        let Some(mut draft) = self.rotation_dialog.take() else {
+            return;
+        };
+        if draft.session != self.current().id || draft.generation != self.current().generation {
+            return;
+        }
+        let angle = draft
+            .degrees
+            .trim()
+            .trim_end_matches('°')
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|d| d.is_finite() && d.abs() <= 360000.);
+        let mut apply = false;
+        let mut cancel = false;
+        let result = egui::Modal::new(egui::Id::unique("rotate-custom"))
+            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(24))
+            .backdrop_color(Color32::from_black_alpha(18))
+            .show(ctx, |ui| {
+                ui.set_width(270.);
+                ui.heading("Rotate custom");
+                ui.add_space(16.);
+                let input = ui.add_sized(
+                    vec2(270., 32.),
+                    egui::TextEdit::singleline(&mut draft.degrees).hint_text("Angle in degrees"),
+                );
+                if draft.focus {
+                    input.request_focus();
+                    let mut state =
+                        egui::text_edit::TextEditState::load(ctx, input.id).unwrap_or_default();
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::select_all_str(
+                            &draft.degrees,
+                        )));
+                    state.store(ctx, input.id);
+                    draft.focus = false;
+                }
+                input.on_hover_text("Positive angles rotate clockwise");
+                ui.add_space(24.);
+                ui.separator();
+                ui.add_space(16.);
+                ui.horizontal(|ui| {
+                    apply = ui
+                        .add_enabled(
+                            angle.is_some(),
+                            egui::Button::new(egui::RichText::new("OK").color(Color32::BLACK))
+                                .fill(ACCENT)
+                                .min_size(vec2(131., 32.)),
+                        )
+                        .clicked();
+                    cancel = ui
+                        .add_sized(vec2(131., 32.), egui::Button::new("Cancel"))
+                        .clicked();
+                });
+            });
+        if result.is_top_modal {
+            apply |= angle.is_some() && ctx.input(|i| i.key_pressed(Key::Enter));
+            cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
+        }
+        // Parse again after input so Enter/OK uses the current text.
+        let current = draft
+            .degrees
+            .trim()
+            .trim_end_matches('°')
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|d| d.is_finite() && d.abs() <= 360000.);
+        if !cancel {
+            if apply && let Some(degrees) = current {
+                self.edit(Edit::Rotate(degrees), ctx);
+            } else {
+                self.rotation_dialog = Some(draft);
+            }
+        }
+    }
 }

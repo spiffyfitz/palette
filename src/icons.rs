@@ -6,18 +6,13 @@ use eframe::egui::{
 #[derive(Clone, Copy)]
 pub enum Icon {
     New,
+    Move,
     Open,
     Lock,
     Width,
     Curve,
-    Triangle,
-    Diamond,
-    Pentagon,
-    Hexagon,
-    Star,
-    ArrowRight,
-    ArrowDown,
-    RoundRect,
+    Shape(palette_core::shapes::Kind),
+    Polygon,
     Brush,
     Pencil,
     Eraser,
@@ -117,6 +112,22 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::Move => {
+            line([0.5, 0.05], [0.5, 0.95]);
+            line([0.05, 0.5], [0.95, 0.5]);
+            for (a, b) in [
+                ([0.5, 0.05], [0.32, 0.23]),
+                ([0.5, 0.05], [0.68, 0.23]),
+                ([0.5, 0.95], [0.32, 0.77]),
+                ([0.5, 0.95], [0.68, 0.77]),
+                ([0.05, 0.5], [0.23, 0.32]),
+                ([0.05, 0.5], [0.23, 0.68]),
+                ([0.95, 0.5], [0.77, 0.32]),
+                ([0.95, 0.5], [0.77, 0.68]),
+            ] {
+                line(a, b);
+            }
+        }
         Icon::New => {
             p.add(egui::Shape::closed_line(
                 vec![
@@ -170,27 +181,26 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
                 p.line_segment([at(0.1, y), at(0.9, y)], Stroke::new(*width, color));
             }
         }
-        Icon::Triangle | Icon::Diamond | Icon::Pentagon | Icon::Hexagon | Icon::Star => {
-            let sides = match icon {
-                Icon::Triangle => 3,
-                Icon::Diamond => 4,
-                Icon::Pentagon => 5,
-                Icon::Hexagon => 6,
-                _ => 10,
-            };
-            let points = (0..sides)
-                .map(|i| {
-                    let angle = i as f32 / sides as f32 * std::f32::consts::TAU
-                        - std::f32::consts::FRAC_PI_2;
-                    let radius = if matches!(icon, Icon::Star) && i % 2 == 1 {
-                        0.2
-                    } else {
-                        0.48
-                    };
-                    at(0.5 + radius * angle.cos(), 0.5 + radius * angle.sin())
-                })
-                .collect();
-            p.add(egui::Shape::closed_line(points, s));
+        Icon::Shape(kind) => {
+            let path = palette_core::shapes::path(kind, [0.02, 0.02], [0.98, 0.98]);
+            let mut points: Vec<_> = path.points.iter().map(|[x, y]| at(*x, *y)).collect();
+            if path.closed && !points.is_empty() {
+                points.push(points[0]);
+            }
+            p.add(egui::Shape::line(points, s));
+        }
+        Icon::Polygon => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    at(0.2, 0.05),
+                    at(0.6, 0.05),
+                    at(0.4, 0.5),
+                    at(0.9, 0.5),
+                    at(0.7, 0.95),
+                    at(0.05, 0.95),
+                ],
+                s,
+            ));
         }
         Icon::Curve => {
             let points = (0..24)
@@ -200,30 +210,6 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
                 })
                 .collect();
             p.add(egui::Shape::line(points, s));
-        }
-        Icon::ArrowRight | Icon::ArrowDown => {
-            let points = [
-                [0.0, 0.35],
-                [0.6, 0.35],
-                [0.6, 0.05],
-                [1.0, 0.5],
-                [0.6, 0.95],
-                [0.6, 0.65],
-                [0.0, 0.65],
-            ]
-            .into_iter()
-            .map(|[x, y]| {
-                if matches!(icon, Icon::ArrowDown) {
-                    at(y, x)
-                } else {
-                    at(x, y)
-                }
-            })
-            .collect();
-            p.add(egui::Shape::closed_line(points, s));
-        }
-        Icon::RoundRect => {
-            p.rect_stroke(rect.shrink(0.5), 3, s, StrokeKind::Inside);
         }
         Icon::Pencil | Icon::Picker => {
             line([0.15, 0.85], [0.8, 0.2]);

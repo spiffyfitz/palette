@@ -83,43 +83,115 @@ pub fn bounds(mask: &Coverage) -> Option<PixelRect> {
     })
 }
 
-/// Coalesced coverage boundary segments, including holes after selection inversion.
+/// Directed coalesced boundaries, with selected pixels to the right of each edge.
+/// Direction changes split runs so diagonal islands remain separate contours.
 pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
     let inside = |x: i64, y: i64| {
         x >= 0
             && y >= 0
             && x < i64::from(mask.width)
             && y < i64::from(mask.height)
-            && mask.at(x as u32, y as u32) > 0.0
+            && mask.at(x as u32, y as u32) > 0.
     };
-    let mut edges = vec![];
-    for y in 0..=mask.height {
-        let mut start = None;
-        for x in 0..=mask.width {
-            let edge = x < mask.width
-                && inside(i64::from(x), i64::from(y) - 1) != inside(i64::from(x), i64::from(y));
-            if edge && start.is_none() {
-                start = Some(x);
-            }
-            if !edge && let Some(first) = start.take() {
-                edges.push([[first as f32, y as f32], [x as f32, y as f32]]);
-            }
-        }
-    }
-    for x in 0..=mask.width {
-        let mut start = None;
-        for y in 0..=mask.height {
-            let edge = y < mask.height
-                && inside(i64::from(x) - 1, i64::from(y)) != inside(i64::from(x), i64::from(y));
-            if edge && start.is_none() {
-                start = Some(y);
-            }
-            if !edge && let Some(first) = start.take() {
-                edges.push([[x as f32, first as f32], [x as f32, y as f32]]);
+    let mut edges = Vec::new();
+    for vertical in [false, true] {
+        let (outer, inner) = if vertical {
+            (mask.width, mask.height)
+        } else {
+            (mask.height, mask.width)
+        };
+        for fixed in 0..=outer {
+            let mut run: Option<(u32, i32)> = None;
+            for along in 0..=inner {
+                let direction = if along == inner {
+                    0
+                } else {
+                    let (x, y) = if vertical {
+                        (i64::from(fixed), i64::from(along))
+                    } else {
+                        (i64::from(along), i64::from(fixed))
+                    };
+                    if vertical {
+                        i32::from(inside(x - 1, y)) - i32::from(inside(x, y))
+                    } else {
+                        i32::from(inside(x, y)) - i32::from(inside(x, y - 1))
+                    }
+                };
+                if run.is_some_and(|(_, d)| d != direction) {
+                    let (first, d) = run.take().expect("boundary run");
+                    let at = |a: u32| {
+                        if vertical {
+                            [fixed as f32, a as f32]
+                        } else {
+                            [a as f32, fixed as f32]
+                        }
+                    };
+                    edges.push(if d > 0 {
+                        [at(first), at(along)]
+                    } else {
+                        [at(along), at(first)]
+                    });
+                }
+                if direction != 0 && run.is_none() {
+                    run = Some((along, direction));
+                }
             }
         }
     }
     edges
+}
+/// Ordered closed loops for animated outlines. Right turns at diagonal contacts
+/// keep touching islands separate. Geometry depends only on mask data, not time.
+pub fn contours(mask: &Coverage) -> Vec<Vec<[f32; 2]>> {
+    use std::collections::HashMap;
+    let edges = outline(mask);
+    let key = |p: [f32; 2]| (p[0] as u32, p[1] as u32);
+    let mut starts: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+    for (i, edge) in edges.iter().enumerate() {
+        starts.entry(key(edge[0])).or_default().push(i);
+    }
+    let mut used = vec![false; edges.len()];
+    let mut loops = Vec::new();
+    for first in 0..edges.len() {
+        if used[first] {
+            continue;
+        }
+        let mut points = vec![edges[first][0]];
+        let mut current = first;
+        loop {
+            used[current] = true;
+            let [a, b] = edges[current];
+            points.push(b);
+            if b == points[0] {
+                break;
+            }
+            let dx = b[0] - a[0];
+            let dy = b[1] - a[1];
+            let next = starts
+                .get(&key(b))
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|i| !used[*i])
+                .max_by_key(|i| {
+                    let c = edges[*i][1];
+                    let cross = dx * (c[1] - b[1]) - dy * (c[0] - b[0]);
+                    if cross > 0. {
+                        3
+                    } else if cross == 0. {
+                        2
+                    } else {
+                        1
+                    }
+                });
+            let Some(next) = next else {
+                break;
+            };
+            current = next;
+        }
+        loops.push(points);
+    }
+    loops
 }
 
 /// Selection coverage at signed canvas coordinates; off-canvas pixels are excluded.
@@ -268,65 +340,7 @@ pub fn paste(document: &mut Document, pixels: Raster) -> Result<(), String> {
 
 /// Move selected source pixels without flattening their layer's filters/mask.
 pub fn move_selection(document: &mut Document, delta: [i32; 2]) -> Result<bool, String> {
-    if document.active().locked || delta == [0, 0] {
-        return Ok(false);
-    }
-    let Some(selection) = document.selection.clone() else {
-        return Ok(false);
-    };
-    let Some(rect) = bounds(&selection) else {
-        return Ok(false);
-    };
-    let original = document.active().source.clone();
-    let old_offset = document.active().offset;
-    // Expand to the union of source and canvas so translated/cropped layers can
-    // receive pixels anywhere on the canvas without throwing away hidden data.
-    ensure_canvas_extent(document)?;
-    clear(document);
-    let mut shifted = rectangle(
-        document.width,
-        document.height,
-        PixelRect {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-        },
-    );
-    let (width, height) = (document.width, document.height);
-    let layer = document.active_mut();
-    for y in rect.y..rect.y + rect.height {
-        for x in rect.x..rect.x + rect.width {
-            let dx = i64::from(x) + i64::from(delta[0]);
-            let dy = i64::from(y) + i64::from(delta[1]);
-            if dx < 0 || dy < 0 || dx >= i64::from(width) || dy >= i64::from(height) {
-                continue;
-            }
-            let sx = i64::from(x) - i64::from(old_offset[0]);
-            let sy = i64::from(y) - i64::from(old_offset[1]);
-            let amount = selection.at(x, y);
-            Arc::make_mut(&mut shifted.values)[(dy as u32 * width + dx as u32) as usize] =
-                (amount * 255.0).round() as u8;
-            if sx < 0
-                || sy < 0
-                || sx >= i64::from(original.width())
-                || sy >= i64::from(original.height())
-            {
-                continue;
-            }
-            let mut pixel = original.get(sx as u32, sy as u32);
-            pixel[3] = (f32::from(pixel[3]) * amount).round() as u8;
-            let tx = (dx - i64::from(layer.offset[0])) as u32;
-            let ty = (dy - i64::from(layer.offset[1])) as u32;
-            layer.source.set(
-                tx,
-                ty,
-                over(layer.source.get(tx, ty), pixel, 1.0, BlendMode::Normal),
-            );
-        }
-    }
-    document.selection = Some(shifted);
-    Ok(true)
+    crate::transform::SelectionTransform::Move(delta).apply(document)
 }
 
 /// Grow the active layer to cover the canvas while retaining all hidden source
@@ -492,4 +506,22 @@ pub fn flood_fill(
         }
     }
     Ok(changed)
+}
+
+/// Translate the complete active layer without resampling or rewriting source,
+/// local masks, filters or effects. Canvas selections remain fixed in canvas space.
+/// Checked arithmetic makes an overflowing move atomic.
+pub fn translate_layer(document: &mut Document, delta: [i32; 2]) -> Result<bool, String> {
+    if document.active().locked || delta == [0, 0] {
+        return Ok(false);
+    }
+    let offset = document.active().offset;
+    let x = offset[0]
+        .checked_add(delta[0])
+        .ok_or("Layer position exceeds the supported range")?;
+    let y = offset[1]
+        .checked_add(delta[1])
+        .ok_or("Layer position exceeds the supported range")?;
+    document.active_mut().offset = [x, y];
+    Ok(true)
 }

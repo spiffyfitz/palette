@@ -1,3 +1,7 @@
+> Historical video-guided UI pass. The current default canvas is now 1280 x 720 and the next editing slice adds common shapes and whole-layer movement. See [current validation](SHAPES_LAYERS_VALIDATION.md).
+
+Current follow-up: selected-pixel move/resize/rotation handles and live previews are implemented; see [selection handle validation](SELECTION_HANDLES_VALIDATION.md). Earlier pending items and test counts below describe the historical milestone.
+
 # Paint video: interface behavior and validation
 
 ## Reference inspected

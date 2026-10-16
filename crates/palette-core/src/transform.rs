@@ -1,9 +1,11 @@
 //! Document geometry operations preserve layers and their live processing stacks.
+mod selection;
 use crate::{
     document::Document,
     editing::bounds,
     raster::{Coverage, Raster},
 };
+pub use selection::{SelectionTransform, rotate, selected_orthogonal};
 use std::sync::Arc;
 
 // Whole-image operations materialize every output plane. Validate aggregate

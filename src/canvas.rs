@@ -1,3 +1,6 @@
+mod construction;
+mod overlays;
+mod selection;
 use crate::{
     app::{ACCENT, PaletteApp},
     icons::{self, Icon},
@@ -5,9 +8,8 @@ use crate::{
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use palette_core::{
-    brush::{Brush, PaintStroke},
+    brush::PaintStroke,
     editing::{self, PixelRect},
-    raster::{Coverage, Raster},
 };
 
 /// Convert logical display points to image coordinates. egui already accounts
@@ -17,85 +19,6 @@ fn image_point(point: Pos2, canvas: Rect, zoom: f32) -> [f32; 2] {
         (point.x - canvas.left()) / zoom,
         (point.y - canvas.top()) / zoom,
     ]
-}
-
-fn draw_shape(
-    raster: &mut Raster,
-    brush: Brush,
-    tool: Tool,
-    from: [f32; 2],
-    to: [f32; 2],
-    filled: bool,
-    selection: Option<(&Coverage, [i32; 2])>,
-) {
-    let mut shape_stroke = PaintStroke::new(raster);
-    if tool == Tool::Line {
-        shape_stroke.segment(brush, raster, from, to, selection);
-        return;
-    }
-    let left = from[0].min(to[0]);
-    let right = from[0].max(to[0]);
-    let top = from[1].min(to[1]);
-    let bottom = from[1].max(to[1]);
-    if filled {
-        let cx = (left + right) * 0.5;
-        let cy = (top + bottom) * 0.5;
-        let rx = ((right - left) * 0.5).max(0.5);
-        let ry = ((bottom - top) * 0.5).max(0.5);
-        for y in (top.max(0.0) as u32)..(bottom.ceil().max(0.0) as u32).min(raster.height()) {
-            for x in (left.max(0.0) as u32)..(right.ceil().max(0.0) as u32).min(raster.width()) {
-                if tool == Tool::Rectangle
-                    || ((x as f32 + 0.5 - cx) / rx).powi(2) + ((y as f32 + 0.5 - cy) / ry).powi(2)
-                        <= 1.0
-                {
-                    raster.set(
-                        x,
-                        y,
-                        palette_core::composite::over(
-                            raster.get(x, y),
-                            brush.color,
-                            brush.opacity
-                                * selection.map_or(1.0, |(mask, offset)| {
-                                    editing::coverage(
-                                        Some(mask),
-                                        i64::from(x) + i64::from(offset[0]),
-                                        i64::from(y) + i64::from(offset[1]),
-                                        mask.width,
-                                        mask.height,
-                                    )
-                                }),
-                            palette_core::document::BlendMode::Normal,
-                        ),
-                    );
-                }
-            }
-        }
-    } else if tool == Tool::Rectangle {
-        let corners = [
-            [left, top],
-            [right, top],
-            [right, bottom],
-            [left, bottom],
-            [left, top],
-        ];
-        for pair in corners.windows(2) {
-            shape_stroke.segment(brush, raster, pair[0], pair[1], selection);
-        }
-    } else {
-        let rx = (right - left) * 0.5;
-        let ry = (bottom - top) * 0.5;
-        let steps = ((rx + ry) * 3.0).ceil().clamp(32.0, 4096.0) as u32;
-        let point = |i: u32| {
-            let a = i as f32 / steps as f32 * std::f32::consts::TAU;
-            [
-                (left + right) * 0.5 + a.cos() * rx,
-                (top + bottom) * 0.5 + a.sin() * ry,
-            ]
-        };
-        for i in 0..steps {
-            shape_stroke.segment(brush, raster, point(i), point(i + 1), selection);
-        }
-    }
 }
 
 impl PaletteApp {
@@ -257,8 +180,20 @@ impl PaletteApp {
             });
         let drawing_allowed = self.close_pending_none()
             && (!self.current().document.active().locked
-                || (!self.tool.paints() && !self.tool.shape() && self.tool != Tool::Fill));
+                || (!self.tool.paints()
+                    && !self.tool.shape()
+                    && self.tool != Tool::Fill
+                    && self.tool != Tool::MoveLayer));
+        let selection_handled = self.selection_handle_press(
+            &ctx,
+            &painter,
+            canvas,
+            pointer,
+            hovered && pressed && !space && !middle && drawing_allowed,
+        );
         if hovered
+            && !selection_handled
+            && self.current().selection_transform.is_none()
             && pressed
             && !space
             && !middle
@@ -268,21 +203,24 @@ impl PaletteApp {
             self.stroke_background = ctx.input(|i| i.pointer.secondary_pressed());
             let point = image_point(pointer.expect("hovered pointer"), canvas, zoom);
             match self.tool {
+                Tool::MoveLayer => {
+                    if !self.current().document.active().locked {
+                        let original = self.current().document.active().offset;
+                        self.current_mut().invalidate();
+                        self.current_mut().layer_drag = Some(crate::session::LayerDrag {
+                            start: point,
+                            original,
+                        });
+                    }
+                }
+                Tool::Polygon | Tool::Curve => {}
                 Tool::Text => {
                     self.current_mut().text_drag = Some(point);
                 }
                 Tool::Select => {
-                    let moving = self
-                        .current()
-                        .document
-                        .selection
-                        .as_ref()
-                        .is_some_and(|mask| mask.at(point[0] as u32, point[1] as u32) > 0.0)
-                        && !ctx.input(|i| i.modifiers.alt);
                     self.current_mut().selection_drag = Some(SelectionDrag {
                         start: point,
                         current: point,
-                        moving,
                     });
                 }
                 Tool::Fill => {
@@ -333,93 +271,36 @@ impl PaletteApp {
         if let Some((start, last)) = self.stroke
             && self.gesture_session == Some(self.current().id)
         {
-            let point = pointer
+            let mut point = pointer
                 .map(|p| image_point(p, canvas, zoom))
                 .unwrap_or(last);
+            if let Some(kind) = self.tool.shape_kind()
+                && ctx.input(|i| i.modifiers.shift)
+            {
+                point = palette_core::shapes::constrain(kind, start, point);
+            }
             if down && point != last {
                 if self.tool.paints() {
                     self.paint_segment(last, point);
                 }
                 self.stroke = Some((start, point));
             }
-            if self.tool.shape() {
-                let a = origin + vec2(start[0], start[1]) * zoom;
-                let b = origin + vec2(point[0], point[1]) * zoom;
-                let rgba = if self.stroke_background {
-                    self.background.to_srgba_unmultiplied()
-                } else {
-                    self.brush.color
-                };
-                let color = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
-                let stroke = Stroke::new((self.brush.diameter * zoom).max(1.0), color);
-                match self.tool {
-                    Tool::Line => {
-                        painter.line_segment([a, b], stroke);
-                    }
-                    Tool::Rectangle => {
-                        if self.shape_fill {
-                            painter.rect_filled(Rect::from_two_pos(a, b), 0, color);
-                        } else {
-                            painter.rect_stroke(
-                                Rect::from_two_pos(a, b),
-                                0,
-                                stroke,
-                                StrokeKind::Middle,
-                            );
-                        }
-                    }
-                    Tool::Ellipse => {
-                        let rect = Rect::from_two_pos(a, b);
-                        painter.add(egui::epaint::EllipseShape {
-                            angle: 0.0,
-                            center: rect.center(),
-                            radius: rect.size() * 0.5,
-                            fill: if self.shape_fill {
-                                color
-                            } else {
-                                Color32::TRANSPARENT
-                            },
-                            stroke: if self.shape_fill {
-                                Stroke::NONE
-                            } else {
-                                stroke
-                            },
-                        });
-                    }
-                    _ => {}
-                }
+            if let Some(kind) = self.tool.shape_kind() {
+                let path = palette_core::shapes::path(kind, start, point);
+                let style = self.shape_style_values();
+                overlays::shape(&painter, &path, style, origin, zoom);
             }
             if released || !down {
-                if self.tool.shape() {
-                    let label = self.tool.label();
-                    let session = self.current_mut();
-                    session.history.begin(label, &session.document);
-                    if let Err(error) = editing::ensure_canvas_extent(&mut session.document) {
-                        self.error = Some(error);
-                        self.stroke = None;
-                        return;
-                    }
-                    let mut brush = self.brush;
-                    if self.stroke_background {
-                        brush.color = self.background.to_srgba_unmultiplied();
-                    }
-                    brush.erase = false;
-                    let tool = self.tool;
-                    let filled = self.shape_fill;
-                    let offset = self.current().document.active().offset;
-                    let selection = self.current().document.selection.clone();
-                    let a = [start[0] - offset[0] as f32, start[1] - offset[1] as f32];
-                    let b = [point[0] - offset[0] as f32, point[1] - offset[1] as f32];
-                    draw_shape(
-                        &mut self.current_mut().document.active_mut().source,
-                        brush,
-                        tool,
-                        a,
-                        b,
-                        filled,
-                        selection.as_ref().map(|mask| (mask, offset)),
+                if let Some(kind) = self.tool.shape_kind() {
+                    self.edit(
+                        crate::app::editing::Edit::Shape(
+                            kind,
+                            start,
+                            point,
+                            self.shape_style_values(),
+                        ),
+                        &ctx,
                     );
-                    self.current_mut().invalidate();
                 }
                 self.stroke = None;
                 let session = self.current_mut();
@@ -427,6 +308,24 @@ impl PaletteApp {
                 session.history.finish(&session.document);
             }
         }
+        self.construction_interaction(
+            ui,
+            &painter,
+            canvas,
+            pointer,
+            [
+                hovered
+                    && pressed
+                    && !space
+                    && !middle
+                    && drawing_allowed
+                    && canvas.contains(pointer.unwrap_or(Pos2::ZERO)),
+                down,
+                released,
+                response.double_clicked(),
+            ],
+        );
+        self.layer_move_interaction(&ctx, &painter, canvas, pointer, down, released);
         self.selection_interaction(ui, &painter, canvas, pointer, [down, released]);
         self.text_interaction(&painter, canvas, pointer, down, released);
         if self.cursor.is_some() && self.tool.paints() && !space {
@@ -444,7 +343,12 @@ impl PaletteApp {
         }
         // The bottom-right handle performs a reversible canvas-bounds resize.
         let handle = Rect::from_center_size(canvas.right_bottom() + vec2(3.0, 3.0), vec2(9.0, 9.0));
-        if view.contains(handle.center()) && self.close_pending_none() {
+        if view.contains(handle.center())
+            && self.close_pending_none()
+            && !selection_handled
+            && self.current().selection_transform.is_none()
+            && !(self.tool == Tool::Select && self.current().document.selection.is_some())
+        {
             let resize = ui
                 .interact(handle, ui.scope_id().with("resize-canvas"), Sense::drag())
                 .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
@@ -521,7 +425,82 @@ impl PaletteApp {
                 });
             });
         }
-        response.on_hover_text("Ctrl + wheel to zoom · Middle mouse or Space + drag to pan");
+        response.on_hover_text(if self.tool == Tool::MoveLayer {
+            "Drag the active layer · Shift constrains axis · Arrows nudge · Escape cancels"
+        } else if self.tool == Tool::Select {
+            "Drag selected pixels to move · Drag handles to resize or rotate · Shift constrains · Alt draws a new selection · Escape cancels"
+        } else {
+            "Ctrl + wheel to zoom · Middle mouse or Space + drag to pan"
+        });
+    }
+
+    fn layer_move_interaction(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        canvas: Rect,
+        pointer: Option<Pos2>,
+        down: bool,
+        released: bool,
+    ) {
+        if self.tool != Tool::MoveLayer {
+            return;
+        }
+        ctx.set_cursor_icon(if self.current().document.active().locked {
+            egui::CursorIcon::NotAllowed
+        } else {
+            egui::CursorIcon::Move
+        });
+        if let Some(drag) = &self.current().layer_drag {
+            let original = drag.original;
+            let start = drag.start;
+            if let Some(point) = pointer {
+                let point = image_point(point, canvas, self.current().zoom);
+                let mut delta = [
+                    (point[0] - start[0]).round() as i32,
+                    (point[1] - start[1]).round() as i32,
+                ];
+                if ctx.input(|i| i.modifiers.shift) {
+                    if delta[0].unsigned_abs() > delta[1].unsigned_abs() {
+                        delta[1] = 0;
+                    } else {
+                        delta[0] = 0;
+                    }
+                }
+                let position = [
+                    original[0].saturating_add(delta[0]),
+                    original[1].saturating_add(delta[1]),
+                ];
+                if position != self.current().document.active().offset {
+                    self.current_mut().document.active_mut().offset = position;
+                    self.current_mut().invalidate_preview();
+                }
+            }
+            if released || !down {
+                self.current_mut().end_gesture();
+            }
+        }
+        let layer = self.current().document.active();
+        let zoom = self.current().zoom;
+        let bounds = Rect::from_min_size(
+            canvas.min + vec2(layer.offset[0] as f32, layer.offset[1] as f32) * zoom,
+            vec2(layer.source.width() as f32, layer.source.height() as f32) * zoom,
+        );
+        painter.rect_stroke(bounds, 0, Stroke::new(1., ACCENT), StrokeKind::Outside);
+    }
+
+    fn shape_style_values(&self) -> palette_core::shapes::Style {
+        let (foreground, background) = if self.stroke_background {
+            (self.background.to_srgba_unmultiplied(), self.brush.color)
+        } else {
+            (self.brush.color, self.background.to_srgba_unmultiplied())
+        };
+        palette_core::shapes::Style {
+            outline: self.shape_outline.then_some(foreground),
+            fill: self.shape_fill.then_some(background),
+            width: self.brush.diameter,
+            opacity: self.brush.opacity,
+        }
     }
 
     fn paint_segment(&mut self, from: [f32; 2], to: [f32; 2]) {
@@ -588,7 +567,7 @@ impl PaletteApp {
                     response.on_hover_text(label);
                     ui.add_enabled_ui(
                         self.tool.paints()
-                            || self.tool.shape()
+                            || (self.tool.shape() && index != 2)
                             || (self.tool == Tool::Fill && index == 1),
                         |ui| {
                             ui.spacing_mut().slider_width = (height - 62.0).max(14.0);
@@ -699,101 +678,6 @@ impl PaletteApp {
                 Stroke::new(1.0, ACCENT),
                 StrokeKind::Outside,
             );
-        }
-    }
-
-    fn selection_interaction(
-        &mut self,
-        ui: &Ui,
-        painter: &egui::Painter,
-        canvas: Rect,
-        pointer: Option<Pos2>,
-        buttons: [bool; 2],
-    ) {
-        let zoom = self.current().zoom;
-        if self.tool == Tool::Select
-            && let Some(mut drag) = self.current_mut().selection_drag.take()
-        {
-            if let Some(pointer) = pointer {
-                drag.current = image_point(pointer, canvas, zoom);
-            }
-            if buttons[1] || !buttons[0] {
-                if drag.moving {
-                    let delta = [
-                        (drag.current[0] - drag.start[0]).round() as i32,
-                        (drag.current[1] - drag.start[1]).round() as i32,
-                    ];
-                    if delta != [0, 0] {
-                        self.edit(crate::app::editing::Edit::Move(delta), ui.ctx());
-                    }
-                } else {
-                    let doc = &self.current().document;
-                    let rect =
-                        PixelRect::from_drag(drag.start, drag.current, doc.width, doc.height);
-                    if let Some(rect) = rect {
-                        self.current_mut().command("Rectangular selection", |doc| {
-                            doc.selection = Some(editing::rectangle(doc.width, doc.height, rect))
-                        });
-                    } else {
-                        self.deselect();
-                    }
-                }
-            } else {
-                self.current_mut().selection_drag = Some(drag);
-            }
-        }
-        let drag = self.current().selection_drag.as_ref();
-        let shift = drag.filter(|d| d.moving).map_or(Vec2::ZERO, |d| {
-            vec2(
-                (d.current[0] - d.start[0]).round(),
-                (d.current[1] - d.start[1]).round(),
-            ) * zoom
-        });
-        let preview = drag.filter(|d| !d.moving).and_then(|d| {
-            PixelRect::from_drag(
-                d.start,
-                d.current,
-                self.current().document.width,
-                self.current().document.height,
-            )
-        });
-        if let Some(rect) = preview {
-            let bounds = Rect::from_min_size(
-                canvas.min + vec2(rect.x as f32, rect.y as f32) * zoom,
-                vec2(rect.width as f32, rect.height as f32) * zoom,
-            );
-            painter.rect_stroke(
-                bounds,
-                0,
-                Stroke::new(2.0, Color32::BLACK),
-                StrokeKind::Middle,
-            );
-            painter.rect_stroke(
-                bounds,
-                0,
-                Stroke::new(1.0, Color32::WHITE),
-                StrokeKind::Middle,
-            );
-        } else {
-            for edge in self.current_mut().selection_edges() {
-                let points = edge.map(|[x, y]| canvas.min + vec2(x, y) * zoom + shift);
-                painter.line_segment(points, Stroke::new(2.0, Color32::BLACK));
-                painter.line_segment(points, Stroke::new(1.0, Color32::WHITE));
-            }
-        }
-        if self.tool == Tool::Select && self.cursor.is_some() {
-            let inside = self
-                .current()
-                .document
-                .selection
-                .as_ref()
-                .zip(self.cursor)
-                .is_some_and(|(m, [x, y])| m.at(x, y) > 0.0);
-            ui.ctx().set_cursor_icon(if inside {
-                egui::CursorIcon::Move
-            } else {
-                egui::CursorIcon::Crosshair
-            });
         }
     }
 }

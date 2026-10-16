@@ -22,6 +22,15 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "text",
         "properties",
         "layers",
+        "shapes",
+        "selection",
+        "catalog",
+        "rotate-custom",
+        "selected-shape",
+        "polygon-preview",
+        "curve-preview",
+        "selection-resize-preview",
+        "selection-rotate-preview",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

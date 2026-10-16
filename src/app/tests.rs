@@ -1,6 +1,14 @@
 use super::*;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 
+fn test_app(ctx: &Context) -> PaletteApp {
+    let mut app = PaletteApp::with_context(ctx);
+    // Keep every canvas edge reachable in these gesture tests. Production new
+    // documents still start at 100%; a separate test verifies that contract.
+    app.current_mut().zoom = 0.75;
+    app
+}
+
 fn frame(app: &mut PaletteApp, ctx: &Context, events: Vec<Event>) -> Vec<egui::TextureId> {
     let input = RawInput {
         screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386.0, 963.0))),
@@ -31,12 +39,12 @@ fn pointer(pos: egui::Pos2, pressed: bool) -> Event {
 #[test]
 fn painting_through_ui_at_75_percent_is_undoable_and_layer_local() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut().zoom = 0.75;
     app.current_mut().command("Add layer", Document::add_layer);
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
-    let origin = app.canvas_rect.center() - vec2(819.0, 594.0) * 0.75 * 0.5;
+    let origin = app.canvas_rect.center() - vec2(1280.0, 720.0) * 0.75 * 0.5;
     let start = origin + vec2(10.5, 10.5) * 0.75;
     let end = origin + vec2(110.5, 10.5) * 0.75;
     frame(
@@ -60,7 +68,7 @@ fn painting_through_ui_at_75_percent_is_undoable_and_layer_local() {
 #[test]
 fn tab_state_and_unsaved_close_are_independent() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut().command("Paint", |doc| {
         doc.active_mut().source.set(0, 0, [255, 0, 0, 255])
     });
@@ -101,7 +109,7 @@ fn tab_state_and_unsaved_close_are_independent() {
 #[test]
 fn canvas_resize_preserves_source_and_is_reversible() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut()
         .document
         .active_mut()
@@ -109,7 +117,7 @@ fn canvas_resize_preserves_source_and_is_reversible() {
         .set(0, 0, [25, 50, 75, 100]);
     // Exercise the real resize command through its handle's image-space bounds.
     frame(&mut app, &ctx, vec![]);
-    let handle = image_position(&app, [819.0, 594.0]) + vec2(3.0, 3.0);
+    let handle = image_position(&app, [1280.0, 720.0]) + vec2(3.0, 3.0);
     let delta = vec2(40.0, 20.0) * app.current().zoom;
     frame(&mut app, &ctx, vec![Event::PointerMoved(handle)]);
     frame(&mut app, &ctx, vec![pointer(handle, true)]);
@@ -117,7 +125,7 @@ fn canvas_resize_preserves_source_and_is_reversible() {
     frame(&mut app, &ctx, vec![pointer(handle + delta, false)]);
     assert_eq!(
         (app.current().document.width, app.current().document.height),
-        (859, 614)
+        (1320, 740)
     );
     assert_eq!(
         app.current().document.active().source.get(0, 0),
@@ -126,14 +134,14 @@ fn canvas_resize_preserves_source_and_is_reversible() {
     app.current_mut().undo();
     assert_eq!(
         (app.current().document.width, app.current().document.height),
-        (819, 594)
+        (1280, 720)
     );
 }
 
 #[test]
 fn ribbon_and_layers_remain_within_a_small_window() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     let input = RawInput {
         screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(780.0, 520.0))),
         ..Default::default()
@@ -167,12 +175,12 @@ fn wait_for_render(app: &mut PaletteApp, ctx: &Context) {
 fn held_brush_and_eraser_update_texture_before_release_and_undo_once() {
     for tool in [Tool::Brush, Tool::Eraser] {
         let ctx = Context::default();
-        let mut app = PaletteApp::with_context(&ctx);
+        let mut app = test_app(&ctx);
         app.current_mut().zoom = 0.75;
         app.current_mut().command("Add layer", |doc| {
             doc.add_layer();
             if tool == Tool::Eraser {
-                doc.active_mut().source = Raster::new(819, 594, [90, 30, 180, 200]).unwrap();
+                doc.active_mut().source = Raster::new(1280, 720, [90, 30, 180, 200]).unwrap();
             }
             doc.active_mut().opacity = 0.7;
             doc.active_mut().blend = BlendMode::Multiply;
@@ -217,7 +225,7 @@ fn held_brush_and_eraser_update_texture_before_release_and_undo_once() {
 #[test]
 fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     let (tx, rx) = mpsc::channel();
     app.render_rx = rx;
     let snapshot = app.current().document.clone();
@@ -238,6 +246,7 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     let send = |epoch, generation| {
         let pixels = composite::render(&snapshot);
         tx.send(RenderResult {
+            selection: None,
             id: app.sessions[0].id,
             epoch,
             generation,
@@ -259,6 +268,7 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     // Even a result stamped with a newer generation cannot cross an edit epoch.
     let pixels = composite::render(&snapshot);
     tx.send(RenderResult {
+        selection: None,
         id: app.current().id,
         epoch,
         generation: app.current().generation,
@@ -288,7 +298,7 @@ fn wait_for_text(app: &mut PaletteApp, ctx: &Context) {
 #[test]
 fn text_box_at_fractional_zoom_previews_cancels_and_commits_one_layer_command() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut().zoom = 0.75;
     app.tool = Tool::Text;
     frame(&mut app, &ctx, vec![]);
@@ -355,8 +365,14 @@ fn text_box_at_fractional_zoom_previews_cancels_and_commits_one_layer_command() 
 }
 fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while app.edit_pending {
-        app.poll_edits();
+    while app.edit_pending
+        || app
+            .current()
+            .selection_transform
+            .as_ref()
+            .is_some_and(|g| g.released)
+    {
+        frame(app, ctx, vec![]);
         assert!(std::time::Instant::now() < deadline, "edit timed out");
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
@@ -367,7 +383,7 @@ fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
 #[test]
 fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut().zoom = 0.75;
     app.current_mut().command("Add layer", Document::add_layer);
     app.tool = Tool::Select;
@@ -433,7 +449,7 @@ fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
     app.current_mut().undo();
     assert_eq!(
         (app.current().document.width, app.current().document.height),
-        (819, 594)
+        (1280, 720)
     );
     app.current_mut().undo();
     assert_eq!(
@@ -445,7 +461,7 @@ fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
 #[test]
 fn native_paste_image_event_creates_an_independent_undoable_layer() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     frame(&mut app, &ctx, vec![]);
     let image = egui::ColorImage::from_rgba_unmultiplied([2, 1], &[255, 0, 0, 255, 0, 0, 255, 128]);
     frame(
@@ -470,7 +486,7 @@ fn native_paste_image_event_creates_an_independent_undoable_layer() {
 #[test]
 fn a_late_worker_result_cannot_overwrite_new_edits() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.edit(
         super::editing::Edit::Fill {
             point: [0, 0],
@@ -495,11 +511,11 @@ fn a_late_worker_result_cannot_overwrite_new_edits() {
 #[test]
 fn selected_shape_and_brush_do_not_change_unselected_pixels() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.current_mut().command("Add layer", Document::add_layer);
     app.current_mut().document.selection = Some(palette_core::editing::rectangle(
-        819,
-        594,
+        1280,
+        720,
         palette_core::editing::PixelRect {
             x: 20,
             y: 20,
@@ -509,6 +525,8 @@ fn selected_shape_and_brush_do_not_change_unselected_pixels() {
     ));
     app.tool = Tool::Rectangle;
     app.shape_fill = true;
+    app.shape_outline = false;
+    app.background = Color32::from_rgb(0, 255, 0);
     app.brush.color = [0, 255, 0, 255];
     frame(&mut app, &ctx, vec![]);
     let a = image_position(&app, [10.0, 10.0]);
@@ -520,6 +538,7 @@ fn selected_shape_and_brush_do_not_change_unselected_pixels() {
     );
     frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
     frame(&mut app, &ctx, vec![pointer(b, false)]);
+    wait_for_edit(&mut app, &ctx);
     assert_eq!(
         app.current().document.active().source.get(25, 25),
         [0, 255, 0, 255]
@@ -537,6 +556,7 @@ fn selected_shape_and_brush_do_not_change_unselected_pixels() {
     );
     frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
     frame(&mut app, &ctx, vec![pointer(b, false)]);
+    wait_for_edit(&mut app, &ctx);
     assert_eq!(
         app.current().document.active().source.get(25, 30),
         [255, 0, 0, 255]
@@ -561,7 +581,7 @@ fn escape_event() -> Event {
 #[test]
 fn paint_flyout_opens_at_its_control_and_escape_dismisses_it() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     frame(&mut app, &ctx, vec![]);
     click_ui(&mut app, &ctx, pos2(20.0, 16.0));
     frame(&mut app, &ctx, vec![]);
@@ -573,7 +593,7 @@ fn paint_flyout_opens_at_its_control_and_escape_dismisses_it() {
 #[test]
 fn inline_text_resizes_at_fractional_zoom_and_commits_when_clicked_outside() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.tool = Tool::Text;
     app.current_mut().zoom = 0.75;
     frame(&mut app, &ctx, vec![]);
@@ -614,7 +634,7 @@ fn inline_text_resizes_at_fractional_zoom_and_commits_when_clicked_outside() {
 #[test]
 fn pending_text_preview_preserves_a_requested_tool_switch() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     app.tool = Tool::Text;
     frame(&mut app, &ctx, vec![]);
     app.start_text(palette_core::editing::PixelRect {
@@ -638,7 +658,7 @@ fn pending_text_preview_preserves_a_requested_tool_switch() {
 #[test]
 fn color_and_canvas_dialog_cancel_keep_state_and_canvas_ok_is_undoable() {
     let ctx = Context::default();
-    let mut app = PaletteApp::with_context(&ctx);
+    let mut app = test_app(&ctx);
     frame(&mut app, &ctx, vec![]);
     let before = app.current().document.clone();
     let color = app.brush.color;
@@ -680,4 +700,778 @@ fn color_and_canvas_dialog_cancel_keep_state_and_canvas_ok_is_undoable() {
     );
     app.undo_current();
     assert_eq!(app.current().document, before);
+}
+
+#[test]
+fn new_documents_and_properties_default_use_hd_canvas_at_actual_size() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    assert_eq!(
+        [app.current().document.width, app.current().document.height],
+        [1280, 720]
+    );
+    assert_eq!(app.current().zoom, 1.0);
+    app.current_mut().command("Resize", |doc| {
+        palette_core::transform::canvas_resize(doc, 400, 300).unwrap();
+    });
+    app.new_document();
+    assert_eq!(
+        [app.current().document.width, app.current().document.height],
+        [1280, 720]
+    );
+    app.show_canvas_properties();
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let properties = app.interface.canvas_properties.as_ref().unwrap();
+    assert_eq!([properties.width, properties.height], [1280, 720]);
+}
+#[test]
+fn whole_layer_drag_is_live_cancelable_and_one_undo_with_nudges_and_lock() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().command("Add", Document::add_layer);
+    app.current_mut()
+        .document
+        .active_mut()
+        .source
+        .set(200, 200, [255, 0, 0, 255]);
+    let source = app.current().document.active().source.clone();
+    app.choose_tool(Tool::MoveLayer);
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [200., 200.]);
+    let b = a + vec2(30., 15.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    assert_eq!(app.current().document.active().offset, [40, 20]);
+    assert!(app.current().layer_drag.is_some());
+    let epoch = app.current().render_epoch;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(b + vec2(0.75, 0.))],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    assert_eq!(app.current().render_epoch, epoch);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.current().rendered_generation != Some(app.current().generation) {
+        frame(&mut app, &ctx, vec![]);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        assert!(std::time::Instant::now() < deadline);
+    }
+    assert_eq!(
+        app.current().rendered.as_ref().unwrap().get(240, 220),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(app.current().document.active().source, source);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert!(app.current().layer_drag.is_none());
+    app.undo_current();
+    assert_eq!(app.current().document.active().offset, [0, 0]);
+    assert_eq!(app.current().document.layers.len(), 2);
+    app.redo_current();
+    assert_eq!(app.current().document.active().offset, [40, 20]);
+    let revision = app.current().history.revision;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b + vec2(15., 0.))]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(app.current().document.active().offset, [40, 20]);
+    assert_eq!(app.current().history.revision, revision);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::ArrowRight,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert_eq!(app.current().document.active().offset, [41, 20]);
+    app.current_mut().document.active_mut().locked = true;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(b), pointer(b, false)],
+    );
+    assert_eq!(app.current().document.active().offset, [41, 20]);
+    assert_eq!(app.current().document.active().source, source);
+}
+#[test]
+fn new_shape_preview_cancels_and_commits_on_its_own_layer_at_fractional_zoom() {
+    use palette_core::shapes::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().command("Add", Document::add_layer);
+    app.choose_tool(Tool::Shape(Kind::Star));
+    app.shape_fill = true;
+    app.shape_outline = false;
+    app.background = Color32::from_rgb(240, 170, 20);
+    app.brush.opacity = 0.5;
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [300., 200.]);
+    let b = image_position(&app, [500., 400.]);
+    let before = app.current().document.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    assert_eq!(app.current().document, before);
+    frame(&mut app, &ctx, vec![escape_event(), pointer(b, false)]);
+    assert_eq!(app.current().document, before);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.active().source.get(400, 300),
+        [240, 170, 20, 128]
+    );
+    assert_eq!(app.current().document.layers[0], before.layers[0]);
+    app.undo_current();
+    assert_eq!(app.current().document, before);
+    app.redo_current();
+    assert_eq!(app.current().document.active().source.get(400, 300)[3], 128);
+}
+
+#[test]
+fn close_during_a_layer_move_records_it_before_the_unsaved_prompt() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.choose_tool(Tool::MoveLayer);
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [300., 300.]);
+    let b = a + vec2(30., 15.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    let id = app.current().id;
+    app.request_close(id, &ctx);
+    assert!(app.current().layer_drag.is_none());
+    assert_eq!(app.close_pending, Some(id));
+    assert_ne!(app.current().history.revision, 0);
+    app.close_pending = None;
+    app.undo_current();
+    assert_eq!(app.current().document.active().offset, [0, 0]);
+    assert!(!app.current().modified());
+}
+
+#[test]
+fn gallery_matches_the_reference_rows_without_duplicate_placeholders() {
+    let names = [
+        "Line",
+        "Curve",
+        "Ellipse",
+        "Rectangle",
+        "Rounded rectangle",
+        "Polygon",
+        "Triangle",
+        "Right triangle",
+        "Diamond",
+        "Pentagon",
+        "Hexagon",
+        "Right arrow",
+        "Left arrow",
+        "Up arrow",
+        "Down arrow",
+        "Four-point star",
+        "Five-point star",
+        "Six-point star",
+        "Rectangular callout",
+        "Oval callout",
+        "Cloud callout",
+        "Heart",
+        "Lightning",
+    ];
+    assert_eq!(crate::ribbon::SHAPE_GALLERY.len(), 23);
+    for (i, (_, tool)) in crate::ribbon::SHAPE_GALLERY.iter().enumerate() {
+        assert_eq!(tool.unwrap().label(), names[i]);
+    }
+}
+#[test]
+fn actual_shape_preview_does_not_emit_vertices_far_beyond_a_thin_drag() {
+    use palette_core::shapes::Kind;
+    for kind in [
+        Kind::Ellipse,
+        Kind::Triangle,
+        Kind::RoundedRectangle,
+        Kind::Star,
+        Kind::Heart,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.choose_tool(Tool::Shape(kind));
+        app.brush.color = [237, 33, 123, 255];
+        app.brush.diameter = 20.;
+        frame(&mut app, &ctx, vec![]);
+        let a = image_position(&app, [400., 200.]);
+        let b = image_position(&app, [400.1, 400.]);
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(a), pointer(a, true)],
+        );
+        let input = RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            events: vec![Event::PointerMoved(b)],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+        let primitives = ctx.tessellate(output.shapes, 1.);
+        let ink = Color32::from_rgb(237, 33, 123);
+        let bounds = Rect::from_two_pos(a, b).expand(25.);
+        let mut found = false;
+        for primitive in primitives {
+            if let egui::epaint::Primitive::Mesh(mesh) = primitive.primitive {
+                for vertex in mesh.vertices {
+                    if vertex.color == ink && vertex.pos.y > app.canvas_rect.top() {
+                        found = true;
+                        assert!(
+                            vertex.pos.is_finite() && bounds.contains(vertex.pos),
+                            "{kind:?}: {:?}",
+                            vertex.pos
+                        );
+                    }
+                }
+            }
+        }
+        assert!(found, "visible preview {kind:?}");
+        assert!(!app.current().modified());
+    }
+}
+
+#[test]
+fn selection_ants_advance_with_ui_time_without_changing_the_document_or_history() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.tool = Tool::Select;
+    let doc = &mut app.current_mut().document;
+    doc.selection = Some(palette_core::editing::rectangle(
+        doc.width,
+        doc.height,
+        palette_core::editing::PixelRect {
+            x: 300,
+            y: 200,
+            width: 300,
+            height: 200,
+        },
+    ));
+    let before = doc.clone();
+    let revision = app.current().history.revision;
+    let mut render = |time| {
+        let input = RawInput {
+            time: Some(time),
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+        output
+            .shapes
+            .into_iter()
+            .filter_map(|s| match s.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if stroke.color == Color32::BLACK && stroke.width == 1. =>
+                {
+                    Some(points)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let a = render(1.);
+    let b = render(1.2);
+    assert!(!a.is_empty());
+    assert_ne!(a, b);
+    assert_eq!(app.current().document, before);
+    assert_eq!(app.current().history.revision, revision);
+}
+
+#[test]
+fn ui_transforms_scope_to_selection_and_keep_undo_and_custom_cancel() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().command("Fixture", |doc| {
+        doc.add_layer();
+        doc.active_mut().source.set(300, 250, [255, 0, 0, 255]);
+        doc.active_mut().source.set(301, 250, [0, 255, 0, 128]);
+        doc.active_mut().source.set(100, 100, [0, 0, 255, 255]);
+        doc.selection = Some(palette_core::editing::rectangle(
+            doc.width,
+            doc.height,
+            palette_core::editing::PixelRect {
+                x: 300,
+                y: 250,
+                width: 2,
+                height: 1,
+            },
+        ));
+    });
+    let original = app.current().document.clone();
+    app.edit(
+        editing::Edit::Transform(palette_core::transform::Orthogonal::FlipHorizontal),
+        &ctx,
+    );
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        [app.current().document.width, app.current().document.height],
+        [1280, 720]
+    );
+    assert_eq!(
+        app.current().document.active().source.get(300, 250),
+        [0, 255, 0, 128]
+    );
+    assert_eq!(
+        app.current().document.active().source.get(100, 100),
+        [0, 0, 255, 255]
+    );
+    assert!(app.current().document.layers[0] == original.layers[0]);
+    app.undo_current();
+    assert!(app.current().document == original);
+    app.show_rotation();
+    frame(&mut app, &ctx, vec![]);
+    app.rotation_dialog.as_mut().unwrap().degrees = "37.5".into();
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.rotation_dialog.is_none());
+    assert!(app.current().document == original);
+    app.show_rotation();
+    frame(&mut app, &ctx, vec![]);
+    app.rotation_dialog.as_mut().unwrap().degrees = "37.5".into();
+    frame(&mut app, &ctx, vec![enter_event()]);
+    assert!(app.rotation_dialog.is_none());
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.current().document.width, 1280);
+    app.undo_current();
+    assert!(app.current().document == original);
+}
+#[test]
+fn finished_shape_is_selected_and_can_be_flipped_without_rotating_the_canvas() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.choose_tool(Tool::Shape(palette_core::shapes::Kind::RightTriangle));
+    app.shape_fill = true;
+    app.shape_outline = false;
+    app.background = Color32::from_rgb(40, 180, 210);
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [300., 250.]);
+    let b = image_position(&app, [500., 450.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(b), pointer(b, false)],
+    );
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.tool, Tool::Select);
+    assert!(app.current().document.selection.is_some());
+    let width = app.current().document.width;
+    app.edit(
+        editing::Edit::Transform(palette_core::transform::Orthogonal::Clockwise),
+        &ctx,
+    );
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.current().document.width, width);
+    app.undo_current();
+    app.undo_current();
+    assert!(app.current().document.selection.is_none());
+    assert!(!app.current().modified());
+}
+fn enter_event() -> Event {
+    Event::Key {
+        key: Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }
+}
+#[test]
+fn polygon_has_a_rubber_band_between_clicks_then_commits_selected_pixels_once() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.choose_tool(Tool::Polygon);
+    app.brush.color = [237, 33, 123, 255];
+    app.brush.diameter = 4.;
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [300., 250.]);
+    let b = image_position(&app, [500., 250.]);
+    let c = image_position(&app, [400., 450.]);
+    click_ui(&mut app, &ctx, a);
+    let input = RawInput {
+        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+        events: vec![Event::PointerMoved(b)],
+        ..Default::default()
+    };
+    let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+    output.textures_delta.clear();
+    let ink = Color32::from_rgb(237, 33, 123);
+    assert!(output.shapes.iter().any(|s| match &s.shape {
+        egui::Shape::Path(path) =>
+            matches!(path.stroke.color,egui::epaint::ColorMode::Solid(color) if color==ink)
+                && path.points.last() == Some(&b),
+        egui::Shape::LineSegment { points, stroke } => stroke.color == ink && points[1] == b,
+        _ => false,
+    }));
+    assert!(!app.current().modified());
+    assert!(app.current().construction.is_some());
+    click_ui(&mut app, &ctx, b);
+    click_ui(&mut app, &ctx, c);
+    frame(&mut app, &ctx, vec![enter_event()]);
+    wait_for_edit(&mut app, &ctx);
+    assert!(app.current().construction.is_none());
+    assert_eq!(app.tool, Tool::Select);
+    assert!(app.current().document.selection.is_some());
+    app.undo_current();
+    assert!(!app.current().modified());
+    assert!(app.current().document.selection.is_none());
+}
+#[test]
+fn curve_bends_preview_without_source_changes_and_commits_or_cancels() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.choose_tool(Tool::Curve);
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [300., 300.]);
+    let b = image_position(&app, [600., 300.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(app.current().construction.as_ref().unwrap().stage, 1);
+    assert!(!app.current().modified());
+    let c = image_position(&app, [350., 200.]);
+    click_ui(&mut app, &ctx, c);
+    assert_eq!(app.current().construction.as_ref().unwrap().stage, 2);
+    let d = image_position(&app, [550., 400.]);
+    click_ui(&mut app, &ctx, d);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.tool, Tool::Select);
+    assert!(app.current().document.selection.is_some());
+    app.undo_current();
+    assert!(!app.current().modified());
+    app.choose_tool(Tool::Polygon);
+    click_ui(&mut app, &ctx, a);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.current().construction.is_none());
+    assert!(!app.current().modified());
+}
+
+fn floating_selection_app(ctx: &Context) -> PaletteApp {
+    let mut app = test_app(ctx);
+    let mut doc = Document::new(320, 240).unwrap();
+    doc.add_layer();
+    for y in 60..90 {
+        for x in 70..110 {
+            doc.active_mut().source.set(x, y, [30, 180, 80, 180]);
+        }
+    }
+    doc.selection = Some(palette_core::editing::rectangle(
+        320,
+        240,
+        palette_core::editing::PixelRect {
+            x: 70,
+            y: 60,
+            width: 40,
+            height: 30,
+        },
+    ));
+    let id = doc.allocate_id();
+    doc.active_mut().filters.push(FilterInstance {
+        id,
+        enabled: true,
+        filter: Filter::Invert,
+        mask: None,
+    });
+    app.current_mut().document = doc;
+    app.current_mut().invalidate();
+    app.tool = Tool::Select;
+    frame(&mut app, ctx, vec![]);
+    wait_for_render(&mut app, ctx);
+    app
+}
+
+#[test]
+fn selected_pixels_move_live_with_processing_and_commit_one_undo() {
+    let ctx = Context::default();
+    let mut app = floating_selection_app(&ctx);
+    let before = app.current().document.clone();
+    let revision = app.current().history.revision;
+    let start = image_position(&app, [90., 75.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    for point in [[150., 95.], [170., 110.], [150., 95.]] {
+        let end = image_position(&app, point);
+        frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+        wait_for_render(&mut app, &ctx);
+        assert!(
+            app.current().selection_transform.is_some(),
+            "pointer remains held"
+        );
+        assert_eq!(app.current().history.revision, revision);
+        assert_eq!(
+            app.current()
+                .document
+                .active()
+                .source
+                .get(point[0] as u32, point[1] as u32),
+            [30, 180, 80, 180]
+        );
+        assert_eq!(app.current().document.active().source.get(90, 75)[3], 0);
+        assert_eq!(
+            app.current().rendered.as_ref().unwrap(),
+            &composite::render(&app.current().document)
+        );
+    }
+    let end = image_position(&app, [150., 95.]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    let after = app.current().document.clone();
+    assert!(after != before);
+    assert_eq!(after.layers[0], before.layers[0]);
+    app.undo_current();
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, revision);
+    app.redo_current();
+    assert!(app.current().document == after);
+}
+
+#[test]
+fn resize_handles_map_fractional_zoom_and_high_dpi_then_cancel_stale_previews() {
+    for dpi in [1., 1.5, 2.] {
+        let ctx = Context::default();
+        ctx.set_pixels_per_point(dpi);
+        let mut app = floating_selection_app(&ctx);
+        app.current_mut().zoom = 1.25;
+        frame(&mut app, &ctx, vec![]);
+        let before = app.current().document.clone();
+        let revision = app.current().history.revision;
+        let start = app.image_rect.min + vec2(110., 90.) * 1.25;
+        let end = start + vec2(40., 30.) * 1.25;
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(start), pointer(start, true)],
+        );
+        frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+        wait_for_render(&mut app, &ctx);
+        let gesture = app.current().selection_transform.as_ref().unwrap();
+        assert_eq!(
+            gesture.desired,
+            palette_core::transform::SelectionTransform::Resize {
+                origin: [70, 60],
+                size: [80, 60]
+            }
+        );
+        assert!(app.current().document != before);
+        assert_eq!(app.current().history.revision, revision);
+        let stale_document = app.current().document.clone();
+        let stale_epoch = app.current().render_epoch;
+        let stale_operation = gesture.desired;
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(end + vec2(10., 10.))],
+        );
+        frame(&mut app, &ctx, vec![escape_event()]);
+        assert!(app.current().selection_transform.is_none());
+        assert!(app.current().document == before);
+        // Deliver a late, apparently newer preview deterministically. Its epoch
+        // must keep both the document and display untouched after cancellation.
+        let (tx, rx) = mpsc::channel();
+        let actual_receiver = std::mem::replace(&mut app.render_rx, rx);
+        let pixels = composite::render(&stale_document);
+        tx.send(RenderResult {
+            id: app.current().id,
+            generation: app.current().generation + 100,
+            epoch: stale_epoch,
+            image: texture_image(&pixels, 16384),
+            pixels,
+            selection: Some((stale_operation, Ok(stale_document))),
+        })
+        .unwrap();
+        app.poll_workers(&ctx);
+        app.render_rx = actual_receiver;
+        assert!(app.current().document == before);
+        frame(&mut app, &ctx, vec![pointer(end, false)]);
+        wait_for_render(&mut app, &ctx);
+        assert!(app.current().document == before);
+        assert_eq!(app.current().history.revision, revision);
+    }
+}
+
+#[test]
+fn final_resize_target_is_not_lost_when_tab_changes_before_worker_finishes() {
+    let ctx = Context::default();
+    let mut app = floating_selection_app(&ctx);
+    let before = app.current().document.clone();
+    let start = image_position(&app, [110., 90.]);
+    let end = image_position(&app, [150., 120.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    app.new_document();
+    assert_eq!(app.sessions.len(), 2);
+    assert!(app.sessions[0].selection_transform.is_none());
+    assert_eq!(app.sessions[0].selection_bounds().unwrap().width, 80);
+    assert_eq!(app.sessions[0].selection_bounds().unwrap().height, 60);
+    wait_for_render(&mut app, &ctx);
+    assert!(!app.current().modified());
+    app.sessions[0].undo();
+    assert!(app.sessions[0].document == before);
+}
+
+#[test]
+fn rotation_handle_previews_pixels_and_shift_snaps_then_undoes_once() {
+    let ctx = Context::default();
+    let mut app = floating_selection_app(&ctx);
+    let before = app.current().document.clone();
+    let center = image_position(&app, [90., 75.]);
+    let start = image_position(&app, [90., 60.]) - vec2(0., 24.);
+    let radius = center.distance(start);
+    let end = center + vec2(radius, 0.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    wait_for_render(&mut app, &ctx);
+    assert!(app.current().document != before);
+    let rect = app.current_mut().selection_bounds().unwrap();
+    assert_eq!([rect.width, rect.height], [30, 40]);
+    let end = center + vec2(0.5 * radius, -0.8660254 * radius);
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            Event::ModifiersChanged(Modifiers::SHIFT),
+            Event::PointerMoved(end),
+        ],
+    );
+    assert_eq!(
+        app.current().selection_transform.as_ref().unwrap().desired,
+        palette_core::transform::SelectionTransform::Rotate(30.)
+    );
+    // Finish via another command while the exact target may still be pending.
+    app.current_mut().end_gesture();
+    let mut expected = before.clone();
+    palette_core::transform::SelectionTransform::Rotate(30.)
+        .apply(&mut expected)
+        .unwrap();
+    assert!(app.current().document == expected);
+    app.undo_current();
+    assert!(app.current().document == before);
+}
+
+#[test]
+fn all_eight_selection_handles_resize_without_moving_the_opposite_edge() {
+    for direction in [
+        [-1, -1],
+        [0, -1],
+        [1, -1],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+        [-1, 1],
+        [-1, 0],
+    ] {
+        let ctx = Context::default();
+        let mut app = floating_selection_app(&ctx);
+        let before = app.current().document.clone();
+        let point = [
+            90. + direction[0] as f32 * 20.,
+            75. + direction[1] as f32 * 15.,
+        ];
+        let start = image_position(&app, point);
+        let end =
+            start + vec2(direction[0] as f32 * 20., direction[1] as f32 * 15.) * app.current().zoom;
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(start), pointer(start, true)],
+        );
+        frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![pointer(end, false)]);
+        wait_for_edit(&mut app, &ctx);
+        let bounds = app.current_mut().selection_bounds().unwrap();
+        assert_eq!(bounds.width, if direction[0] == 0 { 40 } else { 60 });
+        assert_eq!(bounds.height, if direction[1] == 0 { 30 } else { 45 });
+        assert_eq!(bounds.x, if direction[0] < 0 { 50 } else { 70 });
+        assert_eq!(bounds.y, if direction[1] < 0 { 45 } else { 60 });
+        app.undo_current();
+        assert!(app.current().document == before);
+    }
+}
+
+#[test]
+fn crossing_resize_handle_stays_one_pixel_and_shift_preserves_aspect_ratio() {
+    let ctx = Context::default();
+    let mut app = floating_selection_app(&ctx);
+    let start = image_position(&app, [110., 90.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    let beyond = image_position(&app, [-100., -100.]);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(beyond)]);
+    wait_for_render(&mut app, &ctx);
+    let bounds = app.current_mut().selection_bounds().unwrap();
+    assert_eq!(
+        [bounds.x, bounds.y, bounds.width, bounds.height],
+        [70, 60, 1, 1]
+    );
+    let end = image_position(&app, [170., 100.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            Event::ModifiersChanged(Modifiers::SHIFT),
+            Event::PointerMoved(end),
+        ],
+    );
+    wait_for_render(&mut app, &ctx);
+    let bounds = app.current_mut().selection_bounds().unwrap();
+    assert_eq!([bounds.width, bounds.height], [100, 75]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.current_mut().selection_bounds().unwrap().width, 100);
 }

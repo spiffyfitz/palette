@@ -553,6 +553,7 @@ impl PaletteApp {
                     ui.close();
                 }
                 for (label, code) in [
+                    ("Move layer", 4),
                     ("Duplicate", 1),
                     (if locked { "Unlock" } else { "Lock" }, 2),
                     ("Delete", 3),
@@ -594,14 +595,19 @@ impl PaletteApp {
         if let Some((id, code)) = action
             && self.finish_inline_text()
         {
+            self.current_mut().end_gesture();
             self.current_mut().document.active_layer = id;
-            self.current_mut()
-                .command("Layer operation", |doc| match code {
-                    0 => doc.active_mut().visible = !doc.active().visible,
-                    1 => doc.duplicate_layer(),
-                    2 => doc.active_mut().locked = !doc.active().locked,
-                    _ => doc.delete_layer(),
-                });
+            if code == 4 {
+                self.choose_tool(Tool::MoveLayer);
+            } else {
+                self.current_mut()
+                    .command("Layer operation", |doc| match code {
+                        0 => doc.active_mut().visible = !doc.active().visible,
+                        1 => doc.duplicate_layer(),
+                        2 => doc.active_mut().locked = !doc.active().locked,
+                        _ => doc.delete_layer(),
+                    });
+            }
         }
         if let Some((source, target)) = reorder
             && source != target

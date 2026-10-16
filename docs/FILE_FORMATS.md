@@ -46,3 +46,7 @@ Both project saves and raster exports encode into a temporary file in the target
 ## Microsoft Paint gate
 
 No `.paint` file is emitted or renamed from an unrelated container. A future writer must retain editable raster layers that Paint supports and explicitly offer `.palette` preservation before baking unsupported masks, blends, styles or filters. See [research and test plan](PAINT_RESEARCH.md). The specimen's reported brands, `unci`, `iovl`, dimensions and ordering are unverified until its bytes are available.
+
+## Shape and layer movement preservation
+
+The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. This uses the existing version 1 model, so no file-version change is required. A translated layer with a mask and live filter has a real `.palette` round-trip test. These changes do not enable `.paint` or AVIF support.

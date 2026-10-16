@@ -29,6 +29,10 @@ pub struct Session {
     pub selection_drag: Option<SelectionDrag>,
     pub paint_stroke: Option<palette_core::brush::PaintStroke>,
     pub text_drag: Option<[f32; 2]>,
+    pub layer_drag: Option<LayerDrag>,
+    pub selection_transform: Option<SelectionGesture>,
+    pub gesture_error: Option<String>,
+    pub construction: Option<Construction>,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -55,11 +59,22 @@ impl Session {
             selection_drag: None,
             paint_stroke: None,
             text_drag: None,
+            layer_drag: None,
+            selection_transform: None,
+            gesture_error: None,
+            construction: None,
             selection_cache: None,
         }
     }
     pub fn modified(&self) -> bool {
-        self.history.revision != self.saved_revision
+        self.selection_transform
+            .as_ref()
+            .is_some_and(|g| g.desired != palette_core::transform::SelectionTransform::Move([0, 0]))
+            || self.history.revision != self.saved_revision
+            || self
+                .layer_drag
+                .as_ref()
+                .is_some_and(|drag| self.document.active().offset != drag.original)
     }
     pub fn invalidate(&mut self) {
         self.generation += 1;
@@ -67,9 +82,14 @@ impl Session {
         self.paint_dirty = None;
         self.requested = None;
     }
-    pub fn invalidate_paint(&mut self, region: Option<PixelRect>) {
+    /// A gesture may present progressively newer worker results within its epoch.
+    /// Start/end/cancel use invalidate() to fence off unrelated snapshots.
+    pub fn invalidate_preview(&mut self) {
         self.generation += 1;
         self.requested = None;
+    }
+    pub fn invalidate_paint(&mut self, region: Option<PixelRect>) {
+        self.invalidate_preview();
         if let Some(region) = region {
             self.paint_dirty = Some(self.paint_dirty.map_or(region, |previous| {
                 let x = previous.x.min(region.x);
@@ -91,18 +111,31 @@ impl Session {
         self.invalidate();
     }
     pub fn end_gesture(&mut self) {
+        self.construction = None;
+        self.finish_selection_transform();
+        if let Some(drag) = self.layer_drag.take() {
+            let position = self.document.active().offset;
+            if position != drag.original {
+                self.document.active_mut().offset = drag.original;
+                self.history.begin("Move layer", &self.document);
+                self.document.active_mut().offset = position;
+                self.invalidate();
+            }
+        }
         self.paint_stroke = None;
         self.selection_drag = None;
         self.text_drag = None;
         self.history.finish(&self.document);
     }
     pub fn undo(&mut self) {
+        self.end_gesture();
         self.paint_stroke = None;
         self.selection_drag = None;
         self.history.undo(&mut self.document);
         self.invalidate();
     }
     pub fn redo(&mut self) {
+        self.end_gesture();
         self.paint_stroke = None;
         self.selection_drag = None;
         self.history.redo(&mut self.document);
@@ -127,32 +160,53 @@ impl Session {
         self.selection_cache = Some(SelectionCache {
             values: mask.values.clone(),
             bounds: palette_core::editing::bounds(mask),
-            edges: palette_core::editing::outline(mask),
+            contours: palette_core::editing::contours(mask),
         });
     }
-    pub fn selection_edges(&mut self) -> &[[[f32; 2]; 2]] {
+    pub fn selection_contours(&mut self) -> &[Vec<[f32; 2]>] {
         self.cache_selection();
         self.selection_cache
             .as_ref()
-            .map_or(&[], |cache| &cache.edges)
+            .map_or(&[], |cache| &cache.contours)
+    }
+}
+
+/// A layer move changes only placement during preview; one snapshot is recorded
+/// at completion. Cancel restores placement without consuming a history revision.
+pub struct LayerDrag {
+    pub start: [f32; 2],
+    pub original: [i32; 2],
+}
+impl Session {
+    pub fn cancel_layer_move(&mut self) -> bool {
+        if let Some(drag) = self.layer_drag.take() {
+            self.document.active_mut().offset = drag.original;
+            self.invalidate();
+            true
+        } else {
+            false
+        }
     }
 }
 
 struct SelectionCache {
     values: std::sync::Arc<Vec<u8>>,
     bounds: Option<PixelRect>,
-    edges: Vec<[[f32; 2]; 2]>,
+    contours: Vec<Vec<[f32; 2]>>,
 }
 
 pub struct SelectionDrag {
     pub start: [f32; 2],
     pub current: [f32; 2],
-    pub moving: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Select,
+    Polygon,
+    Curve,
+    MoveLayer,
+    Shape(palette_core::shapes::Kind),
     Fill,
     Pencil,
     Brush,
@@ -168,6 +222,10 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
+            Self::MoveLayer => "Move layer",
+            Self::Shape(kind) => kind.label(),
+            Self::Polygon => "Polygon",
+            Self::Curve => "Curve",
             Self::Select => "Rectangular selection",
             Self::Fill => "Fill bucket",
             Self::Pencil => "Pencil",
@@ -185,6 +243,105 @@ impl Tool {
         matches!(self, Self::Pencil | Self::Brush | Self::Eraser)
     }
     pub fn shape(self) -> bool {
-        matches!(self, Self::Line | Self::Rectangle | Self::Ellipse)
+        self.shape_kind().is_some() || matches!(self, Self::Polygon | Self::Curve)
+    }
+    pub fn shape_kind(self) -> Option<palette_core::shapes::Kind> {
+        use palette_core::shapes::Kind;
+        match self {
+            Self::Line => Some(Kind::Line),
+            Self::Rectangle => Some(Kind::Rectangle),
+            Self::Ellipse => Some(Kind::Ellipse),
+            Self::Shape(kind) => Some(kind),
+            _ => None,
+        }
+    }
+}
+
+/// A tool transaction retains image-space geometry until it is explicitly closed.
+/// Curve points are [start, control1, control2, end]; polygon points are vertices.
+pub struct Construction {
+    pub tool: Tool,
+    pub points: Vec<[f32; 2]>,
+    pub hover: [f32; 2],
+    pub dragging: bool,
+    pub stage: u8,
+    pub style: palette_core::shapes::Style,
+}
+
+/// A floating raster transaction. COW source tiles are retained once per gesture.
+/// Worker previews may progress behind the pointer; only the exact final target
+/// is committed. Escape restores the original document and fences stale results.
+pub struct SelectionGesture {
+    pub base: Document,
+    pub bounds: PixelRect,
+    pub start: [f32; 2],
+    pub handle: SelectionHandle,
+    pub desired: palette_core::transform::SelectionTransform,
+    pub applied: Option<palette_core::transform::SelectionTransform>,
+    pub released: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectionHandle {
+    Move,
+    Resize([i8; 2]),
+    Rotate,
+}
+
+impl Session {
+    pub fn begin_selection_transform(&mut self, handle: SelectionHandle, start: [f32; 2]) {
+        if self.document.active().locked {
+            return;
+        }
+        let Some(bounds) = self.selection_bounds() else {
+            return;
+        };
+        self.end_gesture();
+        self.invalidate();
+        self.selection_transform = Some(SelectionGesture {
+            base: self.document.clone(),
+            bounds,
+            start,
+            handle,
+            desired: palette_core::transform::SelectionTransform::Move([0, 0]),
+            applied: None,
+            released: false,
+        });
+    }
+
+    pub fn cancel_selection_transform(&mut self) -> bool {
+        let Some(gesture) = self.selection_transform.take() else {
+            return false;
+        };
+        self.document = gesture.base;
+        self.invalidate();
+        true
+    }
+
+    /// Normal pointer release waits for the worker's exact final preview. Other
+    /// commands must finish the target before saving, switching tabs or undoing;
+    /// this fallback evaluates synchronously only when that preview is pending.
+    pub fn finish_selection_transform(&mut self) {
+        let Some(gesture) = self.selection_transform.take() else {
+            return;
+        };
+        let mut result = if gesture.applied == Some(gesture.desired) {
+            self.document.clone()
+        } else {
+            gesture.base.clone()
+        };
+        if gesture.applied != Some(gesture.desired)
+            && let Err(error) = gesture.desired.apply(&mut result)
+        {
+            self.gesture_error = Some(error);
+            result = gesture.base.clone();
+        }
+        self.document = gesture.base;
+        if result != self.document {
+            self.history.begin("Transform selection", &self.document);
+            self.document = result;
+            self.history.finish(&self.document);
+        }
+        self.invalidate();
     }
 }

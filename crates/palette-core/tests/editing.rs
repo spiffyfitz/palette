@@ -300,7 +300,11 @@ fn inverted_rectangle_outline_keeps_its_inner_boundary() {
     assert_eq!(editing::bounds(&mask), Some(rect(0, 0, 5, 5)));
     let edges = editing::outline(&mask);
     assert_eq!(edges.len(), 8);
-    assert!(edges.contains(&[[1.0, 1.0], [4.0, 1.0]]));
+    assert!(
+        edges
+            .iter()
+            .any(|edge| *edge == [[1.0, 1.0], [4.0, 1.0]] || *edge == [[4.0, 1.0], [1.0, 1.0]])
+    );
 }
 
 #[test]

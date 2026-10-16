@@ -51,6 +51,7 @@ pub struct RenderRequest {
     epoch: u64,
     document: Document,
     max_texture_side: usize,
+    selection: Option<palette_core::transform::SelectionTransform>,
 }
 struct RenderResult {
     id: u64,
@@ -58,6 +59,10 @@ struct RenderResult {
     epoch: u64,
     pixels: Raster,
     image: ColorImage,
+    selection: Option<(
+        palette_core::transform::SelectionTransform,
+        Result<Document, String>,
+    )>,
 }
 enum FileResult {
     Opened(PathBuf, Result<Document, String>),
@@ -68,6 +73,13 @@ enum FileResult {
         export: bool,
         result: Result<(), String>,
     },
+}
+
+struct RotationDialog {
+    session: u64,
+    generation: u64,
+    degrees: String,
+    focus: bool,
 }
 
 pub struct PaletteApp {
@@ -83,9 +95,10 @@ pub struct PaletteApp {
     pub stroke: Option<([f32; 2], [f32; 2])>,
     pub gesture_session: Option<u64>,
     pub shape_fill: bool,
+    pub shape_outline: bool,
     pub stroke_background: bool,
     pub error: Option<String>,
-    message: String,
+    pub(crate) message: String,
     pub show_filters: bool,
     close_pending: Option<u64>,
     close_after_save: Option<u64>,
@@ -110,6 +123,7 @@ pub struct PaletteApp {
     edit_rx: mpsc::Receiver<editing::EditResult>,
     pub edit_pending: bool,
     resize_dialog: Option<editing::ResizeDialog>,
+    rotation_dialog: Option<RotationDialog>,
     pub fill_tolerance: u8,
     text_editor: Option<text::TextEditor>,
     text_tx: mpsc::SyncSender<text::TextRequest>,
@@ -165,7 +179,15 @@ impl PaletteApp {
         let repaint = ctx.clone();
         std::thread::spawn(move || {
             while let Ok(request) = requests.recv() {
-                let pixels = composite::render(&request.document);
+                let mut document = request.document;
+                let selection = request.selection.map(|operation| {
+                    let result = operation
+                        .apply(&mut document)
+                        .and_then(|_| document.validate())
+                        .map(|_| document.clone());
+                    (operation, result)
+                });
+                let pixels = composite::render(&document);
                 let image = texture_image(&pixels, request.max_texture_side);
                 if results
                     .send(RenderResult {
@@ -174,6 +196,7 @@ impl PaletteApp {
                         epoch: request.epoch,
                         pixels,
                         image,
+                        selection,
                     })
                     .is_err()
                 {
@@ -204,6 +227,7 @@ impl PaletteApp {
             stroke: None,
             gesture_session: None,
             shape_fill: false,
+            shape_outline: true,
             stroke_background: false,
             error: None,
             message: "Ready".into(),
@@ -237,6 +261,7 @@ impl PaletteApp {
             edit_rx,
             edit_pending: false,
             resize_dialog: None,
+            rotation_dialog: None,
             fill_tolerance: 0,
         };
         app.new_document();
@@ -253,6 +278,7 @@ impl PaletteApp {
         self.close_pending.is_none()
             && self.error.is_none()
             && self.resize_dialog.is_none()
+            && self.rotation_dialog.is_none()
             && !self.edit_pending
             && self.text_editor.is_none()
             && self.interface.color_editor.is_none()
@@ -271,7 +297,11 @@ impl PaletteApp {
         let session = Session::new(
             self.next_id,
             "Untitled".into(),
-            Document::new(819, 594).expect("default dimensions"),
+            Document::new(
+                crate::interface::DEFAULT_CANVAS[0],
+                crate::interface::DEFAULT_CANVAS[1],
+            )
+            .expect("default dimensions"),
         );
         self.next_id += 1;
         self.sessions.push(session);
@@ -283,6 +313,7 @@ impl PaletteApp {
             self.after_text = Some(text::AfterText::Open);
             return;
         }
+        self.current_mut().end_gesture();
         if let Some(paths) = rfd::FileDialog::new()
             .add_filter(
                 "Images and Palette projects",
@@ -321,6 +352,7 @@ impl PaletteApp {
         if self.busy || self.edit_pending {
             return;
         }
+        self.current_mut().end_gesture();
         let session = self.current();
         let path = if !save_as && !export {
             session.path.clone()
@@ -386,6 +418,43 @@ impl PaletteApp {
                     && s.rendered_generation
                         .is_none_or(|generation| result.generation > generation)
             }) {
+                let mut generation = result.generation;
+                let mut epoch = result.epoch;
+                if let Some((operation, preview)) = result.selection {
+                    if session.selection_transform.is_none() {
+                        continue;
+                    }
+                    match preview {
+                        Ok(document) => {
+                            session.document = document;
+                            let gesture = session
+                                .selection_transform
+                                .as_mut()
+                                .expect("checked gesture");
+                            gesture.applied = Some(operation);
+                            if gesture.released && gesture.desired == operation {
+                                session.finish_selection_transform();
+                                generation = session.generation;
+                                epoch = session.render_epoch;
+                                session.requested = Some(generation);
+                            }
+                        }
+                        Err(error) => {
+                            // A rejected oversized intermediate target must not
+                            // cancel a newer, valid drag target already queued.
+                            if session
+                                .selection_transform
+                                .as_ref()
+                                .is_some_and(|g| g.desired != operation)
+                            {
+                                continue;
+                            }
+                            session.cancel_selection_transform();
+                            self.error = Some(error);
+                            continue;
+                        }
+                    }
+                }
                 let color = result.image;
                 if let Some(texture) = &mut session.texture {
                     texture.set(color, TextureOptions::NEAREST);
@@ -397,8 +466,8 @@ impl PaletteApp {
                     ));
                 }
                 session.rendered = Some(result.pixels);
-                session.rendered_generation = Some(result.generation);
-                session.rendered_epoch = Some(result.epoch);
+                session.rendered_generation = Some(generation);
+                session.rendered_epoch = Some(epoch);
             }
         }
         while let Ok(result) = self.file_rx.try_recv() {
@@ -407,6 +476,7 @@ impl PaletteApp {
             match result {
                 FileResult::Opened(path, result) => match result {
                     Ok(document) => {
+                        self.current_mut().end_gesture();
                         let is_project = io::extension(&path) == "palette";
                         let name = path
                             .file_stem()
@@ -486,7 +556,11 @@ impl PaletteApp {
             id: session.id,
             generation: session.generation,
             epoch: session.render_epoch,
-            document: session.document.clone(),
+            document: session
+                .selection_transform
+                .as_ref()
+                .map_or_else(|| session.document.clone(), |g| g.base.clone()),
+            selection: session.selection_transform.as_ref().map(|g| g.desired),
             max_texture_side: ctx.input(|i| i.max_texture_side),
         };
         if self.render_tx.try_send(request).is_ok() {
@@ -542,6 +616,9 @@ impl PaletteApp {
     }
 
     fn request_close(&mut self, id: u64, ctx: &Context) {
+        if let Some(session) = self.sessions.iter_mut().find(|s| s.id == id) {
+            session.end_gesture();
+        }
         if !self.finish_inline_text() {
             self.after_text = Some(text::AfterText::Close(id));
             return;
@@ -592,6 +669,7 @@ impl PaletteApp {
         if ctx.egui_wants_keyboard_input()
             || self.close_pending.is_some()
             || self.resize_dialog.is_some()
+            || self.rotation_dialog.is_some()
             || self.error.is_some()
             || self.text_editor.is_some()
             || self.interface.color_editor.is_some()
@@ -662,6 +740,9 @@ impl PaletteApp {
         self.poll_text(&ctx);
         self.finish_requested_text();
         self.resume_text_action(&ctx);
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.current_mut().end_gesture();
+        }
         if ctx.input(|i| i.viewport().close_requested())
             && self.text_editor.is_some()
             && !self.allow_quit
@@ -737,6 +818,13 @@ impl PaletteApp {
         self.request_text(&ctx);
         if self.after_text.is_some() {
             ctx.request_repaint();
+        }
+        if let Some(error) = self
+            .sessions
+            .iter_mut()
+            .find_map(|s| s.gesture_error.take())
+        {
+            self.error = Some(error);
         }
         self.refresh_live_paint();
         self.request_render(&ctx);

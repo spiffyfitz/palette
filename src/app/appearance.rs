@@ -8,6 +8,7 @@ impl PaletteApp {
             self.after_text = Some(text::AfterText::Properties);
             return;
         }
+        self.current_mut().end_gesture();
         self.interface.canvas_properties = Some(CanvasProperties {
             session: self.current().id,
             generation: self.current().generation,
@@ -24,6 +25,7 @@ impl PaletteApp {
             Some(ColorEditor::new(target, [color[0], color[1], color[2]]));
     }
     pub(super) fn appearance_windows(&mut self, ctx: &Context) {
+        self.rotation_window(ctx);
         self.canvas_properties_window(ctx);
         self.colors_window(ctx);
     }
@@ -100,8 +102,8 @@ impl PaletteApp {
                                     .add_sized(vec2(90.0, 32.0), egui::Button::new("Default"))
                                     .clicked()
                                 {
-                                    draft.width = 819;
-                                    draft.height = 594;
+                                    draft.width = crate::interface::DEFAULT_CANVAS[0];
+                                    draft.height = crate::interface::DEFAULT_CANVAS[1];
                                 }
                             });
                         });

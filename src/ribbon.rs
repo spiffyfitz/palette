@@ -6,6 +6,73 @@ use crate::{
     session::Tool,
 };
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, Ui, vec2};
+use palette_core::shapes::Kind;
+/// Paint reference order: three complete seven-column rows, then heart/lightning.
+/// Every entry now has a functional raster or multi-stage construction tool.
+pub(crate) const SHAPE_GALLERY: [(Icon, Option<Tool>); 23] = [
+    (Icon::Line, Some(Tool::Line)),
+    (Icon::Curve, Some(Tool::Curve)),
+    (Icon::Ellipse, Some(Tool::Ellipse)),
+    (Icon::Rectangle, Some(Tool::Rectangle)),
+    (
+        Icon::Shape(Kind::RoundedRectangle),
+        Some(Tool::Shape(Kind::RoundedRectangle)),
+    ),
+    (Icon::Polygon, Some(Tool::Polygon)),
+    (
+        Icon::Shape(Kind::Triangle),
+        Some(Tool::Shape(Kind::Triangle)),
+    ),
+    (
+        Icon::Shape(Kind::RightTriangle),
+        Some(Tool::Shape(Kind::RightTriangle)),
+    ),
+    (Icon::Shape(Kind::Diamond), Some(Tool::Shape(Kind::Diamond))),
+    (
+        Icon::Shape(Kind::Pentagon),
+        Some(Tool::Shape(Kind::Pentagon)),
+    ),
+    (Icon::Shape(Kind::Hexagon), Some(Tool::Shape(Kind::Hexagon))),
+    (
+        Icon::Shape(Kind::RightArrow),
+        Some(Tool::Shape(Kind::RightArrow)),
+    ),
+    (
+        Icon::Shape(Kind::LeftArrow),
+        Some(Tool::Shape(Kind::LeftArrow)),
+    ),
+    (Icon::Shape(Kind::UpArrow), Some(Tool::Shape(Kind::UpArrow))),
+    (
+        Icon::Shape(Kind::DownArrow),
+        Some(Tool::Shape(Kind::DownArrow)),
+    ),
+    (
+        Icon::Shape(Kind::FourPointStar),
+        Some(Tool::Shape(Kind::FourPointStar)),
+    ),
+    (Icon::Shape(Kind::Star), Some(Tool::Shape(Kind::Star))),
+    (
+        Icon::Shape(Kind::SixPointStar),
+        Some(Tool::Shape(Kind::SixPointStar)),
+    ),
+    (
+        Icon::Shape(Kind::RectangularCallout),
+        Some(Tool::Shape(Kind::RectangularCallout)),
+    ),
+    (
+        Icon::Shape(Kind::OvalCallout),
+        Some(Tool::Shape(Kind::OvalCallout)),
+    ),
+    (
+        Icon::Shape(Kind::CloudCallout),
+        Some(Tool::Shape(Kind::CloudCallout)),
+    ),
+    (Icon::Shape(Kind::Heart), Some(Tool::Shape(Kind::Heart))),
+    (
+        Icon::Shape(Kind::Lightning),
+        Some(Tool::Shape(Kind::Lightning)),
+    ),
+];
 fn group(ui: &mut Ui, width: f32, title: &str, contents: impl FnOnce(&mut Ui)) {
     ui.vertical(|ui| {
         ui.set_width(width);
@@ -31,7 +98,21 @@ impl PaletteApp {
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            self.tool_button(ui, Tool::Select, Icon::Select, vec2(40.0, 36.0));
+            let tool = if self.tool == Tool::MoveLayer {
+                Tool::MoveLayer
+            } else {
+                Tool::Select
+            };
+            self.tool_button(
+                ui,
+                tool,
+                if tool == Tool::MoveLayer {
+                    Icon::Move
+                } else {
+                    Icon::Select
+                },
+                vec2(40.0, 36.0),
+            );
             let response = interface::chevron(ui, vec2(40.0, 18.0), "Selection options");
             egui::Popup::menu(&response)
                 .style(interface::menu_style)
@@ -46,6 +127,12 @@ impl PaletteApp {
                     .clicked()
                     {
                         self.choose_tool(Tool::Select);
+                        ui.close();
+                    }
+                    if interface::menu_item(ui, "Move active layer", "", Some(Icon::Move), true)
+                        .clicked()
+                    {
+                        self.choose_tool(Tool::MoveLayer);
                         ui.close();
                     }
                     interface::menu_item(ui, "Free-form selection", "", None, false)
@@ -126,6 +213,19 @@ impl PaletteApp {
                             ui.close();
                         }
                     }
+                    if !flip
+                        && interface::menu_item(
+                            ui,
+                            "Rotate custom…",
+                            "",
+                            Some(icon),
+                            !self.edit_pending,
+                        )
+                        .clicked()
+                    {
+                        self.show_rotation();
+                        ui.close();
+                    }
                 });
         });
     }
@@ -190,7 +290,10 @@ impl PaletteApp {
             if fill { Icon::Fill } else { Icon::Pencil },
             if fill { "Shape fill" } else { "Shape outline" },
             false,
-            self.tool.shape(),
+            self.tool.shape()
+                && (!fill
+                    || (self.tool != Tool::Curve
+                        && self.tool.shape_kind() != Some(palette_core::shapes::Kind::Line))),
             vec2(42.0, 32.0),
         );
         // Use one native egui popup chain, so switching flyouts dismisses the
@@ -201,17 +304,25 @@ impl PaletteApp {
                 for (name, enabled_value) in if fill {
                     [("No fill", false), ("Solid color", true)]
                 } else {
-                    [("No outline", true), ("Solid color", false)]
+                    [("No outline", false), ("Solid color", true)]
                 } {
                     if ui
                         .add(
                             egui::Button::new(name)
-                                .selected(self.shape_fill == enabled_value)
+                                .selected(if fill {
+                                    self.shape_fill == enabled_value
+                                } else {
+                                    self.shape_outline == enabled_value
+                                })
                                 .min_size(vec2(210.0, 32.0)),
                         )
                         .clicked()
                     {
-                        self.shape_fill = enabled_value;
+                        if fill {
+                            self.shape_fill = enabled_value;
+                        } else {
+                            self.shape_outline = enabled_value;
+                        }
                         ui.close();
                     }
                 }
@@ -263,51 +374,26 @@ impl PaletteApp {
                 .inner_margin(2)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.spacing_mut().interact_size.y = 20.0;
+                        ui.spacing_mut().interact_size.y = 18.0;
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        let shapes = [
-                            Icon::Line,
-                            Icon::Curve,
-                            Icon::Ellipse,
-                            Icon::Rectangle,
-                            Icon::RoundRect,
-                            Icon::Pentagon,
-                            Icon::Hexagon,
-                            Icon::Triangle,
-                            Icon::Diamond,
-                            Icon::Star,
-                            Icon::Star,
-                            Icon::ArrowRight,
-                            Icon::ArrowDown,
-                            Icon::Ellipse,
-                            Icon::Star,
-                            Icon::ArrowRight,
-                            Icon::ArrowDown,
-                            Icon::RoundRect,
-                            Icon::Pentagon,
-                            Icon::Hexagon,
-                            Icon::Curve,
-                        ];
-                        for (row_index, row) in shapes.chunks(7).enumerate() {
+                        for row in SHAPE_GALLERY.chunks(7) {
                             ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 1.0;
-                                for (col, &icon) in row.iter().enumerate() {
-                                    let tool = match row_index * 7 + col {
-                                        0 => Some(Tool::Line),
-                                        2 => Some(Tool::Ellipse),
-                                        3 => Some(Tool::Rectangle),
-                                        _ => None,
-                                    };
+                                ui.spacing_mut().item_spacing.x = 1.;
+                                for &(icon, tool) in row {
                                     if let Some(tool) = tool {
-                                        self.tool_button(ui, tool, icon, vec2(22.0, 22.0));
+                                        self.tool_button(ui, tool, icon, vec2(22., 18.));
                                     } else {
                                         icons::button(
                                             ui,
                                             icon,
-                                            "Additional shape is not implemented yet",
+                                            if matches!(icon, Icon::Curve) {
+                                                "Curve — not implemented yet"
+                                            } else {
+                                                "Free polygon — not implemented yet"
+                                            },
                                             false,
                                             false,
-                                            vec2(22.0, 22.0),
+                                            vec2(22., 18.),
                                         );
                                     }
                                 }

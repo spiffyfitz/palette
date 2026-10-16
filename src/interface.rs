@@ -3,6 +3,8 @@
 use crate::icons::{self, Icon};
 use eframe::egui::{self, Color32, Context, Response, Stroke, Ui, Vec2, vec2};
 
+pub const DEFAULT_CANVAS: [u32; 2] = [1280, 720];
+
 pub const HOVER_SECONDS: f32 = 0.10;
 pub const POPUP_SECONDS: f32 = 0.16;
 pub const PANEL_SECONDS: f32 = 0.18;
