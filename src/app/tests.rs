@@ -24,6 +24,7 @@ fn pointer(pos: egui::Pos2, pressed: bool) -> Event {
 fn painting_through_ui_at_75_percent_is_undoable_and_layer_local() {
     let ctx = Context::default();
     let mut app = PaletteApp::with_context(&ctx);
+    app.current_mut().zoom = 0.75;
     app.current_mut().command("Add layer", Document::add_layer);
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
@@ -61,7 +62,13 @@ fn tab_state_and_unsaved_close_are_independent() {
     app.new_document();
     assert_eq!(app.sessions.len(), 3);
     assert!(!app.current().modified());
-    app.request_close(first, &ctx);
+    // Close the inactive, modified tab through its hover-only button. This must
+    // prompt for that document without first activating it or losing its state.
+    frame(&mut app, &ctx, vec![]);
+    let close_button = pos2(77.0, 47.0);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(close_button)]);
+    frame(&mut app, &ctx, vec![pointer(close_button, true)]);
+    frame(&mut app, &ctx, vec![pointer(close_button, false)]);
     assert_eq!(app.close_pending, Some(first));
     assert_eq!(app.sessions.len(), 3);
     app.close_pending = None;
@@ -89,20 +96,12 @@ fn canvas_resize_preserves_source_and_is_reversible() {
         .set(0, 0, [25, 50, 75, 100]);
     // Exercise the real resize command through its handle's image-space bounds.
     frame(&mut app, &ctx, vec![]);
-    let origin = app.canvas_rect.center() - vec2(819.0, 594.0) * 0.75 * 0.5;
-    let handle = origin + vec2(819.0, 594.0) * 0.75 + vec2(3.0, 3.0);
+    let handle = image_position(&app, [819.0, 594.0]) + vec2(3.0, 3.0);
+    let delta = vec2(40.0, 20.0) * app.current().zoom;
     frame(&mut app, &ctx, vec![Event::PointerMoved(handle)]);
     frame(&mut app, &ctx, vec![pointer(handle, true)]);
-    frame(
-        &mut app,
-        &ctx,
-        vec![Event::PointerMoved(handle + vec2(30.0, 15.0))],
-    );
-    frame(
-        &mut app,
-        &ctx,
-        vec![pointer(handle + vec2(30.0, 15.0), false)],
-    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(handle + delta)]);
+    frame(&mut app, &ctx, vec![pointer(handle + delta, false)]);
     assert_eq!(
         (app.current().document.width, app.current().document.height),
         (859, 614)
@@ -156,6 +155,7 @@ fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
 fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
     let ctx = Context::default();
     let mut app = PaletteApp::with_context(&ctx);
+    app.current_mut().zoom = 0.75;
     app.current_mut().command("Add layer", Document::add_layer);
     app.tool = Tool::Select;
     frame(&mut app, &ctx, vec![]);

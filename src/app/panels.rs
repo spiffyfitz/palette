@@ -242,21 +242,16 @@ impl PaletteApp {
                             session.name,
                             if session.modified() { " •" } else { "" }
                         );
-                        let response = ui
-                            .selectable_label(index == self.active, label)
-                            .interact(Sense::click_and_drag());
-                        if response.clicked() {
+                        let (response, close_clicked) =
+                            document_tab(ui, session.id, &label, index == self.active);
+                        if response.clicked() && !close_clicked {
                             activate = Some(index);
                         }
                         response.dnd_set_drag_payload(TabDrag(session.id));
                         if let Some(source) = response.dnd_release_payload::<TabDrag>() {
                             reorder = Some((source.0, session.id));
                         }
-                        if ui
-                            .small_button("×")
-                            .on_hover_text("Close document")
-                            .clicked()
-                        {
+                        if close_clicked {
                             close = Some(session.id);
                         }
                         ui.add_space(5.0);
@@ -341,8 +336,10 @@ impl PaletteApp {
             .collect();
         let mut action = None;
         let mut reorder = None;
+        let mut activate = None;
+        let active_layer = self.current().document.active_layer;
         for (id, name, visible, locked) in layers {
-            let selected = self.current().document.active_layer == id;
+            let selected = active_layer == id;
             let response = egui::Frame::new()
                 .fill(if selected {
                     Color32::from_rgb(52, 66, 72)
@@ -409,7 +406,7 @@ impl PaletteApp {
                 .response
                 .interact(Sense::click_and_drag());
             if response.clicked() {
-                self.current_mut().document.active_layer = id;
+                activate = Some(id);
             }
             response.dnd_set_drag_payload(LayerDrag {
                 session: self.current().id,
@@ -438,6 +435,20 @@ impl PaletteApp {
                     }
                 }
             });
+            if selected {
+                ui.push_id((self.current().id, id), |ui| {
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(34, 34, 42))
+                        .corner_radius(4)
+                        .inner_margin(4)
+                        .show(ui, |ui| self.layer_properties(ui));
+                });
+            }
+        }
+        if let Some(id) = activate {
+            self.current_mut().end_gesture();
+            self.stroke = None;
+            self.current_mut().document.active_layer = id;
         }
         if let Some((id, code)) = action {
             self.current_mut().document.active_layer = id;
@@ -467,7 +478,10 @@ impl PaletteApp {
                 doc.layers.insert(to, layer);
             });
         }
-        ui.separator();
+    }
+
+    fn layer_properties(&mut self, ui: &mut Ui) {
+        ui.spacing_mut().slider_width = 70.0;
         let mut name = self.current().document.active().name.clone();
         if ui
             .text_edit_singleline(&mut name)
@@ -652,16 +666,23 @@ impl PaletteApp {
                     self.current_mut().zoom = (self.current().zoom * 1.25).min(32.0);
                     self.current_mut().fit = false;
                 }
-                let mut zoom = self.current().zoom;
-                if ui
+                let previous_zoom = self.current().zoom;
+                let mut zoom = previous_zoom;
+                let response = ui
                     .add(
                         egui::Slider::new(&mut zoom, 0.05..=32.0)
                             .logarithmic(true)
                             .show_value(false),
                     )
-                    .on_hover_text("Canvas zoom")
-                    .changed()
-                {
+                    .on_hover_text("Canvas zoom — snaps to 100%");
+                if response.changed() {
+                    // A small magnetic range makes actual size easy to hit on
+                    // the logarithmic rail. Keyboard steps can still leave it.
+                    if (zoom - 1.0).abs() <= 0.05
+                        && (response.dragged() || response.clicked() || previous_zoom != 1.0)
+                    {
+                        zoom = 1.0;
+                    }
                     self.current_mut().zoom = zoom;
                     self.current_mut().fit = false;
                 }
@@ -691,4 +712,46 @@ impl PaletteApp {
 
 fn filters_empty(app: &PaletteApp) -> bool {
     app.current().document.active().filters.is_empty()
+}
+
+/// Keep a permanent close-button slot inside each tab so hover never shifts
+/// labels or neighboring tabs. The close hit target only exists while hovered.
+fn document_tab(ui: &mut Ui, id: u64, label: &str, selected: bool) -> (egui::Response, bool) {
+    ui.push_id(id, |ui| {
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let label_width = ui
+            .painter()
+            .layout_no_wrap(label.to_owned(), font, ui.visuals().text_color())
+            .size()
+            .x
+            .min(200.0);
+        let mut close_rect = egui::Rect::NOTHING;
+        let response = egui::Frame::new()
+            .fill(if selected {
+                ui.visuals().selection.bg_fill
+            } else {
+                ui.visuals().widgets.inactive.weak_bg_fill
+            })
+            .corner_radius(5)
+            .inner_margin(egui::Margin::symmetric(8, 1))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                ui.horizontal(|ui| {
+                    ui.add_sized(vec2(label_width, 20.0), egui::Label::new(label).truncate());
+                    close_rect = ui.allocate_exact_size(vec2(18.0, 20.0), Sense::hover()).0;
+                });
+            })
+            .response
+            .interact(Sense::click_and_drag());
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::Role::Tab, ui.is_enabled(), selected, label)
+        });
+        let close_clicked = response.contains_pointer()
+            && ui
+                .put(close_rect, egui::Button::new("×").frame(false))
+                .on_hover_text("Close document")
+                .clicked();
+        (response, close_clicked)
+    })
+    .inner
 }

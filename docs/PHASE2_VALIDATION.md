@@ -38,3 +38,11 @@ Core clipboard RGBA operations and the native image-paste event path were tested
 Text and font/layout behavior are the next core tool slice. Follow with more shapes, whole-layer positioning, brush variants/pressure/spacing, and coalescing slider/rename gestures into single undo commands. Selection animation, floating pixel previews, antialiasing, advanced selections, mask editing and UI motion should be refined using the future video reference. Rendering still recomputes the full image; this milestone does not claim smooth interactive 4K/8K editing or a new performance benchmark.
 
 `.paint`, AVIF and native Paint validation remain gated as before. Native `.palette` storage is still version 1 compressed JSON with its documented size limits; no format compatibility claim changed.
+
+## UI follow-up — 2026-10-16
+
+New and opened documents now start at 100%. The logarithmic zoom slider snaps within five percentage points of 100% during pointer interaction, while keyboard adjustments can leave actual size. Existing fractional-zoom painting and selection tests explicitly retain 75% coverage.
+
+Tab close buttons occupy reserved space inside each tab and appear only on hover. The independent-tab test now clicks the inactive modified tab's hover-only close button and verifies its unsaved-changes prompt and retained document state. Layer properties render immediately beneath the selected layer with stable per-layer widget IDs. A separate three-layer native capture was visually reviewed with the middle layer selected, confirming that its properties appear before the bottom layer.
+
+Formatting, strict Clippy, all 33 tests, the executable build and native launch passed again. The default 1386 × 963 capture was visually reviewed at 100%, the Windows baseline was updated, and the desktop screenshot regression passed against it. Platform validation remains Windows only.

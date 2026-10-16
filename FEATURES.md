@@ -14,15 +14,15 @@ Checked means implemented; validation details are in docs/VALIDATION.md and docs
 
 - [x] Buildable native eframe/wgpu Windows executable and actual launch.
 - [x] Dark menus/ribbon, Paint-style grouping, original geometric icons.
-- [x] Slim document tabs: create, activate, reorder, close, dirty state, shortcuts.
+- [x] Slim document tabs: create, activate, reorder, integrated hover-only close, dirty state, shortcuts.
 - [x] Independent documents, layers, zoom and undo history.
 - [x] Functional native file dialogs, file drops, background image open/export.
 - [x] PNG/JPEG/BMP/GIF/TIFF/WebP codec round trips.
 - [x] Versioned `.palette` saving, atomic replacement, close prompts.
-- [x] Canvas, checkerboard, smooth wheel zoom, pan, actual size and fit.
+- [x] Canvas, checkerboard, smooth wheel zoom, pan, 100% default, actual-size slider snapping and fit.
 - [x] Reversible canvas corner resize and coordinate status.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
-- [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity.
+- [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
 - [x] Reviewed Windows screenshot and automated regression capture/comparison.
 - [ ] Full keyboard accessibility audit and additional DPI/tablet testing.
 - [ ] Windows 10, macOS and Linux launch validation.

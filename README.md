@@ -17,11 +17,11 @@ Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Comman
 ## Working now
 
 - Dark Paint-style menu bar, compact document tabs, ribbon, floating layers panel, three vertical brush controls and status bar.
-- New/open documents; switch, drag to reorder and close tabs; independent zoom, layers and history; modified-document close prompts.
+- New/open documents; switch, drag to reorder and close tabs using an integrated hover-only button; independent zoom, layers and history; modified-document close prompts.
 - Pencil, continuous round brush, soft eraser, color picker, magnifier, lines, outlined/filled rectangles and ellipses. Left mouse uses foreground; right mouse paints with background.
 - Size, opacity and hardness controls, including exact numerical input. Erasing reduces alpha.
-- Add, duplicate, rename, show/hide, lock, reorder and delete layers; opacity; Normal, Multiply and Screen compositing.
-- Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; actual size, fit and canvas corner resize.
+- Add, duplicate, rename, show/hide, lock, reorder and delete layers; properties directly beneath the selected layer; opacity; Normal, Multiply and Screen compositing.
+- Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; 100% default zoom with slider snapping at actual size, fit and canvas corner resize.
 - Native open/save dialogs, file drop, atomic `.palette` saving and flattened raster export. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec round-trip tests.
 - Two live filters, Invert and Brightness, with editable, enabled/disabled, duplicated and reordered stacks. Source pixels are retained.
 - Rectangular selections, select all/deselect/invert, selection-constrained painting/erasing/shapes, clear and selection-size status. Drag selected pixels to move them; Alt+drag starts a replacement selection. Arrow keys nudge, Shift+arrows move ten pixels.

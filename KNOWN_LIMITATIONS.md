@@ -3,7 +3,7 @@
 - This is a runnable foundation with an initial Phase 2 editing workflow, not complete Paint/Photoshop equivalence. Disabled controls identify unfinished functionality.
 - `Untitled.paint` was not available. `.paint`, HEIF/HEIC and AVIF are rejected; no Microsoft Paint interoperability is claimed.
 - Only Windows in this environment has been built and launched. The CI matrix is configured, not evidence of successful macOS/Linux runs. Windows 10 is not tested here.
-- The UI has been compared visually with the provided screenshot but is not pixel-identical. Native title bars vary by OS. The supplied Paint image is 1309 × 962 and displays 100%; Palette defaults to the requested 75% at 1386 × 963, with an added tab strip and third slider.
+- The UI has been compared visually with the provided screenshot but is not pixel-identical. Native title bars vary by OS. The supplied Paint image is 1309 × 962 and displays 100%; Palette defaults to 100% at 1386 × 963, with an added tab strip and third slider.
 - Text, additional shapes/brush variants, advanced selections, masks UI, additional blend modes, Gaussian Blur and layer-style dialogs remain pending. Model masks/effects must not be described as finished UI workflows.
 - Invert and Brightness are live controls with undo; transactional preview Apply/Cancel and common parameter descriptors are not implemented.
 - Strokes and outlined shapes use maximum coverage against pre-stroke pixels, avoiding opacity buildup at joins. No pressure, spacing, tablet-specific input or brush variants yet. Pencil is a one-pixel hard footprint, not a dedicated integer-line rasterizer. Filled ellipses and shape previews still need antialiasing/coverage-preview refinement.

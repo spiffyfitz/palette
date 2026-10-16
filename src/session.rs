@@ -38,7 +38,7 @@ impl Session {
             requested: None,
             texture: None,
             rendered: None,
-            zoom: 0.75,
+            zoom: 1.0,
             pan: Vec2::ZERO,
             fit: false,
             selection_drag: None,
