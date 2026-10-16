@@ -1475,3 +1475,177 @@ fn crossing_resize_handle_stays_one_pixel_and_shift_preserves_aspect_ratio() {
     wait_for_edit(&mut app, &ctx);
     assert_eq!(app.current_mut().selection_bounds().unwrap().width, 100);
 }
+
+fn wait_for_files(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while app.busy || app.recovery_pending.is_some() {
+        frame(app, ctx, vec![]);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "file operation timed out"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(app.error.is_none(), "{:?}", app.error);
+}
+
+#[test]
+fn raster_import_targets_its_original_tab_and_is_one_undo_without_modifying_other_layers() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("layer.png");
+    let pixels = Raster::new(32, 24, [20, 80, 140, 128]).unwrap();
+    io::export(&path, &Document::from_raster(pixels.clone())).unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(20, 20).unwrap();
+    let before = app.current().document.clone();
+    app.import_image(Some(path.clone()), &ctx);
+    app.new_document();
+    wait_for_files(&mut app, &ctx);
+    assert_eq!(app.sessions[0].document.layers.len(), 2);
+    assert_eq!(app.sessions[0].document.layers[0], before.layers[0]);
+    assert_eq!(
+        app.sessions[0].document.active().source.rgba(),
+        pixels.rgba()
+    );
+    assert_eq!(
+        [
+            app.sessions[0].document.width,
+            app.sessions[0].document.height
+        ],
+        [32, 24]
+    );
+    assert!(!app.current().modified());
+    app.sessions[0].undo();
+    assert!(app.sessions[0].document == before);
+    assert_eq!(app.recent.len(), 1);
+}
+
+#[test]
+fn stale_import_cannot_overwrite_a_document_changed_while_decoding() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    let generation = app.current().generation;
+    app.current_mut()
+        .command("New edit", |doc| doc.active_mut().opacity = 0.5);
+    let before = app.current().document.clone();
+    app.handle_auxiliary_file_result(
+        FileResult::Imported {
+            session: app.current().id,
+            generation,
+            path: PathBuf::from("stale.png"),
+            result: Ok(Document::new(4, 4).unwrap()),
+        },
+        &ctx,
+    );
+    assert!(app.current().document == before);
+    assert!(app.message.contains("changed or closed"));
+}
+
+#[test]
+fn autosave_restore_save_and_recent_history_preserve_dirty_state_and_original_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let original = dir.path().join("original.palette");
+    io::save_project(&original, &Document::new(32, 24).unwrap()).unwrap();
+    let original_bytes = std::fs::read(&original).unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.init_store(data.clone());
+    app.current_mut().document = io::open(&original).unwrap();
+    app.current_mut().path = Some(original.clone());
+    app.current_mut().command("Unsaved stroke", |doc| {
+        doc.active_mut().source.set(2, 3, [200, 30, 80, 180])
+    });
+    let expected = app.current().document.clone();
+    app.recovery_timer -= Duration::from_secs(31);
+    app.autosave_tick(&ctx);
+    wait_for_files(&mut app, &ctx);
+    assert!(app.current().modified());
+    assert_eq!(std::fs::read(&original).unwrap(), original_bytes);
+    drop(app); // Crash simulation: release lease without normal tab cleanup.
+    let mut restored = test_app(&ctx);
+    restored.init_store(data.clone());
+    assert!(restored.recovery_prompt);
+    assert_eq!(restored.recoveries.len(), 1);
+    restored.recover(0, &ctx);
+    wait_for_files(&mut restored, &ctx);
+    assert!(restored.current().document == expected);
+    assert!(restored.current().modified());
+    assert_eq!(restored.current().path.as_ref(), Some(&original));
+    restored.start_save(original.clone(), false, None, &ctx);
+    wait_for_files(&mut restored, &ctx);
+    assert!(!restored.current().modified());
+    assert!(io::open(&original).unwrap() == expected);
+    assert_eq!(restored.recent.len(), 1);
+    drop(restored);
+    let mut next = test_app(&ctx);
+    next.init_store(data);
+    assert!(next.recoveries.is_empty());
+    assert_eq!(next.recent.len(), 1);
+}
+
+#[test]
+fn avif_export_options_cancel_and_export_leave_native_document_modified() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("image.avif");
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(16, 16).unwrap();
+    app.current_mut().command("Edit", |doc| {
+        doc.active_mut().source.set(2, 3, [200, 30, 80, 180])
+    });
+    let before = app.current().document.clone();
+    app.avif_export = Some(files::AvifExport {
+        path: path.clone(),
+        options: io::AvifOptions::default(),
+    });
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.avif_export.is_none());
+    assert!(!path.exists());
+    app.start_save(
+        path.clone(),
+        true,
+        Some(io::AvifOptions {
+            quality: 80,
+            speed: 10,
+        }),
+        &ctx,
+    );
+    wait_for_files(&mut app, &ctx);
+    assert!(app.current().modified());
+    assert!(app.current().path.is_none());
+    assert!(app.current().document == before);
+    assert_eq!(
+        [
+            io::open(&path).unwrap().width,
+            io::open(&path).unwrap().height
+        ],
+        [16, 16]
+    );
+}
+
+#[test]
+fn discard_during_pending_autosave_does_not_resurrect_a_closed_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.init_store(data.clone());
+    app.current_mut().document = Document::new(32, 24).unwrap();
+    app.current_mut().command("Unsaved", |doc| {
+        doc.active_mut().source.set(2, 3, [200, 30, 80, 180])
+    });
+    let id = app.current().id;
+    app.recovery_timer -= Duration::from_secs(31);
+    app.autosave_tick(&ctx);
+    assert_eq!(app.recovery_pending, Some(id));
+    app.request_close(id, &ctx);
+    assert_eq!(app.close_pending, Some(id));
+    app.remove_tab(id, &ctx);
+    wait_for_files(&mut app, &ctx);
+    drop(app);
+    let store = crate::persistence::Store::new(data).unwrap();
+    assert!(store.discover().unwrap().is_empty());
+}

@@ -1,7 +1,7 @@
 //! Version-independent editing state. No GUI or GPU types belong here.
 use crate::raster::{Coverage, Raster};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 /// Blend functions currently supported by the reference compositor.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,12 +67,26 @@ pub struct Document {
     pub layers: Vec<Layer>,
     pub active_layer: u64,
     pub selection: Option<Coverage>,
-    next_id: u64,
+    pub(crate) next_id: u64,
+    /// Opaque source metadata retained by native projects. Pixels currently use
+    /// the editor's RGBA8/sRGB working interpretation; profiles are not applied.
+    #[serde(default)]
+    pub metadata: DocumentMetadata,
+}
+
+/// Bounded original metadata, preserved independently from raster source data.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DocumentMetadata {
+    pub icc_profile: Arc<Vec<u8>>,
+    pub exif: Arc<Vec<u8>>,
 }
 
 impl Document {
     pub(crate) fn allocations(&self) -> std::collections::HashMap<usize, usize> {
         let mut output = std::collections::HashMap::new();
+        for data in [&self.metadata.icc_profile, &self.metadata.exif] {
+            output.insert(Arc::as_ptr(data) as usize, data.capacity());
+        }
         let mut mask = |mask: &Coverage| {
             output.insert(
                 std::sync::Arc::as_ptr(&mask.values) as usize,
@@ -124,6 +138,7 @@ impl Document {
             active_layer: 1,
             selection: None,
             next_id: 2,
+            metadata: DocumentMetadata::default(),
         }
     }
 
@@ -213,10 +228,17 @@ impl Document {
             })
             .sum::<usize>()
             + self.selection.as_ref().map_or(0, |m| m.values.len())
+            + self.metadata.icc_profile.len()
+            + self.metadata.exif.len()
     }
 
     /// Validate all serialized invariants before any indexing or rendering.
     pub fn validate(&self) -> Result<(), String> {
+        if self.metadata.icc_profile.len() > 4 * 1024 * 1024
+            || self.metadata.exif.len() > 4 * 1024 * 1024
+        {
+            return Err("ICC/Exif metadata exceeds the 4 MiB per-field limit".into());
+        }
         if self.layers.is_empty() || self.layers.len() > 256 || self.next_id > u64::MAX - 1024 {
             return Err("Invalid layer count or ID counter".into());
         }

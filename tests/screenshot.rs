@@ -31,6 +31,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "curve-preview",
         "selection-resize-preview",
         "selection-rotate-preview",
+        "avif-export",
+        "recovery",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

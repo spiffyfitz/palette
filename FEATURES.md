@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Checked means implemented; validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -24,7 +24,7 @@ Checked means implemented; validation details are in docs/VALIDATION.md, docs/PH
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for fourteen UI states.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for eighteen UI states.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -77,11 +77,13 @@ Checked means implemented; validation details are in docs/VALIDATION.md, docs/PH
 
 ## Phase 3
 
-- [ ] AVIF real read/write/alpha/quality tests on each target before enabling.
+- [x] Real still AVIF read/write, alpha/quality/speed options and Windows codec tests.
+- [ ] AVIF execution on macOS/Linux/Windows 10; matrix configured, not run locally.
 - [ ] `.paint` fixture analysis, layered import, real export and Microsoft Paint validation.
-- [ ] Native format streamed assets, metadata/profiles and migrations.
+- [x] Native v2 binary assets with tile sharing, bounded decoding, preserved ICC/Exif bytes and v1 migration.
+- [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [ ] Explicit handling of unsupported features in `.paint` export.
-- [ ] Recent files, image-as-layer, autosave and recovery.
+- [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
 
 ## Phases 4–6
 

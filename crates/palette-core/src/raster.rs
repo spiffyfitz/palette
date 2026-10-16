@@ -16,6 +16,23 @@ pub struct Raster {
 }
 
 impl Raster {
+    pub(crate) fn tiles(&self) -> &[Arc<Vec<u8>>] {
+        &self.tiles
+    }
+
+    pub(crate) fn from_tiles(
+        width: u32,
+        height: u32,
+        tiles: Vec<Arc<Vec<u8>>>,
+    ) -> Result<Self, String> {
+        let raster = Self {
+            width,
+            height,
+            tiles,
+        };
+        raster.validate()?;
+        Ok(raster)
+    }
     pub(crate) fn allocations(&self, output: &mut std::collections::HashMap<usize, usize>) {
         for tile in &self.tiles {
             output.insert(Arc::as_ptr(tile) as usize, tile.capacity());

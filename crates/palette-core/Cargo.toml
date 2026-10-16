@@ -2,7 +2,7 @@
 name = "palette-core"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.98"
 license = "MIT"
 
 [dependencies]
@@ -13,6 +13,9 @@ thiserror = "2"
 flate2 = "1"
 tempfile = "3"
 fontdue = "0.9.4"
+avif-decode = { version = "3.0.0", default-features = false }
+avif-parse = "2.1.0"
+ravif = { version = "0.13.0", default-features = false, features = ["threading"] }
 
 [dev-dependencies]
 epaint_default_fonts = "0.37.0"

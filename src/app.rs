@@ -1,6 +1,7 @@
 pub(crate) mod appearance;
 mod capture;
 pub(crate) mod editing;
+mod files;
 mod panels;
 mod text;
 
@@ -65,6 +66,18 @@ struct RenderResult {
     )>,
 }
 enum FileResult {
+    Imported {
+        session: u64,
+        generation: u64,
+        path: PathBuf,
+        result: Result<Document, String>,
+    },
+    Autosaved {
+        session: u64,
+        revision: u64,
+        result: Result<(), String>,
+    },
+    Recovered(crate::persistence::Recovery, Result<Document, String>),
     Opened(PathBuf, Result<Document, String>),
     Saved {
         id: u64,
@@ -125,6 +138,16 @@ pub struct PaletteApp {
     resize_dialog: Option<editing::ResizeDialog>,
     rotation_dialog: Option<RotationDialog>,
     pub fill_tolerance: u8,
+    store: Option<std::sync::Arc<crate::persistence::Store>>,
+    recent: Vec<PathBuf>,
+    recoveries: Vec<crate::persistence::Recovery>,
+    restored: HashMap<u64, crate::persistence::Recovery>,
+    recovery_prompt: bool,
+    recovery_pending: Option<u64>,
+    recovery_seen: HashMap<u64, u64>,
+    recovery_timer: std::time::Instant,
+    deferred_close: bool,
+    avif_export: Option<files::AvifExport>,
     text_editor: Option<text::TextEditor>,
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
@@ -152,6 +175,13 @@ impl PaletteApp {
             }
         }
         app.prepare_capture();
+        if app.screenshot.is_none() {
+            if let Some(root) = crate::persistence::data_directory() {
+                app.init_store(root);
+            } else {
+                app.message = "Recovery is unavailable: no application data directory".into();
+            }
+        }
         app
     }
 
@@ -263,6 +293,16 @@ impl PaletteApp {
             resize_dialog: None,
             rotation_dialog: None,
             fill_tolerance: 0,
+            store: None,
+            recent: vec![],
+            recoveries: vec![],
+            restored: HashMap::new(),
+            recovery_prompt: false,
+            recovery_pending: None,
+            recovery_seen: HashMap::new(),
+            recovery_timer: std::time::Instant::now(),
+            deferred_close: false,
+            avif_export: None,
         };
         app.new_document();
         app
@@ -275,7 +315,9 @@ impl PaletteApp {
         &mut self.sessions[self.active]
     }
     pub fn close_pending_none(&self) -> bool {
-        self.close_pending.is_none()
+        !self.recovery_prompt
+            && self.avif_export.is_none()
+            && self.close_pending.is_none()
             && self.error.is_none()
             && self.resize_dialog.is_none()
             && self.rotation_dialog.is_none()
@@ -318,7 +360,7 @@ impl PaletteApp {
             .add_filter(
                 "Images and Palette projects",
                 &[
-                    "palette", "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp",
+                    "palette", "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "avif",
                 ],
             )
             .pick_files()
@@ -329,6 +371,10 @@ impl PaletteApp {
         }
     }
     pub fn open_path(&mut self, path: PathBuf, ctx: &Context) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::OpenPath(path));
+            return;
+        }
         if self.pending_files >= 4 {
             self.error = Some("At most four file operations can run at once. Please open the remaining files after these finish.".into());
             return;
@@ -369,6 +415,7 @@ impl PaletteApp {
                     .add_filter("GIF — limited palette", &["gif"])
                     .add_filter("TIFF", &["tiff"])
                     .add_filter("WebP — lossless", &["webp"])
+                    .add_filter("AVIF — quality options", &["avif"])
                     .set_file_name(format!("{}.png", session.name))
                     .save_file()
             } else {
@@ -385,6 +432,25 @@ impl PaletteApp {
         if path.extension().is_none() {
             path.set_extension(if export { "png" } else { "palette" });
         }
+        if export && io::extension(&path) == "avif" {
+            self.avif_export = Some(files::AvifExport {
+                path,
+                options: io::AvifOptions::default(),
+            });
+        } else {
+            self.start_save(path, export, None, ctx);
+        }
+    }
+
+    fn start_save(
+        &mut self,
+        path: PathBuf,
+        export: bool,
+        options: Option<io::AvifOptions>,
+        ctx: &Context,
+    ) {
+        self.current_mut().end_gesture();
+        let session = self.current();
         let document = session.document.clone();
         let id = session.id;
         let revision = session.history.revision;
@@ -393,7 +459,9 @@ impl PaletteApp {
         self.pending_files += 1;
         self.busy = true;
         std::thread::spawn(move || {
-            let result = if export {
+            let result = if let Some(options) = options {
+                io::export_avif(&path, &document, options)
+            } else if export {
                 io::export(&path, &document)
             } else {
                 io::save_project(&path, &document)
@@ -471,11 +539,20 @@ impl PaletteApp {
             }
         }
         while let Ok(result) = self.file_rx.try_recv() {
+            if matches!(result, FileResult::Autosaved { .. }) {
+                self.handle_auxiliary_file_result(result, ctx);
+                continue;
+            }
             self.pending_files = self.pending_files.saturating_sub(1);
             self.busy = self.pending_files != 0;
             match result {
+                result @ (FileResult::Imported { .. } | FileResult::Recovered(..)) => {
+                    self.handle_auxiliary_file_result(result, ctx)
+                }
+                FileResult::Autosaved { .. } => unreachable!("handled above"),
                 FileResult::Opened(path, result) => match result {
                     Ok(document) => {
+                        self.remember(&path);
                         self.current_mut().end_gesture();
                         let is_project = io::extension(&path) == "palette";
                         let name = path
@@ -507,6 +584,9 @@ impl PaletteApp {
                     result,
                 } => match result {
                     Ok(()) => {
+                        if !export {
+                            self.remember(&path);
+                        }
                         if !export
                             && let Some(session) = self.sessions.iter_mut().find(|s| s.id == id)
                         {
@@ -518,6 +598,7 @@ impl PaletteApp {
                                 .into_owned();
                             session.saved_revision = revision;
                         }
+                        self.clean_saved_recovery(id);
                         self.message = format!(
                             "{} {}",
                             if export { "Exported" } else { "Saved" },
@@ -641,6 +722,7 @@ impl PaletteApp {
     fn remove_tab(&mut self, id: u64, ctx: &Context) {
         if let Some(index) = self.sessions.iter().position(|s| s.id == id) {
             let active_id = self.current().id;
+            self.forget_recovery(id);
             self.sessions.remove(index);
             self.thumbnails
                 .retain(|(session_id, _), _| *session_id != id);
@@ -666,7 +748,9 @@ impl PaletteApp {
     }
 
     fn shortcuts(&mut self, ctx: &Context) {
-        if ctx.egui_wants_keyboard_input()
+        if self.recovery_prompt
+            || self.avif_export.is_some()
+            || ctx.egui_wants_keyboard_input()
             || self.close_pending.is_some()
             || self.resize_dialog.is_some()
             || self.rotation_dialog.is_some()
@@ -740,10 +824,15 @@ impl PaletteApp {
         self.poll_text(&ctx);
         self.finish_requested_text();
         self.resume_text_action(&ctx);
+        if ctx.input(|i| i.viewport().close_requested()) && self.recovery_pending.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.deferred_close = true;
+        }
         if ctx.input(|i| i.viewport().close_requested()) {
             self.current_mut().end_gesture();
         }
         if ctx.input(|i| i.viewport().close_requested())
+            && self.recovery_pending.is_none()
             && self.text_editor.is_some()
             && !self.allow_quit
         {
@@ -752,6 +841,7 @@ impl PaletteApp {
             self.after_text = Some(text::AfterText::Quit);
         }
         if ctx.input(|i| i.viewport().close_requested())
+            && self.recovery_pending.is_none()
             && !self.allow_quit
             && self.text_editor.is_none()
             && (self.busy || self.edit_pending || self.sessions.iter().any(Session::modified))
@@ -766,10 +856,11 @@ impl PaletteApp {
         self.shortcuts(&ctx);
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped {
-            if self.text_editor.is_none() {
+            if self.close_pending_none() {
                 self.open_path(file.path().to_path_buf(), &ctx);
             } else {
-                self.message = "Apply or cancel the text before opening files".into();
+                self.message =
+                    "Finish the current dialog or text before opening dropped files".into();
             }
         }
         egui::Panel::top("menu")
@@ -812,6 +903,7 @@ impl PaletteApp {
             .frame(egui::Frame::new().fill(WORKSPACE))
             .show(ui, |ui| self.canvas(ui));
         self.dialogs(&ctx);
+        self.file_windows(&ctx);
         self.resize_window(&ctx);
         self.text_window(&ctx);
         self.appearance_windows(&ctx);
@@ -828,6 +920,7 @@ impl PaletteApp {
         }
         self.refresh_live_paint();
         self.request_render(&ctx);
+        self.autosave_tick(&ctx);
         let s = self.current();
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
             "{}{} — Palette",

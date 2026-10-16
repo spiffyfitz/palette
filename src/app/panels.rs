@@ -22,10 +22,25 @@ impl PaletteApp {
                         self.open_dialog(&ctx);
                         ui.close();
                     }
-                    menu_item(ui, "Import to canvas", "", Some(Icon::Layers), false)
-                        .on_hover_text("Image-as-layer import is not implemented yet");
-                    menu_item(ui, "Recent", "", None, false)
-                        .on_hover_text("Recent-file history is not implemented yet");
+                    if menu_item(
+                        ui,
+                        "Import to canvas…",
+                        "",
+                        Some(Icon::Layers),
+                        !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.import_image(None, &ctx);
+                        ui.close();
+                    }
+                    self.recent_menu(ui);
+                    if !self.recoveries.is_empty()
+                        && menu_item(ui, "Recover unsaved documents…", "", None, true).clicked()
+                    {
+                        self.recovery_prompt = true;
+                        ui.close();
+                    }
                     ui.separator();
                     if menu_item(ui, "Save project", "Ctrl+S", Some(Icon::Save), !self.busy)
                         .clicked()

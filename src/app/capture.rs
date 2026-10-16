@@ -16,6 +16,21 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("avif-export") => {
+                self.avif_export = Some(super::files::AvifExport {
+                    path: PathBuf::from("target/capture.avif"),
+                    options: io::AvifOptions::default(),
+                })
+            }
+            Some("recovery") => {
+                self.recovery_prompt = true;
+                self.recoveries = vec![crate::persistence::Recovery {
+                    name: "Recovered drawing".into(),
+                    original: None,
+                    project: "capture.palette".into(),
+                    manifest: PathBuf::from("target/capture.json"),
+                }];
+            }
             Some("colors") => self.edit_color(crate::interface::ColorTarget::Foreground),
             Some("properties") => self.show_canvas_properties(),
             Some("text") => {

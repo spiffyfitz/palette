@@ -1,10 +1,10 @@
 # Palette
 
-A native Rust raster editor with a Paint-style ribbon and a UI-independent, layered editing engine. The runnable foundation now includes the first Phase 2 editing workflow; the full roadmap is still in progress.
+A native Rust raster editor with a Paint-style ribbon and a UI-independent, layered editing engine. Core Paint editing and the locally testable Phase 3 file workflows are implemented. Microsoft `.paint` interoperability and cross-platform validation remain open gates; see [roadmap status](ROADMAP.md).
 
 ## Run
 
-Install stable Rust **1.95 or newer**, then:
+Install stable Rust **1.98 or newer**, then:
 
 ```sh
 cargo run --locked
@@ -12,7 +12,7 @@ cargo run --locked
 cargo run --locked -- path/to/image.png
 ```
 
-Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Command Line Tools. On Linux, install a C/C++ toolchain, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. See [build and packaging notes](docs/BUILD.md).
+Windows needs the MSVC C++ build tools, Windows SDK and NASM on PATH. macOS needs Xcode Command Line Tools; Intel builds also need NASM. On Linux, install a C/C++ toolchain, NASM, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. See [build and packaging notes](docs/BUILD.md).
 
 ## Working now
 
@@ -28,7 +28,8 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Add, duplicate, rename, show/hide, lock, reorder and delete layers; properties directly beneath the selected layer; opacity; Normal, Multiply and Screen compositing.
 - Move whole layers through Selection > Move active layer or the layer context menu: drag with live rendering, Shift to constrain an axis, arrows to nudge (Shift for ten pixels), Escape to cancel. One drag is one undo command; pixels, masks and filters remain intact.
 - Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; 100% default zoom with slider snapping at actual size, fit and canvas corner resize.
-- Native open/save dialogs, file drop, atomic `.palette` saving and flattened raster export. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec round-trip tests.
+- Native open/save dialogs, file drop, atomic `.palette` v2 saving with shared binary assets and migration of existing v1 projects. PNG, JPEG, BMP, GIF, TIFF, WebP and still AVIF have real codec tests. AVIF export has quality/speed options and alpha.
+- File > Import to canvas adds a raster as a separate layer with one undo command. Recent files persist across runs. Recovery copies of committed edits are made in the background approximately every 30 seconds; the next launch offers Restore, Discard or Later without overwriting original files.
 - Two live filters, Invert and Brightness, with editable, enabled/disabled, duplicated and reordered stacks. Source pixels are retained.
 - Polygon: click vertices with a live next-segment line; Enter, double-click or click the first vertex closes it. Backspace removes a vertex; Escape cancels. Curve: drag a baseline, then drag two bends; Enter can finish early.
 - Eight selection resize handles and a rotation handle, with live processed-pixel previews for move/resize/rotation. Shift locks resize proportions, constrains movement or snaps rotation to 15 degrees; Escape cancels. A completed gesture is one undo command.
@@ -39,7 +40,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Crop canvas to selection, horizontal/vertical flip, exact quarter-turns and custom-angle rotation. A selection limits flips/rotations to active-layer selected source pixels; without a selection they transform the whole document. Custom rotation uses alpha-safe bilinear sampling and an OK/Cancel dialog. Resize offers nearest or bilinear sampling with optional aspect lock; layers and live processing stacks are retained.
 - Consistent stroke opacity across pointer events/retracing, tile-sharing-aware undo accounting, and background fill/geometry jobs with stale-result protection.
 
-Unavailable ribbon tools and filter categories are visibly disabled. **Persistent vector shape objects, brush variants, Microsoft `.paint`, AVIF, advanced selections, mask painting and most filters/effects are not available yet.** Text supports basic left-to-right layout with two bundled fonts and becomes raster content on Apply; system font browsing and complex-script shaping remain pending. The `.paint` specimen was not attached; its reported structure has not been verified. Recovery/autosave is still pending.
+Unavailable ribbon tools and filter categories are visibly disabled. **Persistent vector shape objects, brush variants, Microsoft `.paint`, advanced selections, mask painting and most filters/effects are not available yet.** Text supports basic left-to-right layout with two bundled fonts and becomes raster content on Apply; system font browsing and complex-script shaping remain pending. The `.paint` specimen was not attached; its reported structure has not been verified. AVIF animation, HEIF rotation/crop properties and complete profile-aware processing are pending. Native projects retain original ICC/Exif bytes; flattened exports do not preserve metadata.
 
 Save/Save As preserve editable state in `.palette`. Export writes a composite image and does not mark the editable project saved. GIF imports its first frame; export does not create an animation. JPEG composites transparency over white.
 
@@ -69,8 +70,8 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. Sixteen reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. Eighteen reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
 
-See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/SELECTION_HANDLES_VALIDATION.md).
+See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE3_VALIDATION.md).
 
 Palette source is MIT licensed. Icons are original geometric Rust drawings; Microsoft and Adobe branding/resources are not bundled.

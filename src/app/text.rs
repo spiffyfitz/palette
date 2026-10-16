@@ -23,6 +23,8 @@ pub(super) struct TextResult {
 pub(super) enum AfterText {
     New,
     Open,
+    OpenPath(PathBuf),
+    Import(Option<PathBuf>),
     Save(bool, bool),
     Close(u64),
     Tool(Tool),
@@ -257,6 +259,8 @@ impl PaletteApp {
         match action {
             AfterText::New => self.new_document(),
             AfterText::Open => self.open_dialog(ctx),
+            AfterText::OpenPath(path) => self.open_path(path, ctx),
+            AfterText::Import(path) => self.import_image(path, ctx),
             AfterText::Save(save_as, export) => self.save(ctx, save_as, export),
             AfterText::Close(id) => self.request_close(id, ctx),
             AfterText::Tool(tool) => self.choose_tool(tool),

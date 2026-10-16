@@ -1,8 +1,11 @@
 //! Explicit project saving versus flattened export, with bounded decoding and
 //! same-directory atomic replacement. A failed encoder never touches the target.
 use crate::{composite, document::Document, raster::Raster};
-use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
-use image::{DynamicImage, ImageFormat, ImageReader, Limits, RgbaImage};
+mod avif;
+mod project;
+pub use avif::{AvifOptions, export_avif};
+use flate2::read::ZlibDecoder;
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage};
 use std::{
     fs::File,
     io::{Read, Write},
@@ -11,7 +14,7 @@ use std::{
 use thiserror::Error;
 
 const MAGIC: &[u8; 8] = b"PALETTE\0";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const MAX_PROJECT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Recoverable format, codec and filesystem failures suitable for a user dialog.
@@ -40,7 +43,8 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
     match extension(path).as_str() {
         "palette" => read_project(path),
         "paint" => Err(FileError::Invalid("Microsoft .paint is not enabled: the specimen and native Paint round-trip validation are still required. No flattened substitute is imported.".into())),
-        "avif" | "heif" | "heic" => Err(FileError::Invalid("This codec has not yet passed import/export validation and is not enabled.".into())),
+        "avif" => avif::read(path),
+        "heif" | "heic" => Err(FileError::Invalid("HEIF/HEIC is not enabled.".into())),
         _ => {
             let mut reader = ImageReader::open(path)?.with_guessed_format()?;
             let mut limits = Limits::default();
@@ -48,8 +52,22 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
             limits.max_image_height = Some(16384);
             limits.max_alloc = Some(MAX_PROJECT_BYTES);
             reader.limits(limits);
-            let image = reader.decode()?.to_rgba8();
-            Ok(Document::from_raster(Raster::from_rgba(image.width(), image.height(), image.as_raw()).map_err(FileError::Invalid)?))
+            let mut decoder = reader.into_decoder()?;
+            let metadata = crate::document::DocumentMetadata {
+                icc_profile: std::sync::Arc::new(decoder.icc_profile()?.unwrap_or_default()),
+                exif: std::sync::Arc::new(decoder.exif_metadata()?.unwrap_or_default()),
+            };
+            if metadata.icc_profile.len() > 4 * 1024 * 1024 || metadata.exif.len() > 4 * 1024 * 1024 {
+                return Err(FileError::Invalid("ICC/Exif metadata exceeds 4 MiB".into()));
+            }
+            let orientation = decoder.orientation()?;
+            let mut image = DynamicImage::from_decoder(decoder)?;
+            image.apply_orientation(orientation);
+            let image = image.to_rgba8();
+            let mut document = Document::from_raster(Raster::from_rgba(image.width(), image.height(), image.as_raw()).map_err(FileError::Invalid)?);
+            document.metadata = metadata;
+            document.validate().map_err(FileError::Invalid)?;
+            Ok(document)
         }
     }
 }
@@ -57,9 +75,9 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
 /// Read the versioned Palette container and validate all model invariants.
 pub fn read_project(path: &Path) -> Result<Document, FileError> {
     let mut file = File::open(path)?;
-    if file.metadata()?.len() > MAX_PROJECT_BYTES {
+    if file.metadata()?.len() > project::MAX_FILE_BYTES {
         return Err(FileError::Invalid(
-            "Project exceeds the 256 MiB input limit".into(),
+            "Project exceeds the 1 GiB input limit".into(),
         ));
     }
     let mut header = [0; 12];
@@ -68,10 +86,16 @@ pub fn read_project(path: &Path) -> Result<Document, FileError> {
         return Err(FileError::Invalid("Not a Palette project".into()));
     }
     let version = u32::from_le_bytes(header[8..12].try_into().expect("version"));
-    if version != VERSION {
+    if version == 2 {
+        return project::read(file);
+    }
+    if version != 1 {
         return Err(FileError::Invalid(format!(
             "Unsupported project version {version}; this build supports version {VERSION}"
         )));
+    }
+    if file.metadata()?.len() > MAX_PROJECT_BYTES {
+        return Err(FileError::Invalid("Version 1 input exceeds 256 MiB".into()));
     }
     let mut json = Vec::new();
     ZlibDecoder::new(file)
@@ -112,25 +136,19 @@ pub fn save_project(path: &Path, document: &Document) -> Result<(), FileError> {
         ));
     }
     document.validate().map_err(FileError::Invalid)?;
-    // Bound serialization too: a file saved successfully must be reopenable.
-    let json = serde_json::to_vec(document)?;
-    if json.len() as u64 > MAX_PROJECT_BYTES {
-        return Err(FileError::Invalid(
-            "Project metadata/pixels exceed the version 1 size limit".into(),
-        ));
-    }
     atomic_write(path, |file| {
         file.write_all(MAGIC)?;
         file.write_all(&VERSION.to_le_bytes())?;
-        let mut encoder = ZlibEncoder::new(file, Compression::fast());
-        encoder.write_all(&json)?;
-        encoder.finish()?;
-        Ok(())
+        project::write(file, document)
     })
 }
 
 /// Atomically encode the composite, with an explicit white background for JPEG.
 pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
+    if extension(path) == "avif" {
+        return export_avif(path, document, AvifOptions::default());
+    }
+    document.validate().map_err(FileError::Invalid)?;
     let format = match extension(path).as_str() {
         "png" => ImageFormat::Png,
         "jpg" | "jpeg" => ImageFormat::Jpeg,
@@ -140,7 +158,7 @@ pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
         "webp" => ImageFormat::WebP,
         _ => {
             return Err(FileError::Invalid(
-                "Choose PNG, JPEG, BMP, GIF, TIFF or WebP for flattened export".into(),
+                "Choose PNG, JPEG, BMP, GIF, TIFF, WebP or AVIF for flattened export".into(),
             ));
         }
     };

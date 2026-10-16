@@ -3,6 +3,7 @@ mod app;
 mod canvas;
 mod icons;
 mod interface;
+mod persistence;
 mod ribbon;
 mod session;
 

@@ -2,7 +2,7 @@
 
 ## Shared workflow
 
-Use Rust stable, version 1.95 or later. Open the root Cargo.toml in RustRover. The repository has no generated UI files and does not need Node, a browser engine or a web server. Cargo.lock is committed.
+Use Rust stable, version 1.98 or later. Open the root Cargo.toml in RustRover. The repository has no generated UI files and does not need Node, a browser engine or a web server. Cargo.lock is committed.
 
 ```sh
 cargo fmt --all --check
@@ -17,7 +17,7 @@ The executable is `target/debug/palette.exe` on Windows or `target/debug/palette
 
 ## Windows
 
-Install Visual Studio Build Tools with Desktop development with C++, the MSVC toolchain and Windows SDK; install the Rust MSVC target. The UI runs through wgpu's available native backend. A modern graphics driver is required. There is no libheif/AVIF native dependency in this milestone.
+Install Visual Studio Build Tools with Desktop development with C++, the MSVC toolchain and Windows SDK; install the Rust MSVC target. The UI runs through wgpu's available native backend. A modern graphics driver is required. AVIF uses Rust codec libraries without a runtime codec DLL, but rav1d assembly requires NASM (2.14+) on PATH for x86/x64 builds. Install NASM from https://www.nasm.us or `choco install nasm`, then restart RustRover so its Cargo environment sees PATH. This environment used NASM 3.01 from the official win64 ZIP, isolated under ignored `target/build-tools/nasm-3.01` (SHA-256 E0BA5157007ABC7B1A65118A96657A961DDF55F7E3F632EE035366DFCE039CA4). `./scripts/dev.ps1 build --locked` or `./scripts/dev.ps1 run --locked` uses that existing local tool if present; it does not install or download anything.
 
 Windows smoke capture:
 
@@ -36,13 +36,13 @@ Debug capture scenes select actual interface states for repeatable visual review
 .\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
 ```
 
-Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite covers the default window plus fifteen scenes against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite covers the default window plus seventeen scenes against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 If Windows reports that `palette.exe` is locked by a running session, leave that session open and build/test separately with `--target-dir target/transform-milestone`. This milestone used that fallback initially; the ordinary target build also succeeded after the lock cleared.
 
 ## macOS
 
-Install Xcode Command Line Tools (`xcode-select --install`) and Rust for the host architecture. Build natively on Apple Silicon and Intel. A future universal distribution can combine independently built `aarch64-apple-darwin` and `x86_64-apple-darwin` binaries with `lipo`; this has not been performed here. No platform-specific model code is needed.
+Install Xcode Command Line Tools (`xcode-select --install`) and Rust for the host architecture. Install `nasm` with Homebrew for Intel codec builds; the Apple Silicon decoder uses its Rust fallback. Build natively on Apple Silicon and Intel. A future universal distribution can combine independently built `aarch64-apple-darwin` and `x86_64-apple-darwin` binaries with `lipo`; this has not been performed here. No platform-specific model code is needed.
 
 The eventual `.app` needs a bundle identifier, icon, Info.plist, document associations, signing and notarization. This milestone only supplies a native Cargo executable; it does not claim a signed distributable.
 
@@ -52,7 +52,7 @@ For Ubuntu/Debian, the intended development environment is:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libvulkan1 mesa-vulkan-drivers xdg-desktop-portal xdg-desktop-portal-gtk zenity
+sudo apt-get install build-essential pkg-config libx11-dev libxkbcommon-dev libwayland-dev libdbus-1-dev nasm libvulkan1 mesa-vulkan-drivers xdg-desktop-portal xdg-desktop-portal-gtk zenity
 cargo run --locked
 ```
 
@@ -63,3 +63,5 @@ Future packages should bundle required license notices, declare portal/Zenity/ru
 ## CI
 
 `.github/workflows/ci.yml` checks formatting, Clippy, unit/integration tests and builds on Windows, Ubuntu, Apple Silicon macOS and Intel macOS. Runner labels were checked against [GitHub's runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). It has not been executed remotely in this session. The desktop screenshot test is explicitly ignored in normal CI; run it on a controlled interactive Windows desktop.
+
+The CI matrix installs NASM and executes the same AVIF/native/recovery tests on each target. This configuration has not been run remotely here; local validation is Windows only. See [roadmap gates](../ROADMAP.md).

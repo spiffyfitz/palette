@@ -4,7 +4,7 @@
 
 Phase 0 found an empty Git repository, two screenshot attachments and no `Untitled.paint`. The implementation uses a two-package Cargo workspace: `palette-core` owns editing mathematics and serialized documents; the root `palette` binary owns eframe/egui interaction and wgpu presentation. Core never depends on egui, winit or the operating system.
 
-Current stable releases were checked with Cargo and primary documentation: [eframe 0.37](https://docs.rs/eframe/0.37.0/eframe/), [image 0.25.10](https://docs.rs/image/0.25.10/image/) and [rfd 0.17.2](https://docs.rs/rfd/0.17.2/rfd/). Cargo.lock pins the complete resolution. The toolchain here is Rust 1.99.1; the declared minimum is 1.95, required by this eframe version, and has not been independently tested.
+Current stable releases were checked with Cargo and primary documentation: [eframe 0.37](https://docs.rs/eframe/0.37.0/eframe/), [image 0.25.10](https://docs.rs/image/0.25.10/image/) and [rfd 0.17.2](https://docs.rs/rfd/0.17.2/rfd/). Cargo.lock pins the complete resolution. The toolchain here is Rust 1.99.1; the declared minimum is now 1.98, required by avif-decode 3, and has not been independently tested.
 
 egui permits one shared native interface across the three target operating systems. Original vector geometry keeps icon shapes consistent at different DPI settings. Native title bars retain OS window management; title-bar appearance is intentionally OS-owned. wgpu renders the UI and composite texture. Image compositing remains on the CPU initially so the correctness oracle exists before shader optimization.
 
@@ -14,7 +14,7 @@ egui permits one shared native interface across the three target operating syste
 
 Raster uses 128 × 128 RGBA8 tiles behind `Arc<Vec<u8>>`. Cloning a document shares pixels. The first modification to a shared tile copies just that tile. Partial boundary tiles have defined padding; ordinary export emits only canvas pixels. Coverage masks are grayscale byte planes behind Arc, ready for selection/mask editing in Phase 4. A mask does not alter source pixels.
 
-The per-layer transform field currently stores translation only. Whole-image rotate/flip/resize operations transform source rasters and related coverage planes. Per-layer affine transforms, ICC profiles, higher bit depths and effect variants remain future model work. Version 1 supports an actual Color Overlay style in the core but has no style-editing UI. Blur and shadow operations require neighborhood/padded image stages; they must not be shoehorned into the current point-filter evaluator.
+The per-layer transform field currently stores translation only. Whole-image rotate/flip/resize operations transform source rasters and related coverage planes. Per-layer affine transforms, color-managed ICC processing, higher working bit depths and effect variants remain future model work. Version 1 supports an actual Color Overlay style in the core but has no style-editing UI. Blur and shadow operations require neighborhood/padded image stages; they must not be shoehorned into the current point-filter evaluator.
 
 ## Alpha and pipeline
 
@@ -24,7 +24,7 @@ The GUI converts the straight-alpha reference composite through `ColorImage::fro
 
 ## Commands and document sessions
 
-`History::begin` records a named pre-command COW snapshot and assigns a unique revision. A new branch clears redo. Undo/redo swap complete model states, preserving layers, filters, masks, properties and source pixels together. A stroke creates one command, rather than one per sample. `finish` trims history after a gesture/command. The bound is 256 commands and 128 MiB of uniquely retained tile/coverage buffers beyond the current live document; repeated references and buffers still reachable from the live document count once or not at all, respectively. Metadata, rendering and live buffers are separate from this budget. Huge destructive operations can still exceed the budget and lose undo; small edits on an 8K canvas retain their undo entry.
+`History::begin` records a named pre-command COW snapshot and assigns a unique revision. A new branch clears redo. Undo/redo swap complete model states, preserving layers, filters, masks, properties and source pixels together. A stroke creates one command, rather than one per sample. `finish` trims history after a gesture/command. The bound is 256 commands and 128 MiB of uniquely retained tile/coverage buffers beyond the current live document; repeated references and buffers still reachable from the live document count once or not at all, respectively. Opaque ICC/Exif buffers also participate in retained-allocation accounting; structural metadata, rendering and live buffers are separate from this budget. Huge destructive operations can still exceed the budget and lose undo; small edits on an 8K canvas retain their undo entry.
 
 Each UI `Session` owns a document, independent history, saved revision, native project path, texture, zoom and pan. Dirty state compares saved and current revisions, so undoing to a saved revision becomes clean. Raster imports have no native project destination; Save prompts for `.palette`. Export never marks the project clean. A save worker captures the original tab ID and revision; a later result cannot accidentally mark new edits or another tab saved. A pending close proceeds only after that tab's successful save and clean-revision check.
 
@@ -50,7 +50,7 @@ The app's editing controller runs expensive edits on a shared snapshot in a back
 
 ## File boundaries
 
-`.palette` has its own magic, explicit format version, zlib-compressed JSON and validated model invariants. The reader limits compressed and decompressed input before rendering. Encoding completes in a same-directory temporary file, syncs it, then atomically replaces the target. Unsupported versions and enum variants fail explicitly, preserving the existing file. Version migration belongs at this boundary.
+`.palette` has its own magic, explicit format version, v2 descriptors/binary assets, a separate v1 JSON migration reader and validated model invariants. The reader limits compressed and decompressed input before rendering. Encoding completes in a same-directory temporary file, syncs it, then atomically replaces the target. Unsupported versions and enum variants fail explicitly, preserving the existing file. Version migration belongs at this boundary.
 
 Microsoft `.paint` needs a dedicated HEIF item-graph adapter; primary-image raster decoding is insufficient. [Research and required experiments](docs/PAINT_RESEARCH.md) identify libheif's uncompressed and overlay capabilities, binding gaps and validation gates. Nothing writes a `.paint` extension today.
 
@@ -108,4 +108,14 @@ On pointer release, only the result matching the exact desired operation becomes
 
 ## Next boundaries
 
-The next Phase 2 slices are real brush variants, typography parity and gesture-coalesced properties. Persistent editable shape objects remain separate from the completed raster selection handles. Advanced selections and mask-painting UI follow later. Phase 3 still needs streamed native assets/migrations, AVIF codec validation and real `.paint` fixtures; no interoperability claim changes in this milestone.
+The next Phase 2 slices are real brush variants, typography parity and gesture-coalesced properties. Persistent editable shape objects remain separate from the completed raster selection handles. Advanced selections and mask-painting UI follow later. Phase 3 local file work is now implemented as described below; real `.paint` fixtures/validation and platform execution gates remain open.
+
+## Phase 3 file workflows
+
+`io::project` writes version 2 with a bounded JSON manifest and sequential binary zlib assets. Raster descriptors reference shared 128 x 128 tile assets, preserving exact tile bytes and padding. Masks and opaque ICC/Exif metadata reference assets too. Arc identity deduplicates shared source allocations. Encoding streams each asset into the same-directory temporary file and backfills its compressed length; no whole-document pixel JSON or archive extraction is involved. Readers preflight all references/lengths/geometry, enforce aggregate decoded limits and verify exact decompression lengths/checksums before constructing a validated document. v1 remains a separate migration reader. See FILE_FORMATS.md for the wire specification.
+
+`io::avif` combines BSD-licensed rav1d decoding via avif-decode 3 with rav1e/ravif encoding and the MPL-2.0 avif-parse container parser. AV1 sequence metadata bounds dimensions before full decode; multiple sequence headers, non-still streams and unapplied HEIF transformative properties are rejected. RGB quality/speed are explicit; alpha uses maximum quality. Export remains a flattened composite and never marks native state saved. The codecs require Rust 1.98+; x86/x64 decoder assembly requires NASM at build time. No additional runtime codec DLL is required.
+
+`app::files` owns import, recents, export options and recovery presentation. Import snapshots the originating session/generation, decodes off-thread and inserts through existing paste semantics in one command. A changed or closed target rejects its result. File/tab actions requested during inline text are queued through AfterText. File drops wait until dialogs/drafts are finished.
+
+`persistence::Store` uses a unique OS file-lock lease per app instance. Atomic recent metadata retains ten paths. Approximately every 30 seconds, one background job saves a stable dirty document to an independent native recovery project and a small sidecar; originals and saved revisions are untouched. Other running instances are skipped during discovery. Restore creates a dirty session and retains the old recovery until an explicit save or replacement recovery succeeds. Save/discard/close remove owned copies; a late autosave completion rechecks whether its tab is already closed/clean. Window close waits for a pending recovery write before resuming the normal save prompt, avoiding resurrected discarded state. Storage paths, limits and recovery caveats are documented in docs/FILE_FORMATS.md. No uncommitted text/path drafts or history are serialized.
