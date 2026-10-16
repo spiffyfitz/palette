@@ -1,5 +1,6 @@
 pub(crate) mod editing;
 mod panels;
+mod text;
 
 use crate::{
     icons::{self, Icon},
@@ -46,12 +47,14 @@ fn texture_image(raster: &Raster, max_side: usize) -> ColorImage {
 pub struct RenderRequest {
     id: u64,
     generation: u64,
+    epoch: u64,
     document: Document,
     max_texture_side: usize,
 }
 struct RenderResult {
     id: u64,
     generation: u64,
+    epoch: u64,
     pixels: Raster,
     image: ColorImage,
 }
@@ -105,6 +108,10 @@ pub struct PaletteApp {
     pub edit_pending: bool,
     resize_dialog: Option<editing::ResizeDialog>,
     pub fill_tolerance: u8,
+    text_editor: Option<text::TextEditor>,
+    text_tx: mpsc::SyncSender<text::TextRequest>,
+    text_rx: mpsc::Receiver<text::TextResult>,
+    next_text_job: u64,
 }
 
 impl PaletteApp {
@@ -155,6 +162,7 @@ impl PaletteApp {
                     .send(RenderResult {
                         id: request.id,
                         generation: request.generation,
+                        epoch: request.epoch,
                         pixels,
                         image,
                     })
@@ -167,6 +175,7 @@ impl PaletteApp {
         });
         let (file_tx, file_rx) = mpsc::channel();
         let (edit_tx, edit_rx) = mpsc::channel();
+        let (text_tx, text_rx) = text::worker();
         let mut app = Self {
             sessions: vec![],
             active: 0,
@@ -207,6 +216,10 @@ impl PaletteApp {
             screenshot: None,
             screenshot_requested: false,
             clipboard: None,
+            text_editor: None,
+            text_tx,
+            text_rx,
+            next_text_job: 1,
             edit_tx,
             edit_rx,
             edit_pending: false,
@@ -228,6 +241,7 @@ impl PaletteApp {
             && self.error.is_none()
             && self.resize_dialog.is_none()
             && !self.edit_pending
+            && self.text_editor.is_none()
     }
 
     pub fn new_document(&mut self) {
@@ -339,11 +353,12 @@ impl PaletteApp {
 
     fn poll_workers(&mut self, ctx: &Context) {
         while let Ok(result) = self.render_rx.try_recv() {
-            if let Some(session) = self
-                .sessions
-                .iter_mut()
-                .find(|s| s.id == result.id && s.generation == result.generation)
-            {
+            if let Some(session) = self.sessions.iter_mut().find(|s| {
+                s.id == result.id
+                    && s.render_epoch == result.epoch
+                    && s.rendered_generation
+                        .is_none_or(|generation| result.generation > generation)
+            }) {
                 let color = result.image;
                 if let Some(texture) = &mut session.texture {
                     texture.set(color, TextureOptions::NEAREST);
@@ -355,6 +370,8 @@ impl PaletteApp {
                     ));
                 }
                 session.rendered = Some(result.pixels);
+                session.rendered_generation = Some(result.generation);
+                session.rendered_epoch = Some(result.epoch);
             }
         }
         while let Ok(result) = self.file_rx.try_recv() {
@@ -441,6 +458,7 @@ impl PaletteApp {
         let request = RenderRequest {
             id: session.id,
             generation: session.generation,
+            epoch: session.render_epoch,
             document: session.document.clone(),
             max_texture_side: ctx.input(|i| i.max_texture_side),
         };
@@ -450,6 +468,50 @@ impl PaletteApp {
         } else {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+    }
+
+    /// Painting updates only changed canvas pixels and the matching GPU subimage.
+    /// A pending full render is usable only within the same paint-only epoch;
+    /// accumulated dirty bounds bring that snapshot all the way up to date.
+    fn refresh_live_paint(&mut self) {
+        let session = self.current_mut();
+        let Some(region) = session.paint_dirty else {
+            return;
+        };
+        if session.rendered_epoch != Some(session.render_epoch) {
+            return;
+        }
+        let (Some(rendered), Some(texture)) = (&mut session.rendered, &mut session.texture) else {
+            return;
+        };
+        // Oversized images use a reduced display texture; keep their background
+        // snapshots progressive until tiled display textures are implemented.
+        if texture.size()
+            != [
+                session.document.width as usize,
+                session.document.height as usize,
+            ]
+        {
+            return;
+        }
+        let patch = composite::render_region(&session.document, region)
+            .expect("clipped brush dirty bounds");
+        for y in 0..region.height {
+            for x in 0..region.width {
+                rendered.set(region.x + x, region.y + y, patch.get(x, y));
+            }
+        }
+        texture.set_partial(
+            [region.x as usize, region.y as usize],
+            ColorImage::from_rgba_unmultiplied(
+                [region.width as usize, region.height as usize],
+                &patch.rgba(),
+            ),
+            TextureOptions::NEAREST,
+        );
+        session.paint_dirty = None;
+        session.rendered_generation = Some(session.generation);
+        session.requested = Some(session.generation);
     }
 
     fn request_close(&mut self, id: u64, ctx: &Context) {
@@ -500,6 +562,7 @@ impl PaletteApp {
             || self.close_pending.is_some()
             || self.resize_dialog.is_some()
             || self.error.is_some()
+            || self.text_editor.is_some()
         {
             return;
         }
@@ -560,8 +623,14 @@ impl PaletteApp {
         let ctx = ui.ctx().clone();
         self.poll_workers(&ctx);
         self.poll_edits();
+        self.poll_text(&ctx);
+        if ctx.input(|i| i.viewport().close_requested()) && self.text_editor.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.message = "Apply or cancel the text before closing Palette".into();
+        }
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_quit
+            && self.text_editor.is_none()
             && (self.busy || self.edit_pending || self.sessions.iter().any(Session::modified))
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -573,7 +642,11 @@ impl PaletteApp {
         self.shortcuts(&ctx);
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped {
-            self.open_path(file.path().to_path_buf(), &ctx);
+            if self.text_editor.is_none() {
+                self.open_path(file.path().to_path_buf(), &ctx);
+            } else {
+                self.message = "Apply or cancel the text before opening files".into();
+            }
         }
         egui::Panel::top("menu")
             .exact_size(34.0)
@@ -612,6 +685,9 @@ impl PaletteApp {
             .show(ui, |ui| self.canvas(ui));
         self.dialogs(&ctx);
         self.resize_window(&ctx);
+        self.text_window(&ctx);
+        self.request_text(&ctx);
+        self.refresh_live_paint();
         self.request_render(&ctx);
         let s = self.current();
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(

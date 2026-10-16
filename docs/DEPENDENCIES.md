@@ -13,8 +13,12 @@ Direct versions were resolved using Cargo; the lockfile is authoritative. `depen
 | thiserror | Structured file errors | MIT OR Apache-2.0 |
 | flate2 | Zlib project compression | MIT OR Apache-2.0 |
 | tempfile | Same-directory atomic file replacement | MIT OR Apache-2.0 |
+| fontdue 0.9.4 | GUI-independent text layout and grayscale rasterization | MIT OR Apache-2.0 OR Zlib |
+| epaint_default_fonts 0.37 | Reuse bundled Ubuntu Light/Hack font bytes | (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0 |
 
 Native runtime requirements are in BUILD.md. No libheif, AVIF native encoder/decoder, proprietary Microsoft resources, Adobe code or third-party filter plugins are bundled. Palette icons are original Rust geometry. A future HEIF integration requires a separate LGPL/codec dependency review and license notices for its chosen distribution.
+
+Text uses the existing egui font bundle, with no platform font service or new native-library requirement. Fontdue's [layout](https://docs.rs/fontdue/0.9.4/fontdue/layout/) and [rasterization API](https://docs.rs/fontdue/0.9.4/fontdue/struct.Font.html) were checked before implementation. Font-specific notices are retained in [Ubuntu license](font-licenses/Ubuntu-UFL.txt) and [Hack notices](font-licenses/Hack-Regular.txt); the fonts remain under their own licenses. The default-font bundle also contains other egui UI fonts whose complete distribution notices still need to accompany packaged releases.
 
 Regenerate the inventory with PowerShell:
 

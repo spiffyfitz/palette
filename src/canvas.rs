@@ -231,6 +231,9 @@ impl PaletteApp {
             self.stroke_background = ctx.input(|i| i.pointer.secondary_pressed());
             let point = image_point(pointer.expect("hovered pointer"), canvas, zoom);
             match self.tool {
+                Tool::Text => {
+                    self.current_mut().text_drag = Some(point);
+                }
                 Tool::Select => {
                     let moving = self
                         .current()
@@ -388,6 +391,8 @@ impl PaletteApp {
             }
         }
         self.selection_interaction(ui, &painter, canvas, pointer, [down, released]);
+        self.text_interaction(&painter, canvas, pointer, down, released);
+        self.paint_text_preview(&painter, canvas, zoom);
         if self.cursor.is_some() && self.tool.paints() && !space {
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             if let Some(point) = pointer {
@@ -494,8 +499,23 @@ impl PaletteApp {
                 to,
                 selection.as_ref().map(|mask| (mask, offset)),
             );
+            if let Some(dirty) = stroke.take_dirty_region() {
+                let left = i64::from(dirty.x) + i64::from(offset[0]);
+                let top = i64::from(dirty.y) + i64::from(offset[1]);
+                let right = (left + i64::from(dirty.width)).min(i64::from(session.document.width));
+                let bottom =
+                    (top + i64::from(dirty.height)).min(i64::from(session.document.height));
+                let left = left.max(0);
+                let top = top.max(0);
+                let region = (right > left && bottom > top).then_some(PixelRect {
+                    x: left as u32,
+                    y: top as u32,
+                    width: (right - left).max(0) as u32,
+                    height: (bottom - top).max(0) as u32,
+                });
+                session.invalidate_paint(region);
+            }
         }
-        self.current_mut().invalidate();
     }
 
     fn brush_sliders(&mut self, ui: &mut Ui) {
@@ -585,6 +605,53 @@ impl PaletteApp {
 }
 
 impl PaletteApp {
+    fn text_interaction(
+        &mut self,
+        painter: &egui::Painter,
+        canvas: Rect,
+        pointer: Option<Pos2>,
+        down: bool,
+        released: bool,
+    ) {
+        if self.tool != Tool::Text {
+            self.current_mut().text_drag = None;
+            return;
+        }
+        let Some(start) = self.current().text_drag else {
+            return;
+        };
+        let zoom = self.current().zoom;
+        let point = pointer
+            .map(|p| image_point(p, canvas, zoom))
+            .unwrap_or(start);
+        let doc = &self.current().document;
+        let rect = PixelRect::from_drag(start, point, doc.width, doc.height);
+        if released || !down {
+            let rect = rect.filter(|r| r.width >= 4 && r.height >= 4).or_else(|| {
+                PixelRect::from_drag(
+                    start,
+                    [start[0] + 320.0, start[1] + 160.0],
+                    doc.width,
+                    doc.height,
+                )
+            });
+            self.current_mut().text_drag = None;
+            if let Some(rect) = rect {
+                self.start_text(rect);
+            }
+        } else if let Some(rect) = rect {
+            painter.rect_stroke(
+                Rect::from_min_size(
+                    canvas.min + vec2(rect.x as f32, rect.y as f32) * zoom,
+                    vec2(rect.width as f32, rect.height as f32) * zoom,
+                ),
+                0,
+                Stroke::new(1.0, ACCENT),
+                StrokeKind::Outside,
+            );
+        }
+    }
+
     fn selection_interaction(
         &mut self,
         ui: &Ui,

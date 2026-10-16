@@ -171,14 +171,7 @@ impl PaletteApp {
                         ui.horizontal(|ui| {
                             self.tool_button(ui, Tool::Pencil, Icon::Pencil, vec2(30.0, 31.0));
                             self.tool_button(ui, Tool::Fill, Icon::Fill, vec2(30.0, 31.0));
-                            icons::button(
-                                ui,
-                                Icon::Text,
-                                "Text — planned for Phase 2",
-                                false,
-                                false,
-                                vec2(30.0, 31.0),
-                            );
+                            self.tool_button(ui, Tool::Text, Icon::Text, vec2(30.0, 31.0));
                         });
                         ui.horizontal(|ui| {
                             self.tool_button(ui, Tool::Eraser, Icon::Eraser, vec2(30.0, 31.0));

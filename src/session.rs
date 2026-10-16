@@ -12,6 +12,12 @@ pub struct Session {
     pub history: History,
     pub saved_revision: u64,
     pub generation: u64,
+    /// General edits start a new render epoch. Painting within one epoch may
+    /// display older snapshots progressively, then patch every dirty pixel.
+    pub render_epoch: u64,
+    pub rendered_epoch: Option<u64>,
+    pub rendered_generation: Option<u64>,
+    pub paint_dirty: Option<PixelRect>,
     pub requested: Option<u64>,
     pub texture: Option<TextureHandle>,
     pub rendered: Option<Raster>,
@@ -22,6 +28,7 @@ pub struct Session {
     /// a drag into another document or discard a different tab's tool state.
     pub selection_drag: Option<SelectionDrag>,
     pub paint_stroke: Option<palette_core::brush::PaintStroke>,
+    pub text_drag: Option<[f32; 2]>,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -35,6 +42,10 @@ impl Session {
             history: History::default(),
             saved_revision: 0,
             generation: 0,
+            render_epoch: 0,
+            rendered_epoch: None,
+            rendered_generation: None,
+            paint_dirty: None,
             requested: None,
             texture: None,
             rendered: None,
@@ -43,6 +54,7 @@ impl Session {
             fit: false,
             selection_drag: None,
             paint_stroke: None,
+            text_drag: None,
             selection_cache: None,
         }
     }
@@ -51,7 +63,25 @@ impl Session {
     }
     pub fn invalidate(&mut self) {
         self.generation += 1;
+        self.render_epoch += 1;
+        self.paint_dirty = None;
         self.requested = None;
+    }
+    pub fn invalidate_paint(&mut self, region: Option<PixelRect>) {
+        self.generation += 1;
+        self.requested = None;
+        if let Some(region) = region {
+            self.paint_dirty = Some(self.paint_dirty.map_or(region, |previous| {
+                let x = previous.x.min(region.x);
+                let y = previous.y.min(region.y);
+                PixelRect {
+                    x,
+                    y,
+                    width: (previous.x + previous.width).max(region.x + region.width) - x,
+                    height: (previous.y + previous.height).max(region.y + region.height) - y,
+                }
+            }));
+        }
     }
     pub fn command(&mut self, label: &str, change: impl FnOnce(&mut Document)) {
         self.end_gesture();
@@ -63,6 +93,7 @@ impl Session {
     pub fn end_gesture(&mut self) {
         self.paint_stroke = None;
         self.selection_drag = None;
+        self.text_drag = None;
         self.history.finish(&self.document);
     }
     pub fn undo(&mut self) {
@@ -128,6 +159,7 @@ pub enum Tool {
     Eraser,
     Picker,
     Magnifier,
+    Text,
     Line,
     Rectangle,
     Ellipse,
@@ -143,6 +175,7 @@ impl Tool {
             Self::Eraser => "Eraser",
             Self::Picker => "Color picker",
             Self::Magnifier => "Magnifier",
+            Self::Text => "Text",
             Self::Line => "Line",
             Self::Rectangle => "Rectangle",
             Self::Ellipse => "Ellipse",

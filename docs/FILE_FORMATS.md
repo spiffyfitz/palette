@@ -33,6 +33,8 @@ Document JSON includes canvas width/height, bottom-to-top layers, active-layer I
 
 Each layer serializes its ID, name, original raster, visibility, lock, opacity, blend, signed offset, optional mask, filters and effects. Filter instances retain their ID, enabled state, typed parameters and optional mask. Style instances retain their ID, enabled state and typed parameters. All represented properties round-trip losslessly. Viewports and undo history are session state and are not stored.
 
+The text tool commits its preview as an ordinary separate raster layer, so text pixels and position round-trip through v1 without changing the schema. Text characters, font choices and uncommitted preview transactions are not saved as editable typography. Apply or Cancel finishes the modal transaction before saving.
+
 Version dispatch occurs before decompression. Unknown versions or enum variants fail explicitly. Readers validate dimensions, pixel/tile/coverage counts, active IDs, ID uniqueness, parameter ranges and layer/filter/effect counts. Selection coverage must match canvas dimensions. Compressed and decompressed project inputs are capped at 256 MiB. Saves also cap uncompressed serialized size, ensuring successfully saved files can reopen under the same limits. Phase 2 uses the existing selection/offset/mask fields and does not change the format version.
 
 The next format revision should separate metadata from streamed lossless raster assets, add document metadata/profiles and migrate v1 at the reader boundary. Do not change v1's meaning to add incompatible storage.

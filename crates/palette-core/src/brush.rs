@@ -111,6 +111,7 @@ impl Brush {
 pub struct PaintStroke {
     before: Raster,
     coverage: HashMap<u32, Box<[f32]>>,
+    dirty: Option<crate::editing::PixelRect>,
 }
 
 impl PaintStroke {
@@ -119,6 +120,7 @@ impl PaintStroke {
         Self {
             before: source.clone(),
             coverage: HashMap::new(),
+            dirty: None,
         }
     }
 
@@ -146,7 +148,27 @@ impl PaintStroke {
                 return;
             }
             *previous = opacity;
-            raster.set(x, y, apply(brush, self.before.get(x, y), opacity));
+            let pixel = apply(brush, self.before.get(x, y), opacity);
+            if raster.get(x, y) != pixel {
+                raster.set(x, y, pixel);
+                let bounds = self.dirty.get_or_insert(crate::editing::PixelRect {
+                    x,
+                    y,
+                    width: 1,
+                    height: 1,
+                });
+                let right = (bounds.x + bounds.width).max(x + 1);
+                let bottom = (bounds.y + bounds.height).max(y + 1);
+                bounds.x = bounds.x.min(x);
+                bounds.y = bounds.y.min(y);
+                bounds.width = right - bounds.x;
+                bounds.height = bottom - bounds.y;
+            }
         });
+    }
+
+    /// Consume source-space bounds changed since the last display update.
+    pub fn take_dirty_region(&mut self) -> Option<crate::editing::PixelRect> {
+        self.dirty.take()
     }
 }

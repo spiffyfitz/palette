@@ -6,4 +6,5 @@ pub mod editing;
 pub mod history;
 pub mod io;
 pub mod raster;
+pub mod text;
 pub mod transform;

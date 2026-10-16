@@ -354,6 +354,12 @@
     "repository": "https://github.com/smol-rs/concurrent-queue"
   },
   {
+    "name": "core_maths",
+    "version": "0.1.1",
+    "license": "MIT",
+    "repository": "https://github.com/robertbastian/core_maths"
+  },
+  {
     "name": "core-foundation",
     "version": "0.9.4",
     "license": "MIT OR Apache-2.0",
@@ -610,6 +616,12 @@
     "version": "0.12.7",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/googlefonts/fontations"
+  },
+  {
+    "name": "fontdue",
+    "version": "0.9.4",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "repository": "https://github.com/mooman219/fontdue"
   },
   {
     "name": "foreign-types",
@@ -1786,6 +1798,12 @@
     "version": "3.2.2",
     "license": "MIT",
     "repository": "https://github.com/mbrubeck/tree_magic/"
+  },
+  {
+    "name": "ttf-parser",
+    "version": "0.25.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/harfbuzz/ttf-parser"
   },
   {
     "name": "type-map",

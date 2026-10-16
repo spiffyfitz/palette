@@ -8,6 +8,8 @@ The three left controls are stacked in the workspace, with exact numerical value
 
 The Filter menu preserves the reference category order. Only Adjustments > Invert and Brightness currently work. Other categories are disabled and identified as unimplemented; there is no fake Gaussian Blur or Gallery command.
 
+The Text icon is now functional. Clicking or dragging a canvas box opens a compact editor beside the canvas with live text preview; no permanent ribbon group was added. The Windows baseline was reviewed again with Text enabled. Native interaction captures additionally verified a brush stroke before release and text preview/commit onto a separate layer.
+
 ## Recorded comparison
 
 An initial actual wgpu capture was visually reviewed. Missing Unicode shape glyphs were replaced with drawn icons, oversized ribbon icons were reduced, the layer opacity control was constrained to the panel, and brush sliders gained cyan circular handles and numerical input. The final reviewed Windows baseline lives in `tests/fixtures/window-windows.png`.

@@ -1,5 +1,6 @@
 //! Deterministic reference CPU compositor. Working RGB is sRGB (not linear light).
 use crate::document::{BlendMode, Document, Effect, Filter, Layer};
+use crate::editing::PixelRect;
 use crate::raster::Raster;
 
 /// W3C source-over blending with straight input/output alpha. Transparent RGB
@@ -62,8 +63,30 @@ pub fn layer_pixel(layer: &Layer, x: u32, y: u32) -> [u8; 4] {
 
 /// Render validated layers bottom-to-top to straight-alpha RGBA8 on the CPU.
 pub fn render(document: &Document) -> Raster {
-    let mut result =
-        Raster::new(document.width, document.height, [0; 4]).expect("validated document");
+    render_region(
+        document,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: document.width,
+            height: document.height,
+        },
+    )
+    .expect("validated document")
+}
+
+/// Evaluate a canvas region with exactly the full compositor's layer order,
+/// masks and alpha arithmetic. Spatial filters must expand their input halo
+/// before using this path; the currently supported filters are point-local.
+pub fn render_region(document: &Document, region: PixelRect) -> Result<Raster, String> {
+    if region.width == 0
+        || region.height == 0
+        || u64::from(region.x) + u64::from(region.width) > u64::from(document.width)
+        || u64::from(region.y) + u64::from(region.height) > u64::from(document.height)
+    {
+        return Err("Composite region is outside the canvas".into());
+    }
+    let mut result = Raster::new(region.width, region.height, [0; 4])?;
     for layer in document
         .layers
         .iter()
@@ -72,15 +95,17 @@ pub fn render(document: &Document) -> Raster {
         // Clip in signed 64-bit coordinates so hostile/extreme offsets cannot overflow.
         let left = i64::from(layer.offset[0]);
         let top = i64::from(layer.offset[1]);
-        for dy in
-            top.max(0)..(top + i64::from(layer.source.height())).min(i64::from(document.height))
+        for dy in top.max(i64::from(region.y))
+            ..(top + i64::from(layer.source.height()))
+                .min(i64::from(region.y) + i64::from(region.height))
         {
-            for dx in
-                left.max(0)..(left + i64::from(layer.source.width())).min(i64::from(document.width))
+            for dx in left.max(i64::from(region.x))
+                ..(left + i64::from(layer.source.width()))
+                    .min(i64::from(region.x) + i64::from(region.width))
             {
                 let front = layer_pixel(layer, (dx - left) as u32, (dy - top) as u32);
-                let x = dx as u32;
-                let y = dy as u32;
+                let x = dx as u32 - region.x;
+                let y = dy as u32 - region.y;
                 result.set(
                     x,
                     y,
@@ -89,5 +114,5 @@ pub fn render(document: &Document) -> Raster {
             }
         }
     }
-    result
+    Ok(result)
 }

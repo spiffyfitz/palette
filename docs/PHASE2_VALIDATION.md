@@ -2,6 +2,8 @@
 
 This milestone adds working selection, fill, clipboard and geometry operations while keeping the Paint-style layout. It is a Phase 2 vertical slice; text, further shapes and brush variants remain unfinished. The planned Paint video can guide later animation, gesture and interface refinements.
 
+This records the earlier editing milestone. See [live painting and text validation](LIVE_PAINT_TEXT_VALIDATION.md) for the subsequent text tool and rendering fixes.
+
 ## Implemented behavior
 
 - Rectangular selections are full-canvas grayscale coverage. Select all, deselect and invert work through the Selection/Edit menus and shortcuts. Static contours include holes from an inverted selection. Bounds/contours are cached in each tab; selection dimensions appear in the status bar.

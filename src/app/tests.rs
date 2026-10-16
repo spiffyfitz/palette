@@ -1,14 +1,22 @@
 use super::*;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 
-fn frame(app: &mut PaletteApp, ctx: &Context, events: Vec<Event>) {
+fn frame(app: &mut PaletteApp, ctx: &Context, events: Vec<Event>) -> Vec<egui::TextureId> {
     let input = RawInput {
         screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386.0, 963.0))),
         events,
         ..Default::default()
     };
     let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+    let partials = output
+        .textures_delta
+        .set
+        .iter()
+        .filter(|(_, deltas)| deltas.iter().any(|delta| delta.pos.is_some()))
+        .map(|(id, _)| *id)
+        .collect();
     output.textures_delta.clear();
+    partials
 }
 
 fn pointer(pos: egui::Pos2, pressed: bool) -> Event {
@@ -139,6 +147,206 @@ fn image_position(app: &PaletteApp, point: [f32; 2]) -> egui::Pos2 {
     ) * app.current().zoom;
     let origin = app.canvas_rect.center() - size * 0.5 + app.current().pan;
     pos2(origin.x.round(), origin.y.round()) + vec2(point[0], point[1]) * app.current().zoom
+}
+
+fn wait_for_render(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.current().rendered_generation != Some(app.current().generation) {
+        frame(app, ctx, vec![]);
+        assert!(std::time::Instant::now() < deadline, "render timed out");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn held_brush_and_eraser_update_texture_before_release_and_undo_once() {
+    for tool in [Tool::Brush, Tool::Eraser] {
+        let ctx = Context::default();
+        let mut app = PaletteApp::with_context(&ctx);
+        app.current_mut().zoom = 0.75;
+        app.current_mut().command("Add layer", |doc| {
+            doc.add_layer();
+            if tool == Tool::Eraser {
+                doc.active_mut().source = Raster::new(819, 594, [90, 30, 180, 200]).unwrap();
+            }
+            doc.active_mut().opacity = 0.7;
+            doc.active_mut().blend = BlendMode::Multiply;
+        });
+        app.add_filter(Filter::Invert);
+        let before = app.current().document.clone();
+        app.tool = tool;
+        app.brush.opacity = 0.4;
+        app.brush.hardness = 0.2;
+        frame(&mut app, &ctx, vec![]);
+        wait_for_render(&mut app, &ctx);
+        let texture = app.current().texture.as_ref().unwrap().id();
+        let a = image_position(&app, [20.5, 20.5]);
+        let b = image_position(&app, [100.5, 20.5]);
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(a), pointer(a, true)],
+        );
+        let output = frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+        assert!(app.current().paint_stroke.is_some(), "mouse is still held");
+        assert!(output.contains(&texture));
+        assert_eq!(
+            app.current().rendered.as_ref().unwrap(),
+            &composite::render(&app.current().document)
+        );
+        assert_ne!(
+            app.current().document.active().source,
+            before.active().source
+        );
+        frame(&mut app, &ctx, vec![pointer(b, false)]);
+        app.undo_current();
+        assert_eq!(app.current().document, before);
+        app.redo_current();
+        assert_ne!(
+            app.current().document.active().source,
+            before.active().source
+        );
+    }
+}
+
+#[test]
+fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    let (tx, rx) = mpsc::channel();
+    app.render_rx = rx;
+    let snapshot = app.current().document.clone();
+    let epoch = app.current().render_epoch;
+    let generation = app.current().generation;
+    app.current_mut()
+        .document
+        .active_mut()
+        .source
+        .set(20, 20, [200, 0, 0, 255]);
+    app.current_mut()
+        .invalidate_paint(Some(palette_core::editing::PixelRect {
+            x: 20,
+            y: 20,
+            width: 1,
+            height: 1,
+        }));
+    let send = |epoch, generation| {
+        let pixels = composite::render(&snapshot);
+        tx.send(RenderResult {
+            id: app.sessions[0].id,
+            epoch,
+            generation,
+            image: texture_image(&pixels, 16384),
+            pixels,
+        })
+        .unwrap();
+    };
+    send(epoch, generation);
+    app.poll_workers(&ctx);
+    assert_eq!(app.current().rendered_generation, Some(generation));
+    app.refresh_live_paint();
+    assert_eq!(
+        app.current().rendered.as_ref().unwrap().get(20, 20),
+        [200, 0, 0, 255]
+    );
+    app.current_mut()
+        .command("Unrelated edit", |doc| doc.active_mut().opacity = 0.3);
+    // Even a result stamped with a newer generation cannot cross an edit epoch.
+    let pixels = composite::render(&snapshot);
+    tx.send(RenderResult {
+        id: app.current().id,
+        epoch,
+        generation: app.current().generation,
+        image: texture_image(&pixels, 16384),
+        pixels,
+    })
+    .unwrap();
+    app.poll_workers(&ctx);
+    assert_eq!(
+        app.current().rendered.as_ref().unwrap().get(20, 20),
+        [200, 0, 0, 255]
+    );
+}
+
+fn wait_for_text(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !app.text_editor.as_ref().unwrap().ready() {
+        frame(app, ctx, vec![]);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "text preview timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn text_box_at_fractional_zoom_previews_cancels_and_commits_one_layer_command() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.current_mut().zoom = 0.75;
+    app.tool = Tool::Text;
+    frame(&mut app, &ctx, vec![]);
+    let before = app.current().document.clone();
+    let a = image_position(&app, [40.0, 50.0]);
+    let b = image_position(&app, [340.0, 160.0]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(app.text_editor.as_ref().unwrap().origin, [40, 50]);
+    frame(&mut app, &ctx, vec![]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Text("Palette\nLive text".into())],
+    );
+    assert_eq!(
+        app.text_editor.as_ref().unwrap().spec.text,
+        "Palette\nLive text"
+    );
+    wait_for_text(&mut app, &ctx);
+    assert_eq!(app.current().document, before);
+    assert!(!app.current().modified());
+    // Changing a parameter immediately invalidates Apply until its own preview.
+    app.text_editor.as_mut().unwrap().spec.size = 40.0;
+    app.apply_text();
+    assert_eq!(app.current().document, before);
+    wait_for_text(&mut app, &ctx);
+    app.apply_text();
+    assert!(app.text_editor.is_none());
+    assert_eq!(app.current().document.layers.len(), 2);
+    assert_eq!(app.current().document.active().offset, [40, 50]);
+    assert_eq!(app.current().document.layers[0], before.layers[0]);
+    let after = app.current().document.clone();
+    app.undo_current();
+    assert_eq!(app.current().document, before);
+    app.redo_current();
+    assert_eq!(app.current().document, after);
+    app.start_text(palette_core::editing::PixelRect {
+        x: 10,
+        y: 10,
+        width: 200,
+        height: 100,
+    });
+    app.text_editor.as_mut().unwrap().spec.text = "Cancel me".into();
+    wait_for_text(&mut app, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert!(app.text_editor.is_none());
+    assert_eq!(app.current().document, after);
 }
 fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

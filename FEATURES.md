@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Checked means implemented; validation details are in docs/VALIDATION.md and docs/PHASE2_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Checked means implemented; validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md and docs/LIVE_PAINT_TEXT_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -49,7 +49,9 @@ Checked means implemented; validation details are in docs/VALIDATION.md and docs
 - [x] Stroke-wide maximum coverage prevents opacity buildup at pointer joins.
 - [x] History counts unique retained tile/mask buffers and caps command count.
 - [x] Background edit jobs reject stale results and validate geometry allocation limits.
-- [ ] Text tool and font/layout choices.
+- [x] Live brush/pencil/eraser region compositing and partial texture uploads; progressive render fallback.
+- [x] Text box placement, bounded background previews, two bundled fonts and layout/color controls; Apply/Cancel and one-command raster-layer commitment.
+- [ ] System font discovery, additional faces, complex shaping and persistent editable text objects.
 - [ ] More shapes and whole-layer movement UI.
 - [ ] Brush variants, pressure, spacing and mask painting.
 - [ ] Gesture-coalesced property editing and further dirty-region optimization.
@@ -71,5 +73,6 @@ Checked means implemented; validation details are in docs/VALIDATION.md and docs
 - [ ] Apply/Cancel preview dialogs, individual filter mask UI and filter gallery.
 - [ ] Drop/inner shadows, glows, bevel, stroke, satin and gradient/pattern overlays.
 - [ ] Broader independently implemented filter catalog and research inventory.
-- [ ] Dirty regions, stage caches, cancellation, partial texture uploads and GPU compositor.
+- [x] Dirty brush regions and partial texture uploads for existing point-local processing.
+- [ ] General dirty regions, neighborhood stages/caches, running-job cancellation and GPU compositor.
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.

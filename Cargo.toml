@@ -16,6 +16,7 @@ eframe = { version = "0.37.0", default-features = false, features = ["default_fo
 rfd = "0.17.2"
 arboard = { version = "3.7.0", features = ["wayland-data-control"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "gif", "tiff", "webp"] }
+epaint_default_fonts = "0.37.0"
 
 [profile.dev]
 opt-level = 1
