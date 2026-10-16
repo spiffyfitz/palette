@@ -63,7 +63,7 @@ impl PaletteApp {
                     )
                     .clicked()
                 {
-                    self.current_mut().undo();
+                    self.undo_current();
                     ui.close();
                 }
                 let redo = self
@@ -78,13 +78,62 @@ impl PaletteApp {
                     )
                     .clicked()
                 {
-                    self.current_mut().redo();
+                    self.redo_current();
                     ui.close();
                 }
                 ui.separator();
-                for label in ["Cut", "Copy", "Paste", "Select all"] {
-                    ui.add_enabled(false, egui::Button::new(label))
-                        .on_hover_text("Scheduled for the core editing milestone");
+                if ui
+                    .add_enabled(
+                        !self.current().document.active().locked && !self.edit_pending,
+                        egui::Button::new("Cut image selection         Ctrl+X"),
+                    )
+                    .clicked()
+                {
+                    self.copy_selection(true, &ctx);
+                    ui.close();
+                }
+                if ui.button("Copy image selection       Ctrl+C").clicked() {
+                    self.copy_selection(false, &ctx);
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        !self.edit_pending,
+                        egui::Button::new("Paste image as layer         Ctrl+V"),
+                    )
+                    .clicked()
+                {
+                    self.paste_clipboard();
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .button("Select all                           Ctrl+A")
+                    .clicked()
+                {
+                    self.select_all();
+                    ui.close();
+                }
+                if ui
+                    .button("Deselect                            Ctrl+D")
+                    .clicked()
+                {
+                    self.deselect();
+                    ui.close();
+                }
+                if ui.button("Invert selection").clicked() {
+                    self.invert_selection();
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        !self.current().document.active().locked && !self.edit_pending,
+                        egui::Button::new("Clear selected pixels       Delete"),
+                    )
+                    .clicked()
+                {
+                    self.edit(super::editing::Edit::Clear, &ctx);
+                    ui.close();
                 }
             });
             ui.menu_button("View", |ui| {
@@ -159,7 +208,7 @@ impl PaletteApp {
             )
             .clicked()
             {
-                self.current_mut().undo();
+                self.undo_current();
             }
             if icons::button(
                 ui,
@@ -171,9 +220,9 @@ impl PaletteApp {
             )
             .clicked()
             {
-                self.current_mut().redo();
+                self.redo_current();
             }
-            if self.busy {
+            if self.busy || self.edit_pending {
                 ui.spinner();
             }
         });
@@ -222,6 +271,7 @@ impl PaletteApp {
                 });
             });
         if let Some(index) = activate {
+            self.current_mut().end_gesture();
             self.stroke = None;
             if index == self.sessions.len() {
                 self.new_document();
@@ -579,6 +629,7 @@ impl PaletteApp {
     }
 
     pub(super) fn status(&mut self, ui: &mut Ui) {
+        let selection = self.current_mut().selection_bounds();
         ui.horizontal_centered(|ui| {
             ui.label(
                 self.cursor
@@ -592,6 +643,10 @@ impl PaletteApp {
                 self.current().document.height
             ));
             ui.separator();
+            if let Some(rect) = selection {
+                ui.label(format!("Selection {} × {} px", rect.width, rect.height));
+                ui.separator();
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("+").on_hover_text("Zoom in").clicked() {
                     self.current_mut().zoom = (self.current().zoom * 1.25).min(32.0);

@@ -8,6 +8,7 @@ Direct versions were resolved using Cargo; the lockfile is authoritative. `depen
 | wgpu 30 (through eframe) | Native graphics presentation | MIT OR Apache-2.0 |
 | image 0.25.10 | PNG/JPEG/BMP/GIF/TIFF/WebP codecs | MIT OR Apache-2.0 |
 | rfd 0.17.2 | Native open/save dialogs | MIT |
+| arboard 3.7.0 | System image clipboard, with Wayland data-control support | MIT OR Apache-2.0 |
 | serde / serde_json | Versioned native document serialization | MIT OR Apache-2.0 |
 | thiserror | Structured file errors | MIT OR Apache-2.0 |
 | flate2 | Zlib project compression | MIT OR Apache-2.0 |

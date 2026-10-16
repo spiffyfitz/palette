@@ -1,6 +1,6 @@
 # Palette
 
-A native Rust raster editor with a Paint-style ribbon and a UI-independent, layered editing engine. This is the first runnable milestone, not the complete application described in the roadmap.
+A native Rust raster editor with a Paint-style ribbon and a UI-independent, layered editing engine. The runnable foundation now includes the first Phase 2 editing workflow; the full roadmap is still in progress.
 
 ## Run
 
@@ -24,8 +24,13 @@ Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Comman
 - Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; actual size, fit and canvas corner resize.
 - Native open/save dialogs, file drop, atomic `.palette` saving and flattened raster export. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec round-trip tests.
 - Two live filters, Invert and Brightness, with editable, enabled/disabled, duplicated and reordered stacks. Source pixels are retained.
+- Rectangular selections, select all/deselect/invert, selection-constrained painting/erasing/shapes, clear and selection-size status. Drag selected pixels to move them; Alt+drag starts a replacement selection. Arrow keys nudge, Shift+arrows move ten pixels.
+- Contiguous fill with adjustable tolerance (0–255) and opacity. Right mouse uses the background color.
+- System image clipboard copy/cut/paste; paste creates a new layer and expands the canvas if needed. Copy samples the active layer's evaluated appearance.
+- Crop canvas to selection, 90°/180° rotations, horizontal/vertical flip, and nearest or alpha-correct bilinear image resize with optional aspect lock. Layer stacks, live filters and masks are retained.
+- Consistent stroke opacity across pointer events/retracing, tile-sharing-aware undo accounting, and background fill/geometry jobs with stale-result protection.
 
-Unavailable ribbon tools and filter categories are visibly disabled. **Microsoft `.paint`, AVIF, advanced selections, mask painting and most filters/effects are not available yet.** The `.paint` specimen was not attached; its reported structure has not been verified. Do not use this build for irreplaceable work; recovery/autosave is still pending.
+Unavailable ribbon tools and filter categories are visibly disabled. **Text, additional shapes/brush variants, Microsoft `.paint`, AVIF, advanced selections, mask painting and most filters/effects are not available yet.** The `.paint` specimen was not attached; its reported structure has not been verified. Recovery/autosave is still pending.
 
 Save/Save As preserve editable state in `.palette`. Export writes a composite image and does not mark the editable project saved. GIF imports its first frame; export does not create an animation. JPEG composites transparency over white.
 
@@ -37,6 +42,10 @@ Save/Save As preserve editable state in `.palette`. Export writes a composite im
 | Save As / Close tab | Ctrl+Shift+S / Ctrl+W |
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y |
 | Next / Previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| Copy / Cut / Paste image | Ctrl+C / Ctrl+X / Ctrl+V |
+| Select all / Deselect | Ctrl+A / Ctrl+D or Escape |
+| Clear selected pixels | Delete / Backspace |
+| Move selected pixels | Arrows; Shift+arrows for ten pixels |
 
 Use Command in place of Ctrl for file/edit shortcuts on macOS; tab cycling uses Control.
 
@@ -53,6 +62,6 @@ cargo test --test screenshot -- --ignored
 
 Capture the actual wgpu window with `palette --screenshot output.png`. The screenshot comparison uses a reviewed Windows baseline at 1386 × 963, not a claim of exact equivalence to Microsoft Paint. See [visual comparison](docs/UI_REFERENCE.md).
 
-See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [milestone validation](docs/VALIDATION.md).
+See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE2_VALIDATION.md).
 
 Palette source is MIT licensed. Icons are original geometric Rust drawings; Microsoft and Adobe branding/resources are not bundled.

@@ -1,3 +1,4 @@
+pub(crate) mod editing;
 mod panels;
 
 use crate::{
@@ -98,6 +99,12 @@ pub struct PaletteApp {
     pub resize_preview: Option<[u32; 2]>,
     screenshot: Option<PathBuf>,
     screenshot_requested: bool,
+    clipboard: Option<arboard::Clipboard>,
+    edit_tx: mpsc::Sender<editing::EditResult>,
+    edit_rx: mpsc::Receiver<editing::EditResult>,
+    pub edit_pending: bool,
+    resize_dialog: Option<editing::ResizeDialog>,
+    pub fill_tolerance: u8,
 }
 
 impl PaletteApp {
@@ -159,6 +166,7 @@ impl PaletteApp {
             }
         });
         let (file_tx, file_rx) = mpsc::channel();
+        let (edit_tx, edit_rx) = mpsc::channel();
         let mut app = Self {
             sessions: vec![],
             active: 0,
@@ -198,6 +206,12 @@ impl PaletteApp {
             resize_preview: None,
             screenshot: None,
             screenshot_requested: false,
+            clipboard: None,
+            edit_tx,
+            edit_rx,
+            edit_pending: false,
+            resize_dialog: None,
+            fill_tolerance: 0,
         };
         app.new_document();
         app
@@ -210,10 +224,16 @@ impl PaletteApp {
         &mut self.sessions[self.active]
     }
     pub fn close_pending_none(&self) -> bool {
-        self.close_pending.is_none() && self.error.is_none()
+        self.close_pending.is_none()
+            && self.error.is_none()
+            && self.resize_dialog.is_none()
+            && !self.edit_pending
     }
 
     pub fn new_document(&mut self) {
+        if !self.sessions.is_empty() {
+            self.current_mut().end_gesture();
+        }
         self.stroke = None;
         let session = Session::new(
             self.next_id,
@@ -257,7 +277,7 @@ impl PaletteApp {
     }
 
     pub fn save(&mut self, ctx: &Context, save_as: bool, export: bool) {
-        if self.busy {
+        if self.busy || self.edit_pending {
             return;
         }
         let session = self.current();
@@ -433,7 +453,7 @@ impl PaletteApp {
     }
 
     fn request_close(&mut self, id: u64, ctx: &Context) {
-        if self.busy {
+        if self.busy || self.edit_pending {
             self.message = "Please wait for the file operation to finish".into();
             return;
         }
@@ -476,7 +496,11 @@ impl PaletteApp {
     }
 
     fn shortcuts(&mut self, ctx: &Context) {
-        if ctx.egui_wants_keyboard_input() || self.close_pending.is_some() {
+        if ctx.egui_wants_keyboard_input()
+            || self.close_pending.is_some()
+            || self.resize_dialog.is_some()
+            || self.error.is_some()
+        {
             return;
         }
         let keys = ctx.input(|i| {
@@ -507,19 +531,21 @@ impl PaletteApp {
         }
         if keys.0 && keys.7 {
             if keys.2 {
-                self.current_mut().redo();
+                self.redo_current();
             } else {
-                self.current_mut().undo();
+                self.undo_current();
             }
         }
         if keys.0 && keys.8 {
-            self.current_mut().redo();
+            self.redo_current();
         }
         if keys.1 && keys.9 {
+            self.current_mut().end_gesture();
             self.stroke = None;
             self.active = (self.active + if keys.2 { self.sessions.len() - 1 } else { 1 })
                 % self.sessions.len();
         }
+        self.edit_shortcuts(ctx);
     }
 }
 
@@ -533,12 +559,13 @@ impl PaletteApp {
     fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.poll_workers(&ctx);
+        self.poll_edits();
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_quit
-            && (self.busy || self.sessions.iter().any(Session::modified))
+            && (self.busy || self.edit_pending || self.sessions.iter().any(Session::modified))
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if !self.busy {
+            if !self.busy && !self.edit_pending {
                 self.quitting = true;
                 self.close_pending = self.sessions.iter().find(|s| s.modified()).map(|s| s.id);
             }
@@ -584,6 +611,7 @@ impl PaletteApp {
             .frame(egui::Frame::new().fill(WORKSPACE))
             .show(ui, |ui| self.canvas(ui));
         self.dialogs(&ctx);
+        self.resize_window(&ctx);
         self.request_render(&ctx);
         let s = self.current();
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(

@@ -1,4 +1,4 @@
-//! Named document commands with shared COW snapshots, bounded conservatively.
+//! Named document commands bounded by uniquely retained COW backing allocations.
 use crate::document::Document;
 use std::collections::VecDeque;
 
@@ -8,7 +8,8 @@ struct Entry {
     revision: u64,
 }
 
-/// Per-document revision history with a conservative 128 MiB snapshot budget.
+/// Per-document history capped at 256 commands and 128 MiB of backing buffers
+/// retained in addition to the live document. Shared tiles are counted once.
 pub struct History {
     undo: VecDeque<Entry>,
     redo: Vec<Entry>,
@@ -41,14 +42,32 @@ impl History {
         self.redo.clear();
         self.revision = self.next_revision;
         self.next_revision += 1;
-        let mut bytes: usize = self.undo.iter().map(|e| e.state.byte_len()).sum();
-        while bytes > self.budget {
-            if let Some(old) = self.undo.pop_front() {
-                bytes = bytes.saturating_sub(old.state.byte_len());
-            } else {
+        self.finish(document);
+    }
+    /// Trim after a completed command/gesture, when modified tiles are known.
+    pub fn finish(&mut self, document: &Document) {
+        while self.undo.len() > 256 {
+            self.undo.pop_front();
+        }
+        while self.retained_bytes(document) > self.budget {
+            if self.undo.pop_front().is_none() {
+                self.redo.clear();
                 break;
             }
         }
+    }
+    /// Bytes owned exclusively by undo/redo snapshots, excluding live buffers.
+    pub fn retained_bytes(&self, document: &Document) -> usize {
+        let live = document.allocations();
+        let mut allocations = std::collections::HashMap::new();
+        for entry in self.undo.iter().chain(&self.redo) {
+            allocations.extend(entry.state.allocations());
+        }
+        allocations
+            .into_iter()
+            .filter(|(address, _)| !live.contains_key(address))
+            .map(|(_, bytes)| bytes)
+            .sum()
     }
     /// Restore the latest pre-command state and transfer the current state to redo.
     pub fn undo(&mut self, document: &mut Document) {
@@ -59,6 +78,7 @@ impl History {
                 revision: self.revision,
             });
             self.revision = entry.revision;
+            self.finish(document);
         }
     }
     /// Restore the next undone state, preserving its original revision number.
@@ -70,6 +90,7 @@ impl History {
                 revision: self.revision,
             });
             self.revision = entry.revision;
+            self.finish(document);
         }
     }
     /// Human-readable name of the next command to undo.

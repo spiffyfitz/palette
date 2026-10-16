@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Checked means implemented; validation details are in docs/VALIDATION.md. Model support alone is distinguished from end-user tools.
+Checked means implemented; validation details are in docs/VALIDATION.md and docs/PHASE2_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -36,14 +36,23 @@ Checked means implemented; validation details are in docs/VALIDATION.md. Model s
 - [x] Invert and Brightness live filters: edit/toggle/reorder/delete/duplicate/save.
 - [x] Core grayscale selections, layer masks and filter masks; serialization/compositing tests.
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
-- [ ] Mask/selection/style editing interface (core support is not a finished workflow).
+- [x] Rectangular selection interface with clear, inversion and selected pixel movement.
+- [ ] Advanced selection, mask and style editing interfaces.
 
 ## Phase 2
 
-- [ ] Fill, text, clipboard image import/export, selection and crop.
-- [ ] Resize/resample, rotate, flip, move selection/layers and more shapes.
-- [ ] Brush variants, pressure, spacing, stroke-wide opacity and mask painting.
-- [ ] Gesture-coalesced property edits and dirty-tile history accounting.
+- [x] Contiguous fill with tolerance and opacity; source transparency/selection/lock handling.
+- [x] System clipboard image copy/cut/paste and native image-paste events.
+- [x] Rectangular selection, all/deselect/invert, clear, selected painting/shapes and move/nudge.
+- [x] Crop, canvas bounds resize, nearest/bilinear resampling, rotate and flip.
+- [x] Transforms retain layers, masks and live filter/effect properties.
+- [x] Stroke-wide maximum coverage prevents opacity buildup at pointer joins.
+- [x] History counts unique retained tile/mask buffers and caps command count.
+- [x] Background edit jobs reject stale results and validate geometry allocation limits.
+- [ ] Text tool and font/layout choices.
+- [ ] More shapes and whole-layer movement UI.
+- [ ] Brush variants, pressure, spacing and mask painting.
+- [ ] Gesture-coalesced property editing and further dirty-region optimization.
 
 ## Phase 3
 

@@ -2141,6 +2141,7 @@ dependencies = [
 name = "palette"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "eframe",
  "image",
  "palette-core",

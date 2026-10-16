@@ -14,7 +14,7 @@ egui permits one shared native interface across the three target operating syste
 
 Raster uses 128 × 128 RGBA8 tiles behind `Arc<Vec<u8>>`. Cloning a document shares pixels. The first modification to a shared tile copies just that tile. Partial boundary tiles have defined padding; ordinary export emits only canvas pixels. Coverage masks are grayscale byte planes behind Arc, ready for selection/mask editing in Phase 4. A mask does not alter source pixels.
 
-Current transforms are translations only. Affine resampling, ICC profiles, higher bit depths and effect variants are additive future model work, not implemented features. Version 1 supports an actual Color Overlay style in the core but has no style-editing UI. Blur and shadow operations require neighborhood/padded image stages; they must not be shoehorned into the current point-filter evaluator.
+The per-layer transform field currently stores translation only. Whole-image rotate/flip/resize operations transform source rasters and related coverage planes. Per-layer affine transforms, ICC profiles, higher bit depths and effect variants remain future model work. Version 1 supports an actual Color Overlay style in the core but has no style-editing UI. Blur and shadow operations require neighborhood/padded image stages; they must not be shoehorned into the current point-filter evaluator.
 
 ## Alpha and pipeline
 
@@ -24,7 +24,7 @@ The GUI converts the straight-alpha reference composite through `ColorImage::fro
 
 ## Commands and document sessions
 
-`History::begin` records a named pre-command COW snapshot and assigns a unique revision. A new branch clears redo. Undo/redo swap complete model states, preserving layers, filters, masks, properties and source pixels together. A stroke creates one command, rather than one per sample. The 128 MiB per-tab bound currently uses conservative logical raster sizes; it may discard history early for large documents. This is documented and should be replaced with accounting for unique retained allocations plus a command count limit.
+`History::begin` records a named pre-command COW snapshot and assigns a unique revision. A new branch clears redo. Undo/redo swap complete model states, preserving layers, filters, masks, properties and source pixels together. A stroke creates one command, rather than one per sample. `finish` trims history after a gesture/command. The bound is 256 commands and 128 MiB of uniquely retained tile/coverage buffers beyond the current live document; repeated references and buffers still reachable from the live document count once or not at all, respectively. Metadata, rendering and live buffers are separate from this budget. Huge destructive operations can still exceed the budget and lose undo; small edits on an 8K canvas retain their undo entry.
 
 Each UI `Session` owns a document, independent history, saved revision, native project path, texture, zoom and pan. Dirty state compares saved and current revisions, so undoing to a saved revision becomes clean. Raster imports have no native project destination; Save prompts for `.palette`. Export never marks the project clean. A save worker captures the original tab ID and revision; a later result cannot accidentally mark new edits or another tab saved. A pending close proceeds only after that tab's successful save and clean-revision check.
 
@@ -38,7 +38,15 @@ Current rendering recomputes a complete composite after changes, and obsolete jo
 
 Canvas origin is the viewport center minus half the scaled canvas plus pan. Image coordinates are `(pointer - origin) / zoom`. egui supplies logical display points after OS DPI conversion; applying DPI again would be wrong. The display origin is aligned to physical pixels. Integer zoom uses nearest texture sampling. Fractional zoom mapping is tested; filtered texture sampling and advanced trackpad behavior need later polish.
 
-Brush segments rasterize the union of a circular footprint along a line, avoiding gaps during fast motion. Hardness defines the core and linear edge falloff. Opacity uses source-over; erasing uses destination-out. Consecutive semi-transparent segments can accumulate opacity at their joins; stroke-wide coverage accumulation and pressure/spacing controls are Phase 2 work.
+Brush segments rasterize the union of a circular footprint along a line, avoiding gaps during fast motion. Hardness defines the core and linear edge falloff. `PaintStroke` retains a COW pre-stroke raster and sparse float coverage tiles; each pixel is evaluated from its original value at maximum stroke coverage, so event density and retracing within one stroke do not accumulate opacity. Outlined shapes share this accumulator. A new gesture can build opacity. Painting and erasing multiply by canvas-space selection coverage after accounting for layer offsets. Pressure/spacing controls remain future work.
+
+## Core editing workflow
+
+`editing` implements selection coverage/bounds/contours, active-layer copy, clear, paste, move and iterative scanline fill. Clipboard output bakes the active layer's evaluated appearance into flat RGBA; source filters/masks remain untouched. Paste creates a layer and expands canvas bounds if needed. Move clears selected source coverage and composites it at the new canvas location, preserving layer processing properties. The active source buffer can expand to the union of its old extent and the canvas; local masks are reanchored alongside it. Existing hidden pixels survive canvas cropping and bounds resizing.
+
+`transform` owns whole-document crop, exact orthogonal pixel permutations and nearest/premultiplied-bilinear resizing. Layer positions, selection and local layer/filter masks follow the geometry. Layer filters/effects are retained and reevaluated after the transform. These whole-document operations include locked layers; locks protect local pixel tools. Size/offset errors leave the original document unchanged, and output allocations are preflighted against per-raster limits and an aggregate 512 MiB output-plane budget.
+
+The app's editing controller runs expensive edits on a shared snapshot in a background worker. The result identifies its originating session/generation and commits one command only if still current. No-op jobs do not dirty the document; stale results cannot overwrite newer edits. A retained arboard clipboard object handles native image copy/cut/paste and X11 ownership; eframe image-paste events are also routed when text input has no focus. Clipboard write failure prevents cut deletion. Each session owns its in-flight selection gesture and a pointer-identity cache of selection bounds/contours. Its cached Arc prevents pointer-address reuse from returning a stale contour.
 
 ## File boundaries
 
@@ -48,4 +56,4 @@ Microsoft `.paint` needs a dedicated HEIF item-graph adapter; primary-image rast
 
 ## Next boundaries
 
-Phase 2 should move reusable shape/transform operations out of the canvas controller into core commands, add stroke transactions and coverage-aware edits, then selections/clipboard/text. Phase 3 should migrate native assets from JSON byte arrays to streamed lossless assets, add explicit migrations, exercise AVIF on all targets and implement `.paint` only against real fixtures. Filter descriptors, common parameter controls, cancellable staged previews and spatial effects follow in Phase 5.
+The next Phase 2 slices are text, additional shapes, whole-layer positioning, brush variants and gesture-coalesced properties. Shape geometry should move fully out of the canvas controller into reusable core tools. Advanced selections and mask-painting UI follow later. Phase 3 should migrate native assets from JSON byte arrays to streamed lossless assets, add explicit migrations, exercise AVIF on all targets and implement `.paint` only against real fixtures. Filter descriptors, common parameter controls, cancellable staged previews and spatial effects follow in Phase 5.

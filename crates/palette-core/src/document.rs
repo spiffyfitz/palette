@@ -71,6 +71,32 @@ pub struct Document {
 }
 
 impl Document {
+    pub(crate) fn allocations(&self) -> std::collections::HashMap<usize, usize> {
+        let mut output = std::collections::HashMap::new();
+        let mut mask = |mask: &Coverage| {
+            output.insert(
+                std::sync::Arc::as_ptr(&mask.values) as usize,
+                mask.values.capacity(),
+            );
+        };
+        if let Some(selection) = &self.selection {
+            mask(selection);
+        }
+        for layer in &self.layers {
+            if let Some(m) = &layer.mask {
+                mask(m);
+            }
+            for filter in &layer.filters {
+                if let Some(m) = &filter.mask {
+                    mask(m);
+                }
+            }
+        }
+        for layer in &self.layers {
+            layer.source.allocations(&mut output);
+        }
+        output
+    }
     /// Create a white default background of the requested bounded dimensions.
     pub fn new(width: u32, height: u32) -> Result<Self, String> {
         let source = Raster::new(width, height, [255; 4])?;
@@ -173,7 +199,7 @@ impl Document {
         self.active_layer = self.layers[index.min(self.layers.len() - 1)].id;
     }
 
-    /// Conservative snapshot size used by the initial history budget.
+    /// Logical raster/mask bytes; shared backing allocations may use less RAM.
     pub fn byte_len(&self) -> usize {
         self.layers
             .iter()
@@ -240,6 +266,9 @@ impl Document {
         }
         if let Some(selection) = &self.selection {
             selection.validate()?;
+            if selection.width != self.width || selection.height != self.height {
+                return Err("Selection dimensions must match the canvas".into());
+            }
         }
         Ok(())
     }

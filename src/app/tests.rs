@@ -132,3 +132,201 @@ fn ribbon_and_layers_remain_within_a_small_window() {
     assert!(app.canvas_rect.is_positive());
     assert!(app.canvas_rect.bottom() <= 520.0);
 }
+
+fn image_position(app: &PaletteApp, point: [f32; 2]) -> egui::Pos2 {
+    let size = vec2(
+        app.current().document.width as f32,
+        app.current().document.height as f32,
+    ) * app.current().zoom;
+    let origin = app.canvas_rect.center() - size * 0.5 + app.current().pan;
+    pos2(origin.x.round(), origin.y.round()) + vec2(point[0], point[1]) * app.current().zoom
+}
+fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.edit_pending {
+        app.poll_edits();
+        assert!(std::time::Instant::now() < deadline, "edit timed out");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    frame(app, ctx, vec![]);
+    assert!(app.error.is_none(), "{:?}", app.error);
+}
+
+#[test]
+fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.current_mut().command("Add layer", Document::add_layer);
+    app.tool = Tool::Select;
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [10.0, 10.0]);
+    let b = image_position(&app, [30.0, 25.0]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(
+        app.current_mut().selection_bounds(),
+        Some(palette_core::editing::PixelRect {
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 15
+        })
+    );
+    app.tool = Tool::Fill;
+    app.brush.color = [255, 0, 0, 255];
+    let seed = image_position(&app, [20.5, 20.5]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(seed), pointer(seed, true)],
+    );
+    frame(&mut app, &ctx, vec![pointer(seed, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.active().source.get(20, 20),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(app.current().document.active().source.get(9, 20), [0; 4]);
+    assert_eq!(
+        app.current().document.layers[0].source.get(20, 20),
+        [255; 4]
+    );
+    app.tool = Tool::Select;
+    let end = image_position(&app, [60.5, 40.5]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(seed), pointer(seed, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.active().source.get(60, 40),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(app.current().document.active().source.get(20, 20)[3], 0);
+    app.edit(super::editing::Edit::Crop, &ctx);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        (app.current().document.width, app.current().document.height),
+        (20, 15)
+    );
+    app.current_mut().undo();
+    assert_eq!(
+        (app.current().document.width, app.current().document.height),
+        (819, 594)
+    );
+    app.current_mut().undo();
+    assert_eq!(
+        app.current().document.active().source.get(20, 20),
+        [255, 0, 0, 255]
+    );
+}
+
+#[test]
+fn native_paste_image_event_creates_an_independent_undoable_layer() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    let image = egui::ColorImage::from_rgba_unmultiplied([2, 1], &[255, 0, 0, 255, 0, 0, 255, 128]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PasteImage(std::sync::Arc::new(image))],
+    );
+    assert_eq!(app.current().document.layers.len(), 2);
+    assert_eq!(
+        app.current().document.active().source.get(1, 0),
+        [0, 0, 255, 128]
+    );
+    assert_eq!(app.tool, Tool::Select);
+    app.current_mut().undo();
+    assert_eq!(app.current().document.layers.len(), 1);
+    app.current_mut().redo();
+    assert_eq!(app.current().document.layers.len(), 2);
+    app.new_document();
+    assert_eq!(app.current().document.layers.len(), 1);
+}
+
+#[test]
+fn a_late_worker_result_cannot_overwrite_new_edits() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.edit(
+        super::editing::Edit::Fill {
+            point: [0, 0],
+            color: [255, 0, 0, 255],
+            opacity: 1.0,
+            tolerance: 0,
+        },
+        &ctx,
+    );
+    app.current_mut().command("Newer edit", |doc| {
+        doc.active_mut().source.set(0, 0, [0, 0, 255, 255])
+    });
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.active().source.get(0, 0),
+        [0, 0, 255, 255]
+    );
+    assert_eq!(app.current().document.active().source.get(1, 0), [255; 4]);
+    assert!(app.message.contains("cancelled"));
+}
+
+#[test]
+fn selected_shape_and_brush_do_not_change_unselected_pixels() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.current_mut().command("Add layer", Document::add_layer);
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        819,
+        594,
+        palette_core::editing::PixelRect {
+            x: 20,
+            y: 20,
+            width: 20,
+            height: 20,
+        },
+    ));
+    app.tool = Tool::Rectangle;
+    app.shape_fill = true;
+    app.brush.color = [0, 255, 0, 255];
+    frame(&mut app, &ctx, vec![]);
+    let a = image_position(&app, [10.0, 10.0]);
+    let b = image_position(&app, [50.0, 50.0]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(
+        app.current().document.active().source.get(25, 25),
+        [0, 255, 0, 255]
+    );
+    assert_eq!(app.current().document.active().source.get(15, 15), [0; 4]);
+    app.tool = Tool::Brush;
+    app.brush.color = [255, 0, 0, 255];
+    app.brush.diameter = 12.0;
+    let a = image_position(&app, [10.5, 30.5]);
+    let b = image_position(&app, [50.5, 30.5]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(
+        app.current().document.active().source.get(25, 30),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(app.current().document.active().source.get(15, 30), [0; 4]);
+}

@@ -16,6 +16,11 @@ pub struct Raster {
 }
 
 impl Raster {
+    pub(crate) fn allocations(&self, output: &mut std::collections::HashMap<usize, usize>) {
+        for tile in &self.tiles {
+            output.insert(Arc::as_ptr(tile) as usize, tile.capacity());
+        }
+    }
     /// Allocate a solid raster, sharing equal tiles until they are modified.
     pub fn new(width: u32, height: u32, color: [u8; 4]) -> Result<Self, String> {
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_PIXELS {
