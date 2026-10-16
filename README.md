@@ -16,12 +16,13 @@ Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Comman
 
 ## Working now
 
-- Dark Paint-style menu bar, compact document tabs, ribbon, floating layers panel, three vertical brush controls and status bar.
+- Paint-style dark ribbon, split buttons, anchored flyouts, hover/press animation, compact document tabs, animated layers tray, three contextual brush controls and status bar.
+- Centered Edit Colors and Image Properties dialogs with OK/Cancel, custom color slots, exact RGB/hex input and reversible canvas bounds changes. View toggles for gridlines, status bar, ribbon and layers.
 - New/open documents; switch, drag to reorder and close tabs using an integrated hover-only button; independent zoom, layers and history; modified-document close prompts.
 - Pencil, continuous round brush, soft eraser, color picker, magnifier, lines, outlined/filled rectangles and ellipses. Left mouse uses foreground; right mouse paints with background.
 - Size, opacity and hardness controls, including exact numerical input. Erasing reduces alpha.
 - Brush, pencil and eraser strokes appear while dragging, with partial canvas texture updates and one undo command per stroke.
-- Text: click or drag a box; type with live preview, Ubuntu Light/Hack, font size, wrapping, alignment, line spacing, colors and opacity. Apply creates a separate raster layer; Cancel leaves the image unchanged.
+- Text: type directly on the canvas with a floating formatting strip, move the box by its top edge, or resize using eight handles. Ubuntu Light/Hack, size, wrapping, alignment, line spacing, colors and opacity work. Done, Ctrl/Command+Enter or clicking outside commits a separate raster layer; Cancel/Escape leaves pixels unchanged.
 - Add, duplicate, rename, show/hide, lock, reorder and delete layers; properties directly beneath the selected layer; opacity; Normal, Multiply and Screen compositing.
 - Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; 100% default zoom with slider snapping at actual size, fit and canvas corner resize.
 - Native open/save dialogs, file drop, atomic `.palette` saving and flattened raster export. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec round-trip tests.
@@ -59,11 +60,11 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo build --workspace --locked
 # Requires an interactive Windows desktop:
-cargo test --test screenshot -- --ignored
+cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. The screenshot comparison uses a reviewed Windows baseline at 1386 × 963, not a claim of exact equivalence to Microsoft Paint. See [visual comparison](docs/UI_REFERENCE.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. Seven reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
 
-See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/LIVE_PAINT_TEXT_VALIDATION.md).
+See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current UI milestone validation](docs/UI_BEHAVIOR_REFERENCE.md).
 
 Palette source is MIT licensed. Icons are original geometric Rust drawings; Microsoft and Adobe branding/resources are not bundled.

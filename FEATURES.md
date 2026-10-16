@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Checked means implemented; validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md and docs/LIVE_PAINT_TEXT_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Checked means implemented; validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md and docs/LIVE_PAINT_TEXT_VALIDATION.md and docs/UI_BEHAVIOR_REFERENCE.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -23,7 +23,12 @@ Checked means implemented; validation details are in docs/VALIDATION.md, docs/PH
 - [x] Reversible canvas corner resize and coordinate status.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshot and automated regression capture/comparison.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for seven UI states.
+- [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
+- [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
+- [x] Centered transactional color/image-property dialogs with compact-window scrolling.
+- [x] Contextual sliders; View grid/status/ribbon/layers toggles and zoom preset menu.
+- [ ] Exact native menu reveal/easing and full keyboard-focus parity.
 - [ ] Full keyboard accessibility audit and additional DPI/tablet testing.
 - [ ] Windows 10, macOS and Linux launch validation.
 
@@ -50,7 +55,9 @@ Checked means implemented; validation details are in docs/VALIDATION.md, docs/PH
 - [x] History counts unique retained tile/mask buffers and caps command count.
 - [x] Background edit jobs reject stale results and validate geometry allocation limits.
 - [x] Live brush/pencil/eraser region compositing and partial texture uploads; progressive render fallback.
-- [x] Text box placement, bounded background previews, two bundled fonts and layout/color controls; Apply/Cancel and one-command raster-layer commitment.
+- [x] Inline text with floating formatting strip, eight resize handles and move edge, two fonts, layout/color controls and bounded rasterization.
+- [x] Text Done/outside-click commitment, Cancel/Escape, queued document/tool actions and one-command raster-layer insertion.
+- [ ] Exact interactive/committed text metrics, selection-preview parity and global shortcuts during typing.
 - [ ] System font discovery, additional faces, complex shaping and persistent editable text objects.
 - [ ] More shapes and whole-layer movement UI.
 - [ ] Brush variants, pressure, spacing and mask painting.

@@ -9,19 +9,40 @@ use std::{
 #[test]
 #[ignore = "requires an interactive Windows desktop and the committed Windows baseline"]
 fn main_window_matches_reviewed_baseline() {
+    compare_scene(None, "window-windows.png");
+}
+
+#[test]
+#[ignore = "requires an interactive Windows desktop and the reviewed UI scene baselines"]
+fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
+    for scene in [
+        "file-menu",
+        "brushes",
+        "colors",
+        "text",
+        "properties",
+        "layers",
+    ] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+}
+
+fn compare_scene(scene: Option<&str>, fixture: &str) {
     if !cfg!(target_os = "windows") {
         return;
     }
-    let baseline = image::open("tests/fixtures/window-windows.png")
+    let baseline = image::open(Path::new("tests/fixtures").join(fixture))
         .expect("reviewed baseline")
         .to_rgb8();
-    let path = Path::new("target/window-regression.png");
+    let filename = format!("target/window-regression-{}.png", scene.unwrap_or("main"));
+    let path = Path::new(&filename);
     let _ = std::fs::remove_file(path);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_palette"))
-        .arg("--screenshot")
-        .arg(path)
-        .spawn()
-        .expect("launch Palette");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_palette"));
+    command.arg("--screenshot").arg(path);
+    if let Some(scene) = scene {
+        command.arg("--screenshot-scene").arg(scene);
+    }
+    let mut child = command.spawn().expect("launch Palette");
     let started = Instant::now();
     loop {
         if let Some(status) = child.try_wait().expect("poll Palette") {
@@ -45,7 +66,8 @@ fn main_window_matches_reviewed_baseline() {
     let fraction = differences as f64 / (1386.0 * 963.0);
     assert!(
         fraction < 0.005,
-        "{:.2}% of pixels differ; inspect target/window-regression.png",
-        fraction * 100.0
+        "{:.2}% of pixels differ; inspect {}",
+        fraction * 100.0,
+        path.display()
     );
 }

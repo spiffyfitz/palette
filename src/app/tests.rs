@@ -73,7 +73,12 @@ fn tab_state_and_unsaved_close_are_independent() {
     // Close the inactive, modified tab through its hover-only button. This must
     // prompt for that document without first activating it or losing its state.
     frame(&mut app, &ctx, vec![]);
-    let close_button = pos2(77.0, 47.0);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(pos2(45.0, 47.0))]);
+    let close_button = ctx
+        .read_response(egui::Id::unique(("tab-close", first)))
+        .expect("hover close control")
+        .rect
+        .center();
     frame(&mut app, &ctx, vec![Event::PointerMoved(close_button)]);
     frame(&mut app, &ctx, vec![pointer(close_button, true)]);
     frame(&mut app, &ctx, vec![pointer(close_button, false)]);
@@ -537,4 +542,142 @@ fn selected_shape_and_brush_do_not_change_unselected_pixels() {
         [255, 0, 0, 255]
     );
     assert_eq!(app.current().document.active().source.get(15, 30), [0; 4]);
+}
+
+fn click_ui(app: &mut PaletteApp, ctx: &Context, point: egui::Pos2) {
+    frame(app, ctx, vec![Event::PointerMoved(point)]);
+    frame(app, ctx, vec![pointer(point, true)]);
+    frame(app, ctx, vec![pointer(point, false)]);
+}
+fn escape_event() -> Event {
+    Event::Key {
+        key: Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }
+}
+#[test]
+fn paint_flyout_opens_at_its_control_and_escape_dismisses_it() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    click_ui(&mut app, &ctx, pos2(20.0, 16.0));
+    frame(&mut app, &ctx, vec![]);
+    assert!(egui::Popup::is_any_open(&ctx));
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert!(!app.current().modified());
+}
+#[test]
+fn inline_text_resizes_at_fractional_zoom_and_commits_when_clicked_outside() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.tool = Tool::Text;
+    app.current_mut().zoom = 0.75;
+    frame(&mut app, &ctx, vec![]);
+    app.start_text(palette_core::editing::PixelRect {
+        x: 50,
+        y: 50,
+        width: 300,
+        height: 100,
+    });
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![Event::Text("Inline text".into())]);
+    wait_for_text(&mut app, &ctx);
+    let handle = image_position(&app, [350.0, 150.0]);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(handle)]);
+    frame(&mut app, &ctx, vec![pointer(handle, true)]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(handle + vec2(30.0, 15.0))],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![pointer(handle + vec2(30.0, 15.0), false)],
+    );
+    assert_eq!(app.text_editor.as_ref().unwrap().spec.width, 340);
+    assert_eq!(app.text_editor.as_ref().unwrap().spec.height, 120);
+    wait_for_text(&mut app, &ctx);
+    let outside = image_position(&app, [700.0, 400.0]);
+    click_ui(&mut app, &ctx, outside);
+    assert!(app.text_editor.is_none());
+    assert_eq!(app.current().document.layers.len(), 2);
+    assert_eq!(app.current().document.active().offset, [50, 50]);
+    app.undo_current();
+    assert_eq!(app.current().document.layers.len(), 1);
+}
+#[test]
+fn pending_text_preview_preserves_a_requested_tool_switch() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    app.tool = Tool::Text;
+    frame(&mut app, &ctx, vec![]);
+    app.start_text(palette_core::editing::PixelRect {
+        x: 10,
+        y: 10,
+        width: 200,
+        height: 100,
+    });
+    app.text_editor.as_mut().unwrap().spec.text = "Queued text".into();
+    app.choose_tool(Tool::Brush);
+    assert!(app.after_text.is_some());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.text_editor.is_some() || app.after_text.is_some() {
+        frame(&mut app, &ctx, vec![]);
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(app.tool, Tool::Brush);
+    assert_eq!(app.current().document.layers.len(), 2);
+}
+#[test]
+fn color_and_canvas_dialog_cancel_keep_state_and_canvas_ok_is_undoable() {
+    let ctx = Context::default();
+    let mut app = PaletteApp::with_context(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.current().document.clone();
+    let color = app.brush.color;
+    app.edit_color(crate::interface::ColorTarget::Foreground);
+    app.interface.color_editor.as_mut().unwrap().rgb = [20, 40, 60];
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.interface.color_editor.is_none());
+    assert_eq!(app.brush.color, color);
+    app.show_canvas_properties();
+    app.interface.canvas_properties.as_mut().unwrap().width = 400;
+    frame(&mut app, &ctx, vec![]);
+    // Release Escape before testing a new modal transaction.
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::Escape,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.interface.canvas_properties.is_none());
+    assert_eq!(app.current().document, before);
+    app.show_canvas_properties();
+    app.interface.canvas_properties.as_mut().unwrap().width = 400;
+    app.interface.canvas_properties.as_mut().unwrap().height = 300;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    click_ui(&mut app, &ctx, pos2(570.0, 744.0));
+    assert!(app.interface.canvas_properties.is_none());
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        (app.current().document.width, app.current().document.height),
+        (400, 300)
+    );
+    app.undo_current();
+    assert_eq!(app.current().document, before);
 }

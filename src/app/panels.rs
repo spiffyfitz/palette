@@ -8,224 +8,263 @@ struct LayerDrag {
 
 impl PaletteApp {
     pub(super) fn menus(&mut self, ui: &mut Ui) {
+        use crate::interface::{menu_item, menu_style};
         let ctx = ui.ctx().clone();
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New                         Ctrl+N").clicked() {
-                    self.new_document();
-                    ui.close();
-                }
-                if ui.button("Open…                     Ctrl+O").clicked() {
-                    self.open_dialog(&ctx);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        !self.busy,
-                        egui::Button::new("Save project             Ctrl+S"),
-                    )
-                    .clicked()
-                {
-                    self.save(&ctx, false, false);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new("Save project as…"))
-                    .clicked()
-                {
-                    self.save(&ctx, true, false);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new("Export flattened image…"))
-                    .clicked()
-                {
-                    self.save(&ctx, true, true);
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Close document         Ctrl+W").clicked() {
-                    self.request_close(self.current().id, &ctx);
-                    ui.close();
-                }
-            });
-            ui.menu_button("Edit", |ui| {
-                let undo = self
-                    .current()
-                    .history
-                    .undo_label()
-                    .map(|s| format!("Undo {s}"));
-                if ui
-                    .add_enabled(
-                        undo.is_some(),
-                        egui::Button::new(undo.unwrap_or("Undo".into())),
-                    )
-                    .clicked()
-                {
-                    self.undo_current();
-                    ui.close();
-                }
-                let redo = self
-                    .current()
-                    .history
-                    .redo_label()
-                    .map(|s| format!("Redo {s}"));
-                if ui
-                    .add_enabled(
-                        redo.is_some(),
-                        egui::Button::new(redo.unwrap_or("Redo".into())),
-                    )
-                    .clicked()
-                {
-                    self.redo_current();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        !self.current().document.active().locked && !self.edit_pending,
-                        egui::Button::new("Cut image selection         Ctrl+X"),
-                    )
-                    .clicked()
-                {
-                    self.copy_selection(true, &ctx);
-                    ui.close();
-                }
-                if ui.button("Copy image selection       Ctrl+C").clicked() {
-                    self.copy_selection(false, &ctx);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        !self.edit_pending,
-                        egui::Button::new("Paste image as layer         Ctrl+V"),
-                    )
-                    .clicked()
-                {
-                    self.paste_clipboard();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .button("Select all                           Ctrl+A")
-                    .clicked()
-                {
-                    self.select_all();
-                    ui.close();
-                }
-                if ui
-                    .button("Deselect                            Ctrl+D")
-                    .clicked()
-                {
-                    self.deselect();
-                    ui.close();
-                }
-                if ui.button("Invert selection").clicked() {
-                    self.invert_selection();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        !self.current().document.active().locked && !self.edit_pending,
-                        egui::Button::new("Clear selected pixels       Delete"),
-                    )
-                    .clicked()
-                {
-                    self.edit(super::editing::Edit::Clear, &ctx);
-                    ui.close();
-                }
-            });
-            ui.menu_button("View", |ui| {
-                if ui.button("Actual size (100%)").clicked() {
-                    self.current_mut().zoom = 1.0;
-                    self.current_mut().fit = false;
-                    ui.close();
-                }
-                if ui.button("Fit to window").clicked() {
-                    self.current_mut().fit = true;
-                    self.current_mut().pan = Vec2::ZERO;
-                    ui.close();
-                }
-                ui.checkbox(&mut self.checkerboard, "Transparency checkerboard");
-                ui.checkbox(&mut self.show_layers, "Layers");
-            });
-            ui.menu_button("Filter", |ui| {
-                ui.menu_button("Adjustments", |ui| {
-                    if ui.button("Invert").clicked() {
-                        self.add_filter(Filter::Invert);
+        egui::MenuBar::new()
+            .config(egui::containers::menu::MenuConfig::new().style(menu_style))
+            .ui(ui, |ui| {
+                let file = ui.menu_button("File", |ui| {
+                    if menu_item(ui, "New", "Ctrl+N", Some(Icon::New), true).clicked() {
+                        self.new_document();
                         ui.close();
                     }
-                    if ui.button("Brightness…").clicked() {
-                        self.add_filter(Filter::Brightness { amount: 0.1 });
+                    if menu_item(ui, "Open…", "Ctrl+O", Some(Icon::Open), true).clicked() {
+                        self.open_dialog(&ctx);
+                        ui.close();
+                    }
+                    menu_item(ui, "Import to canvas", "", Some(Icon::Layers), false)
+                        .on_hover_text("Image-as-layer import is not implemented yet");
+                    menu_item(ui, "Recent", "", None, false)
+                        .on_hover_text("Recent-file history is not implemented yet");
+                    ui.separator();
+                    if menu_item(ui, "Save project", "Ctrl+S", Some(Icon::Save), !self.busy)
+                        .clicked()
+                    {
+                        self.save(&ctx, false, false);
+                        ui.close();
+                    }
+                    if menu_item(
+                        ui,
+                        "Save project as…",
+                        "Ctrl+Shift+S",
+                        Some(Icon::Save),
+                        !self.busy,
+                    )
+                    .clicked()
+                    {
+                        self.save(&ctx, true, false);
+                        ui.close();
+                    }
+                    if menu_item(ui, "Export image…", "", Some(Icon::Save), !self.busy).clicked()
+                    {
+                        self.save(&ctx, true, true);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if menu_item(
+                        ui,
+                        "Image properties",
+                        "Ctrl+E",
+                        Some(Icon::Resize),
+                        !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.show_canvas_properties();
+                        ui.close();
+                    }
+                    if menu_item(ui, "Close document", "Ctrl+W", None, true).clicked() {
+                        self.request_close(self.current().id, &ctx);
+                        ui.close();
+                    }
+                    if menu_item(ui, "Exit", "", None, true).clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        ui.close();
+                    }
+                });
+                self.capture_popup("file-menu", &file.response);
+                ui.menu_button("Edit", |ui| {
+                    let undo = self
+                        .current()
+                        .history
+                        .undo_label()
+                        .map(|s| format!("Undo {s}"));
+                    let redo = self
+                        .current()
+                        .history
+                        .redo_label()
+                        .map(|s| format!("Redo {s}"));
+                    if menu_item(
+                        ui,
+                        undo.as_deref().unwrap_or("Undo"),
+                        "Ctrl+Z",
+                        Some(Icon::Undo),
+                        undo.is_some(),
+                    )
+                    .clicked()
+                    {
+                        self.undo_current();
+                        ui.close();
+                    }
+                    if menu_item(
+                        ui,
+                        redo.as_deref().unwrap_or("Redo"),
+                        "Ctrl+Y",
+                        Some(Icon::Redo),
+                        redo.is_some(),
+                    )
+                    .clicked()
+                    {
+                        self.redo_current();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if menu_item(
+                        ui,
+                        "Cut",
+                        "Ctrl+X",
+                        None,
+                        !self.current().document.active().locked && !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.copy_selection(true, &ctx);
+                        ui.close();
+                    }
+                    if menu_item(ui, "Copy", "Ctrl+C", None, true).clicked() {
+                        self.copy_selection(false, &ctx);
+                        ui.close();
+                    }
+                    if menu_item(ui, "Paste as layer", "Ctrl+V", None, !self.edit_pending).clicked()
+                    {
+                        self.paste_clipboard();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if menu_item(ui, "Select all", "Ctrl+A", Some(Icon::Select), true).clicked() {
+                        self.select_all();
+                        ui.close();
+                    }
+                    if menu_item(ui, "Deselect", "Ctrl+D", None, true).clicked() {
+                        self.deselect();
+                        ui.close();
+                    }
+                    if menu_item(ui, "Invert selection", "", None, true).clicked() {
+                        self.invert_selection();
+                        ui.close();
+                    }
+                    if menu_item(
+                        ui,
+                        "Clear selection",
+                        "Delete",
+                        None,
+                        !self.current().document.active().locked && !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.edit(super::editing::Edit::Clear, &ctx);
+                        ui.close();
+                    }
+                });
+                ui.menu_button("View", |ui| {
+                    ui.set_min_width(230.0);
+                    ui.menu_button("Zoom", |ui| {
+                        for percent in [25, 50, 75, 100, 150, 200, 400, 800] {
+                            if menu_item(ui, &format!("{percent}%"), "", None, true).clicked() {
+                                self.current_mut().zoom = percent as f32 / 100.0;
+                                self.current_mut().fit = false;
+                                ui.close();
+                            }
+                        }
+                        if menu_item(ui, "Fit to window", "", Some(Icon::Fit), true).clicked() {
+                            self.current_mut().fit = true;
+                            self.current_mut().pan = Vec2::ZERO;
+                            ui.close();
+                        }
+                    });
+                    menu_item(ui, "Rulers", "", None, false)
+                        .on_hover_text("Rulers are not implemented yet");
+                    ui.checkbox(&mut self.interface.grid, "Gridlines")
+                        .on_hover_text("Pixel grid at 400% zoom and above");
+                    ui.checkbox(&mut self.interface.status, "Status bar");
+                    ui.separator();
+                    ui.checkbox(&mut self.interface.ribbon_collapsed, "Collapse toolbar");
+                    ui.checkbox(&mut self.checkerboard, "Transparency checkerboard");
+                    ui.checkbox(&mut self.show_layers, "Layers");
+                });
+                ui.menu_button("Filter", |ui| {
+                    ui.menu_button("Adjustments", |ui| {
+                        if menu_item(ui, "Invert", "", None, true).clicked() {
+                            self.add_filter(Filter::Invert);
+                            ui.close();
+                        }
+                        if menu_item(ui, "Brightness…", "", None, true).clicked() {
+                            self.add_filter(Filter::Brightness { amount: 0.1 });
+                            self.show_filters = true;
+                            ui.close();
+                        }
+                    });
+                    for category in [
+                        "Artistic",
+                        "Blur",
+                        "Brush Strokes",
+                        "Distort",
+                        "Noise",
+                        "Pixelate",
+                        "Render",
+                        "Sketch",
+                        "Stylize",
+                        "Texture",
+                        "Other",
+                        "Camera Distortion Correction",
+                    ] {
+                        menu_item(ui, category, "", None, false)
+                            .on_hover_text("Not implemented yet");
+                    }
+                    ui.separator();
+                    if menu_item(ui, "Edit live filter stack…", "", None, true).clicked() {
                         self.show_filters = true;
                         ui.close();
                     }
                 });
-                for category in [
-                    "Artistic",
-                    "Blur",
-                    "Brush Strokes",
-                    "Distort",
-                    "Noise",
-                    "Pixelate",
-                    "Render",
-                    "Sketch",
-                    "Stylize",
-                    "Texture",
-                    "Other",
-                    "Camera Distortion Correction",
-                ] {
-                    ui.add_enabled(false, egui::Button::new(category))
-                        .on_hover_text("Not implemented in this milestone");
-                }
                 ui.separator();
-                if ui.button("Edit live filter stack…").clicked() {
-                    self.show_filters = true;
-                    ui.close();
+                if icons::button(
+                    ui,
+                    Icon::Save,
+                    "Save project (Ctrl+S)",
+                    false,
+                    !self.busy,
+                    vec2(32.0, 28.0),
+                )
+                .clicked()
+                {
+                    self.save(&ctx, false, false);
                 }
+                if icons::button(
+                    ui,
+                    Icon::Undo,
+                    "Undo (Ctrl+Z)",
+                    false,
+                    self.current().history.undo_label().is_some(),
+                    vec2(32.0, 28.0),
+                )
+                .clicked()
+                {
+                    self.undo_current();
+                }
+                if icons::button(
+                    ui,
+                    Icon::Redo,
+                    "Redo (Ctrl+Shift+Z)",
+                    false,
+                    self.current().history.redo_label().is_some(),
+                    vec2(32.0, 28.0),
+                )
+                .clicked()
+                {
+                    self.redo_current();
+                }
+                if self.busy || self.edit_pending {
+                    ui.spinner();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if crate::interface::chevron(ui, vec2(26.0, 26.0), "Expand or collapse toolbar")
+                        .clicked()
+                    {
+                        self.interface.ribbon_collapsed = !self.interface.ribbon_collapsed;
+                    }
+                });
             });
-            ui.separator();
-            if icons::button(
-                ui,
-                Icon::Save,
-                "Save project (Ctrl+S)",
-                false,
-                !self.busy,
-                vec2(28.0, 26.0),
-            )
-            .clicked()
-            {
-                self.save(&ctx, false, false);
-            }
-            if icons::button(
-                ui,
-                Icon::Undo,
-                "Undo (Ctrl+Z)",
-                false,
-                self.current().history.undo_label().is_some(),
-                vec2(28.0, 26.0),
-            )
-            .clicked()
-            {
-                self.undo_current();
-            }
-            if icons::button(
-                ui,
-                Icon::Redo,
-                "Redo (Ctrl+Shift+Z)",
-                false,
-                self.current().history.redo_label().is_some(),
-                vec2(28.0, 26.0),
-            )
-            .clicked()
-            {
-                self.redo_current();
-            }
-            if self.busy || self.edit_pending {
-                ui.spinner();
-            }
-        });
     }
 
     pub(super) fn tabs(&mut self, ui: &mut Ui) {
@@ -266,6 +305,14 @@ impl PaletteApp {
                 });
             });
         if let Some(index) = activate {
+            if !self.finish_inline_text() {
+                self.after_text = Some(if index == self.sessions.len() {
+                    text::AfterText::New
+                } else {
+                    text::AfterText::Tab(self.sessions[index].id)
+                });
+                return;
+            }
             self.current_mut().end_gesture();
             self.stroke = None;
             if index == self.sessions.len() {
@@ -295,6 +342,10 @@ impl PaletteApp {
     }
 
     pub fn add_filter(&mut self, filter: Filter) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Filter(filter));
+            return;
+        }
         self.current_mut().command("Add live filter", |doc| {
             let id = doc.allocate_id();
             doc.active_mut().filters.push(FilterInstance {
@@ -307,22 +358,27 @@ impl PaletteApp {
     }
 
     pub fn layers(&mut self, ui: &mut Ui) {
-        ui.spacing_mut().slider_width = 82.0;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Layers").strong());
-            if ui
-                .small_button("+")
-                .on_hover_text("Add transparent layer")
-                .clicked()
+            ui.add_space((ui.available_width() - 30.0) * 0.5);
+            let response = ui.add_enabled(
+                self.current().document.layers.len() < 256,
+                egui::Button::new(" ")
+                    .frame(false)
+                    .min_size(vec2(30.0, 30.0)),
+            );
+            let c = response.rect.center();
+            let stroke = egui::Stroke::new(1.0, Color32::WHITE);
+            ui.painter().circle_stroke(c, 6.0, stroke);
+            ui.painter()
+                .line_segment([c - vec2(3.0, 0.0), c + vec2(3.0, 0.0)], stroke);
+            ui.painter()
+                .line_segment([c - vec2(0.0, 3.0), c + vec2(0.0, 3.0)], stroke);
+            response
+                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Add layer"));
+            if response.on_hover_text("Add transparent layer").clicked()
+                && self.finish_inline_text()
             {
                 self.current_mut().command("Add layer", Document::add_layer);
-            }
-            if ui
-                .small_button("×")
-                .on_hover_text("Hide layers panel")
-                .clicked()
-            {
-                self.show_layers = false;
             }
         });
         ui.separator();
@@ -337,75 +393,148 @@ impl PaletteApp {
         let mut action = None;
         let mut reorder = None;
         let mut activate = None;
-        let active_layer = self.current().document.active_layer;
+        let active = self.current().document.active_layer;
         for (id, name, visible, locked) in layers {
-            let selected = active_layer == id;
-            let response = egui::Frame::new()
-                .fill(if selected {
-                    Color32::from_rgb(52, 66, 72)
-                } else {
-                    PANEL
-                })
-                .inner_margin(5)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let mut visible = visible;
-                        if ui
-                            .checkbox(&mut visible, "")
-                            .on_hover_text("Layer visibility")
-                            .changed()
-                        {
-                            action = Some((id, 0));
-                        }
-                        let key = (self.current().id, id);
-                        let generation = self.current().generation;
-                        if self
-                            .thumbnails
-                            .get(&key)
-                            .is_none_or(|(g, _)| *g != generation)
-                        {
-                            let layer = self
-                                .current()
-                                .document
-                                .layers
-                                .iter()
-                                .find(|l| l.id == id)
-                                .expect("layer");
-                            let mut pixels = vec![];
-                            for y in 0..36 {
-                                for x in 0..48 {
-                                    let p = composite::layer_pixel(
-                                        layer,
-                                        x * layer.source.width() / 48,
-                                        y * layer.source.height() / 36,
-                                    );
-                                    let gray = if (x / 6 + y / 6) % 2 == 0 { 185 } else { 225 };
-                                    pixels.extend_from_slice(&composite::over(
-                                        [gray, gray, gray, 255],
-                                        p,
-                                        layer.opacity,
-                                        BlendMode::Normal,
-                                    ));
-                                }
-                            }
-                            let image = ColorImage::from_rgba_unmultiplied([48, 36], &pixels);
-                            let texture = ui.ctx().load_texture(
-                                format!("thumb-{}-{id}", key.0),
-                                image,
-                                TextureOptions::NEAREST,
-                            );
-                            self.thumbnails.insert(key, (generation, texture));
-                        }
-                        if let Some((_, texture)) = self.thumbnails.get(&key) {
-                            ui.image((texture.id(), vec2(48.0, 36.0)));
-                        }
-                        ui.label(if locked { "▣" } else { "" });
-                    });
-                    ui.add(egui::Label::new(&name).truncate());
-                })
-                .response
-                .interact(Sense::click_and_drag());
-            if response.clicked() {
+            let selected = active == id;
+            let key = (self.current().id, id);
+            let generation = self.current().generation;
+            if self
+                .thumbnails
+                .get(&key)
+                .is_none_or(|(g, _)| *g != generation)
+            {
+                let layer = self
+                    .current()
+                    .document
+                    .layers
+                    .iter()
+                    .find(|l| l.id == id)
+                    .expect("layer");
+                let mut pixels = vec![];
+                for y in 0..36 {
+                    for x in 0..48 {
+                        let p = composite::layer_pixel(
+                            layer,
+                            x * layer.source.width() / 48,
+                            y * layer.source.height() / 36,
+                        );
+                        let gray = if (x / 6 + y / 6) % 2 == 0 { 185 } else { 225 };
+                        pixels.extend_from_slice(&composite::over(
+                            [gray, gray, gray, 255],
+                            p,
+                            layer.opacity,
+                            BlendMode::Normal,
+                        ));
+                    }
+                }
+                let image = ColorImage::from_rgba_unmultiplied([48, 36], &pixels);
+                let texture = ui.ctx().load_texture(
+                    format!("thumb-{}-{id}", key.0),
+                    image,
+                    TextureOptions::NEAREST,
+                );
+                self.thumbnails.insert(key, (generation, texture));
+            }
+
+            let (rect, response) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 86.0), Sense::click_and_drag());
+            let thumb = egui::Rect::from_center_size(rect.center(), vec2(82.0, 78.0));
+            ui.painter()
+                .rect_filled(thumb, 4, Color32::from_rgb(34, 34, 38));
+            ui.painter().rect_stroke(
+                thumb,
+                4,
+                egui::Stroke::new(
+                    1.0,
+                    if selected {
+                        ACCENT
+                    } else {
+                        Color32::from_gray(55)
+                    },
+                ),
+                egui::StrokeKind::Inside,
+            );
+            let layer = self
+                .current()
+                .document
+                .layers
+                .iter()
+                .find(|l| l.id == id)
+                .expect("layer");
+            let ratio = layer.source.width() as f32 / layer.source.height() as f32;
+            let size = if ratio >= 1.0 {
+                vec2(74.0, 74.0 / ratio)
+            } else {
+                vec2(66.0 * ratio, 66.0)
+            };
+            if let Some((_, texture)) = self.thumbnails.get(&(self.current().id, id)) {
+                ui.painter().image(
+                    texture.id(),
+                    egui::Rect::from_center_size(thumb.center(), size),
+                    egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                    if visible {
+                        Color32::WHITE
+                    } else {
+                        Color32::from_gray(110)
+                    },
+                );
+            }
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), selected, &name)
+            });
+            let mut child_clicked = false;
+            if response.contains_pointer() || !visible {
+                let eye = egui::Rect::from_min_size(thumb.min + vec2(3.0, 3.0), vec2(20.0, 18.0));
+                let response = ui
+                    .interact(eye, ui.scope_id().with((id, "visibility")), Sense::click())
+                    .on_hover_text("Toggle layer visibility");
+                ui.painter()
+                    .rect_filled(eye, 3, Color32::from_black_alpha(170));
+                icons::draw(ui, eye.shrink(4.0), Icon::Ellipse, Color32::WHITE);
+                ui.painter()
+                    .circle_filled(eye.center(), 1.5, Color32::WHITE);
+                if !visible {
+                    ui.painter().line_segment(
+                        [eye.left_bottom(), eye.right_top()],
+                        egui::Stroke::new(1.0, Color32::WHITE),
+                    );
+                }
+                if response.clicked() {
+                    action = Some((id, 0));
+                    child_clicked = true;
+                }
+            }
+            if response.contains_pointer() {
+                let more = egui::Rect::from_min_size(
+                    thumb.right_bottom() - vec2(24.0, 20.0),
+                    vec2(22.0, 18.0),
+                );
+                let more_response =
+                    ui.interact(more, ui.scope_id().with((id, "properties")), Sense::click());
+                ui.painter()
+                    .rect_filled(more, 3, Color32::from_black_alpha(180));
+                for x in [-4.0, 0.0, 4.0] {
+                    ui.painter()
+                        .circle_filled(more.center() + vec2(x, 0.0), 1.0, Color32::WHITE);
+                }
+                if more_response.on_hover_text("Layer properties").clicked() {
+                    activate = Some(id);
+                    self.interface.layer_properties = !self.interface.layer_properties;
+                    child_clicked = true;
+                }
+            }
+            if locked {
+                icons::draw(
+                    ui,
+                    egui::Rect::from_min_size(
+                        thumb.left_bottom() + vec2(4.0, -18.0),
+                        vec2(14.0, 14.0),
+                    ),
+                    Icon::Lock,
+                    Color32::WHITE,
+                );
+            }
+            if response.clicked() && !child_clicked {
                 activate = Some(id);
             }
             response.dnd_set_drag_payload(LayerDrag {
@@ -418,6 +547,11 @@ impl PaletteApp {
                 reorder = Some((source.layer, id));
             }
             response.context_menu(|ui| {
+                if ui.button("Properties").clicked() {
+                    activate = Some(id);
+                    self.interface.layer_properties = true;
+                    ui.close();
+                }
                 for (label, code) in [
                     ("Duplicate", 1),
                     (if locked { "Unlock" } else { "Lock" }, 2),
@@ -435,22 +569,31 @@ impl PaletteApp {
                     }
                 }
             });
-            if selected {
+            response.on_hover_text(name);
+            if selected && self.interface.layer_properties {
                 ui.push_id((self.current().id, id), |ui| {
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(34, 34, 42))
+                        .fill(Color32::from_rgb(34, 34, 40))
                         .corner_radius(4)
                         .inner_margin(4)
-                        .show(ui, |ui| self.layer_properties(ui));
+                        .show(ui, |ui| {
+                            ui.add_enabled_ui(self.text_editor.is_none(), |ui| {
+                                self.layer_properties(ui);
+                            });
+                        });
                 });
             }
         }
-        if let Some(id) = activate {
+        if let Some(id) = activate
+            && self.finish_inline_text()
+        {
             self.current_mut().end_gesture();
             self.stroke = None;
             self.current_mut().document.active_layer = id;
         }
-        if let Some((id, code)) = action {
+        if let Some((id, code)) = action
+            && self.finish_inline_text()
+        {
             self.current_mut().document.active_layer = id;
             self.current_mut()
                 .command("Layer operation", |doc| match code {
@@ -462,6 +605,7 @@ impl PaletteApp {
         }
         if let Some((source, target)) = reorder
             && source != target
+            && self.finish_inline_text()
         {
             self.current_mut().command("Reorder layer", |doc| {
                 let from = doc
@@ -501,7 +645,7 @@ impl PaletteApp {
         let mut blend = self.current().document.active().blend;
         egui::ComboBox::from_id_salt("blend")
             .selected_text(format!("{blend:?}"))
-            .width(120.0)
+            .width(130.0)
             .show_ui(ui, |ui| {
                 for mode in [BlendMode::Normal, BlendMode::Multiply, BlendMode::Screen] {
                     ui.selectable_value(&mut blend, mode, format!("{mode:?}"));
@@ -647,12 +791,12 @@ impl PaletteApp {
         ui.horizontal_centered(|ui| {
             ui.label(
                 self.cursor
-                    .map(|p| format!("↖  {}, {} px", p[0], p[1]))
+                    .map(|p| format!("{}, {} px", p[0], p[1]))
                     .unwrap_or_else(|| self.tool.label().into()),
             );
             ui.separator();
             ui.label(format!(
-                "▢  {} × {} px",
+                "{} × {} px",
                 self.current().document.width,
                 self.current().document.height
             ));
@@ -690,7 +834,23 @@ impl PaletteApp {
                     self.current_mut().zoom = (self.current().zoom / 1.25).max(0.05);
                     self.current_mut().fit = false;
                 }
-                ui.label(format!("{:.0}%", self.current().zoom * 100.0));
+                egui::ComboBox::from_id_salt("status-zoom")
+                    .width(78.0)
+                    .selected_text(format!("{:.0}%", self.current().zoom * 100.0))
+                    .show_ui(ui, |ui| {
+                        for zoom in [0.125, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 8.0, 16.0, 32.0] {
+                            if ui
+                                .selectable_label(
+                                    self.current().zoom == zoom,
+                                    format!("{}%", zoom * 100.0),
+                                )
+                                .clicked()
+                            {
+                                self.current_mut().zoom = zoom;
+                                self.current_mut().fit = false;
+                            }
+                        }
+                    });
                 if icons::button(
                     ui,
                     Icon::Fit,
@@ -746,11 +906,25 @@ fn document_tab(ui: &mut Ui, id: u64, label: &str, selected: bool) -> (egui::Res
         response.widget_info(|| {
             egui::WidgetInfo::selected(egui::Role::Tab, ui.is_enabled(), selected, label)
         });
-        let close_clicked = response.contains_pointer()
-            && ui
-                .put(close_rect, egui::Button::new("×").frame(false))
-                .on_hover_text("Close document")
-                .clicked();
+        let close_clicked = if response.contains_pointer() {
+            let close = ui.interact(
+                close_rect,
+                egui::Id::unique(("tab-close", id)),
+                Sense::click(),
+            );
+            let center = close_rect.center();
+            let stroke = egui::Stroke::new(1.0, Color32::LIGHT_GRAY);
+            ui.painter()
+                .line_segment([center + vec2(-3.0, -3.0), center + vec2(3.0, 3.0)], stroke);
+            ui.painter()
+                .line_segment([center + vec2(-3.0, 3.0), center + vec2(3.0, -3.0)], stroke);
+            close.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), "Close document")
+            });
+            close.on_hover_text("Close document").clicked()
+        } else {
+            false
+        };
         (response, close_clicked)
     })
     .inner

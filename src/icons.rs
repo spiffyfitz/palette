@@ -5,6 +5,10 @@ use eframe::egui::{
 
 #[derive(Clone, Copy)]
 pub enum Icon {
+    New,
+    Open,
+    Lock,
+    Width,
     Curve,
     Triangle,
     Diamond,
@@ -54,14 +58,28 @@ pub fn button(
         } else {
             Color32::from_gray(230)
         };
-        if selected || response.hovered() {
-            ui.painter()
-                .rect_filled(rect, 4, Color32::from_gray(if selected { 65 } else { 55 }));
+        let hover = ui.ctx().animate_bool_with_time(
+            response.id.with("hover"),
+            response.hovered(),
+            crate::interface::HOVER_SECONDS,
+        );
+        let pressed = ui.ctx().animate_bool_with_time(
+            response.id.with("pressed"),
+            response.is_pointer_button_down_on(),
+            0.07,
+        );
+        if selected || hover > 0.0 {
+            let base = if selected { 52.0 } else { 39.0 };
+            ui.painter().rect_filled(
+                rect,
+                4,
+                Color32::from_gray((base + hover * 10.0 - pressed * 6.0) as u8),
+            );
             if selected {
                 ui.painter().rect_stroke(
                     rect.shrink(0.5),
                     4,
-                    Stroke::new(1.0, Color32::from_rgb(65, 220, 229)),
+                    Stroke::new(1.0, Color32::from_rgb(83, 221, 225)),
                     StrokeKind::Inside,
                 );
             }
@@ -69,11 +87,16 @@ pub fn button(
         let extent = (size.x.min(size.y) - 14.0).clamp(12.0, 24.0);
         draw(
             ui,
-            Rect::from_center_size(rect.center(), Vec2::splat(extent)),
+            Rect::from_center_size(rect.center(), Vec2::splat(extent - pressed * 1.5)),
             icon,
             color,
         );
-        response.on_hover_text(tooltip)
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, tooltip)
+        });
+        response
+            .on_hover_text(tooltip)
+            .on_disabled_hover_text(tooltip)
     })
     .inner
 }
@@ -94,6 +117,59 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::New => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    at(0.2, 0.1),
+                    at(0.62, 0.1),
+                    at(0.82, 0.3),
+                    at(0.82, 0.9),
+                    at(0.2, 0.9),
+                ],
+                s,
+            ));
+            p.line_segment([at(0.62, 0.1), at(0.62, 0.3)], s);
+            p.line_segment([at(0.62, 0.3), at(0.82, 0.3)], s);
+        }
+        Icon::Open => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    at(0.08, 0.85),
+                    at(0.08, 0.25),
+                    at(0.4, 0.25),
+                    at(0.5, 0.4),
+                    at(0.9, 0.4),
+                    at(0.82, 0.85),
+                ],
+                s,
+            ));
+            p.line_segment([at(0.08, 0.55), at(0.9, 0.55)], s);
+        }
+        Icon::Lock => {
+            p.rect_stroke(
+                Rect::from_min_max(at(0.2, 0.42), at(0.8, 0.9)),
+                1,
+                s,
+                StrokeKind::Inside,
+            );
+            p.add(egui::Shape::line(
+                vec![
+                    at(0.32, 0.45),
+                    at(0.32, 0.25),
+                    at(0.5, 0.12),
+                    at(0.68, 0.25),
+                    at(0.68, 0.45),
+                ],
+                s,
+            ));
+        }
+
+        Icon::Width => {
+            for (index, width) in [1.0, 2.0, 3.0].iter().enumerate() {
+                let y = 0.25 + index as f32 * 0.25;
+                p.line_segment([at(0.1, y), at(0.9, y)], Stroke::new(*width, color));
+            }
+        }
         Icon::Triangle | Icon::Diamond | Icon::Pentagon | Icon::Hexagon | Icon::Star => {
             let sides = match icon {
                 Icon::Triangle => 3,

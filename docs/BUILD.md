@@ -24,10 +24,19 @@ Windows smoke capture:
 ```powershell
 cargo build --locked
 .\target\debug\palette.exe --screenshot target/window.png
-cargo test --test screenshot -- --ignored
+cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Run this from an interactive desktop. Native dialogs, GPU presentation and screenshot behavior cannot be established by a headless core test.
+Run this from an interactive desktop. Native dialogs, GPU presentation and screenshot behavior cannot be established by a headless core test. Run screenshot tests serially to avoid multiple capture windows interfering.
+
+Debug capture scenes select actual interface states for repeatable visual review:
+
+```powershell
+.\target\debug\palette.exe --screenshot target/colors.png --screenshot-scene colors
+.\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
+```
+
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite covers the default window plus six scenes against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 ## macOS
 

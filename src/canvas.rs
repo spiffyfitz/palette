@@ -101,8 +101,20 @@ fn draw_shape(
 impl PaletteApp {
     pub fn canvas(&mut self, ui: &mut Ui) {
         let bounds = ui.max_rect();
+        let contextual = self.tool.paints() || self.tool.shape() || self.tool == Tool::Fill;
         let left_width = 62.0;
-        let right_width = if self.show_layers { 180.0 } else { 12.0 };
+        let tray_visibility = ui.ctx().animate_bool_with_time(
+            egui::Id::unique("layers-visible"),
+            self.show_layers,
+            crate::interface::PANEL_SECONDS,
+        );
+        let tray_width = crate::interface::LAYER_TRAY_WIDTH
+            + if self.interface.layer_properties {
+                68.0
+            } else {
+                0.0
+            };
+        let right_width = 12.0 + (tray_width + 12.0) * tray_visibility;
         let view = Rect::from_min_max(
             pos2(bounds.left() + left_width, bounds.top()),
             pos2(bounds.right() - right_width, bounds.bottom()),
@@ -168,6 +180,7 @@ impl PaletteApp {
         origin.x = (origin.x * dpi).round() / dpi;
         origin.y = (origin.y * dpi).round() / dpi;
         let canvas = Rect::from_min_size(origin, size);
+        self.image_rect = canvas;
         let painter = ui.painter().with_clip_rect(view);
         painter.rect_filled(
             canvas.expand(3.0).translate(vec2(2.0, 2.0)),
@@ -204,6 +217,30 @@ impl PaletteApp {
                 Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
+        }
+        if self.interface.grid && zoom >= 4.0 {
+            let clipped = canvas.intersect(view);
+            let from = image_point(clipped.min, canvas, zoom);
+            let to = image_point(clipped.max, canvas, zoom);
+            let stroke = Stroke::new(0.6, Color32::from_black_alpha(75));
+            for x in from[0].floor().max(0.0) as u32
+                ..=to[0].ceil().min(self.current().document.width as f32) as u32
+            {
+                let px = canvas.left() + x as f32 * zoom;
+                painter.line_segment(
+                    [pos2(px, clipped.top()), pos2(px, clipped.bottom())],
+                    stroke,
+                );
+            }
+            for y in from[1].floor().max(0.0) as u32
+                ..=to[1].ceil().min(self.current().document.height as f32) as u32
+            {
+                let py = canvas.top() + y as f32 * zoom;
+                painter.line_segment(
+                    [pos2(clipped.left(), py), pos2(clipped.right(), py)],
+                    stroke,
+                );
+            }
         }
         painter.rect_stroke(
             canvas,
@@ -392,7 +429,6 @@ impl PaletteApp {
         }
         self.selection_interaction(ui, &painter, canvas, pointer, [down, released]);
         self.text_interaction(&painter, canvas, pointer, down, released);
-        self.paint_text_preview(&painter, canvas, zoom);
         if self.cursor.is_some() && self.tool.paints() && !space {
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             if let Some(point) = pointer {
@@ -446,30 +482,43 @@ impl PaletteApp {
                 self.resize_start = None;
             }
         }
-        let sliders = Rect::from_min_max(
-            pos2(bounds.left() + 12.0, bounds.top() + 24.0),
-            pos2(bounds.left() + 48.0, bounds.bottom() - 24.0),
-        );
-        ui.scope_builder(egui::UiBuilder::new().max_rect(sliders), |ui| {
-            self.brush_sliders(ui)
-        });
-        if self.show_layers {
+        if contextual {
+            let sliders = Rect::from_min_max(
+                pos2(bounds.left() + 12.0, bounds.top() + 24.0),
+                pos2(bounds.left() + 48.0, bounds.bottom() - 24.0),
+            );
+            ui.scope_builder(egui::UiBuilder::new().max_rect(sliders), |ui| {
+                self.brush_sliders(ui)
+            });
+        }
+        if tray_visibility > 0.0 {
             let panel = Rect::from_min_max(
-                pos2(bounds.right() - 168.0, bounds.top() + 24.0),
-                pos2(bounds.right() - 12.0, bounds.bottom() - 24.0),
+                pos2(
+                    bounds.right() - 12.0 - tray_width * tray_visibility,
+                    bounds.top() + 12.0,
+                ),
+                pos2(
+                    bounds.right() - 12.0 + tray_width * (1.0 - tray_visibility),
+                    bounds.bottom() - 12.0,
+                ),
             );
             ui.scope_builder(egui::UiBuilder::new().max_rect(panel), |ui| {
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(40, 40, 47))
-                    .corner_radius(7)
-                    .inner_margin(8)
-                    .show(ui, |ui| {
-                        ui.set_width(140.0);
-                        ui.set_max_height(panel.height() - 16.0);
-                        egui::ScrollArea::vertical()
-                            .id_salt("layers-scroll")
-                            .show(ui, |ui| self.layers(ui));
-                    });
+                ui.set_clip_rect(panel.intersect(bounds));
+                ui.multiply_opacity(tray_visibility);
+                ui.add_enabled_ui(tray_visibility > 0.9, |ui| {
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(40, 40, 44))
+                        .corner_radius(7)
+                        .inner_margin(8)
+                        .show(ui, |ui| {
+                            ui.set_width(tray_width - 16.0);
+                            ui.set_min_height(panel.height() - 16.0);
+                            egui::ScrollArea::vertical()
+                                .id_salt("layers-scroll")
+                                .max_height(panel.height() - 16.0)
+                                .show(ui, |ui| self.layers(ui));
+                        });
+                });
             });
         }
         response.on_hover_text("Ctrl + wheel to zoom · Middle mouse or Space + drag to pan");
@@ -544,6 +593,7 @@ impl PaletteApp {
                         |ui| {
                             ui.spacing_mut().slider_width = (height - 62.0).max(14.0);
                             ui.spacing_mut().slider_rail_height = 3.0;
+                            ui.spacing_mut().interact_size.y = 16.0;
                             ui.visuals_mut().selection.bg_fill = ACCENT;
                             ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_gray(135);
                             ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_gray(135);

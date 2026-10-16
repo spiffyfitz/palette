@@ -1,3 +1,5 @@
+pub(crate) mod appearance;
+mod capture;
 pub(crate) mod editing;
 mod panels;
 mod text;
@@ -7,8 +9,7 @@ use crate::{
     session::{Session, Tool},
 };
 use eframe::egui::{
-    self, Color32, ColorImage, Context, Key, RichText, Sense, TextureHandle, TextureOptions, Ui,
-    Vec2, vec2,
+    self, Color32, ColorImage, Context, Key, Sense, TextureHandle, TextureOptions, Ui, Vec2, vec2,
 };
 use palette_core::{
     brush::Brush,
@@ -98,10 +99,12 @@ pub struct PaletteApp {
     file_rx: mpsc::Receiver<FileResult>,
     thumbnails: HashMap<(u64, u64), (u64, TextureHandle)>,
     pub canvas_rect: egui::Rect,
+    pub image_rect: egui::Rect,
     pub resize_start: Option<([u32; 2], egui::Pos2)>,
     pub resize_preview: Option<[u32; 2]>,
     screenshot: Option<PathBuf>,
     screenshot_requested: bool,
+    capture: capture::CaptureState,
     clipboard: Option<arboard::Clipboard>,
     edit_tx: mpsc::Sender<editing::EditResult>,
     edit_rx: mpsc::Receiver<editing::EditResult>,
@@ -112,6 +115,8 @@ pub struct PaletteApp {
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
     next_text_job: u64,
+    after_text: Option<text::AfterText>,
+    pub interface: crate::interface::InterfaceState,
 }
 
 impl PaletteApp {
@@ -123,6 +128,8 @@ impl PaletteApp {
             if arg == "--screenshot" {
                 app.screenshot = args.next().map(PathBuf::from);
                 ctx.set_pixels_per_point(1.0);
+            } else if cfg!(debug_assertions) && arg == "--screenshot-scene" {
+                app.capture.scene = args.next().map(|arg| arg.to_string_lossy().into_owned());
             } else {
                 let path = PathBuf::from(arg);
                 if path.is_file() {
@@ -130,6 +137,7 @@ impl PaletteApp {
                 }
             }
         }
+        app.prepare_capture();
         app
     }
 
@@ -151,6 +159,7 @@ impl PaletteApp {
             .text_styles
             .insert(egui::TextStyle::Button, egui::FontId::proportional(12.0));
         ctx.set_global_style(style);
+        crate::interface::configure(ctx);
         let (render_tx, requests) = mpsc::sync_channel::<RenderRequest>(1);
         let (results, render_rx) = mpsc::channel();
         let repaint = ctx.clone();
@@ -211,15 +220,19 @@ impl PaletteApp {
             file_rx,
             thumbnails: HashMap::new(),
             canvas_rect: egui::Rect::NOTHING,
+            image_rect: egui::Rect::NOTHING,
             resize_start: None,
             resize_preview: None,
             screenshot: None,
             screenshot_requested: false,
+            capture: Default::default(),
             clipboard: None,
             text_editor: None,
             text_tx,
             text_rx,
             next_text_job: 1,
+            after_text: None,
+            interface: Default::default(),
             edit_tx,
             edit_rx,
             edit_pending: false,
@@ -242,9 +255,15 @@ impl PaletteApp {
             && self.resize_dialog.is_none()
             && !self.edit_pending
             && self.text_editor.is_none()
+            && self.interface.color_editor.is_none()
+            && self.interface.canvas_properties.is_none()
     }
 
     pub fn new_document(&mut self) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::New);
+            return;
+        }
         if !self.sessions.is_empty() {
             self.current_mut().end_gesture();
         }
@@ -260,6 +279,10 @@ impl PaletteApp {
     }
 
     pub fn open_dialog(&mut self, ctx: &Context) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Open);
+            return;
+        }
         if let Some(paths) = rfd::FileDialog::new()
             .add_filter(
                 "Images and Palette projects",
@@ -291,6 +314,10 @@ impl PaletteApp {
     }
 
     pub fn save(&mut self, ctx: &Context, save_as: bool, export: bool) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Save(save_as, export));
+            return;
+        }
         if self.busy || self.edit_pending {
             return;
         }
@@ -515,6 +542,10 @@ impl PaletteApp {
     }
 
     fn request_close(&mut self, id: u64, ctx: &Context) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Close(id));
+            return;
+        }
         if self.busy || self.edit_pending {
             self.message = "Please wait for the file operation to finish".into();
             return;
@@ -563,8 +594,13 @@ impl PaletteApp {
             || self.resize_dialog.is_some()
             || self.error.is_some()
             || self.text_editor.is_some()
+            || self.interface.color_editor.is_some()
+            || self.interface.canvas_properties.is_some()
         {
             return;
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::E)) {
+            self.show_canvas_properties();
         }
         let keys = ctx.input(|i| {
             (
@@ -624,9 +660,15 @@ impl PaletteApp {
         self.poll_workers(&ctx);
         self.poll_edits();
         self.poll_text(&ctx);
-        if ctx.input(|i| i.viewport().close_requested()) && self.text_editor.is_some() {
+        self.finish_requested_text();
+        self.resume_text_action(&ctx);
+        if ctx.input(|i| i.viewport().close_requested())
+            && self.text_editor.is_some()
+            && !self.allow_quit
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.message = "Apply or cancel the text before closing Palette".into();
+            self.finish_inline_text();
+            self.after_text = Some(text::AfterText::Quit);
         }
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_quit
@@ -639,6 +681,7 @@ impl PaletteApp {
                 self.close_pending = self.sessions.iter().find(|s| s.modified()).map(|s| s.id);
             }
         }
+        self.interface.popup_was_open = egui::Popup::is_any_open(&ctx);
         self.shortcuts(&ctx);
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped {
@@ -664,29 +707,37 @@ impl PaletteApp {
                     .inner_margin(egui::Margin::symmetric(10, 2)),
             )
             .show(ui, |ui| self.tabs(ui));
+        let mut ribbon_expanded = !self.interface.ribbon_collapsed;
+        let mut status_visible = self.interface.status;
         egui::Panel::top("ribbon")
+            .resizable(false)
             .exact_size(110.0)
             .frame(
                 egui::Frame::new()
                     .fill(PANEL)
                     .inner_margin(egui::Margin::symmetric(8, 3)),
             )
-            .show(ui, |ui| self.ribbon(ui));
+            .show_collapsible(ui, &mut ribbon_expanded, |ui| self.ribbon(ui));
         egui::Panel::bottom("status")
+            .resizable(false)
             .exact_size(32.0)
             .frame(
                 egui::Frame::new()
                     .fill(Color32::from_rgb(31, 31, 39))
                     .inner_margin(egui::Margin::symmetric(10, 2)),
             )
-            .show(ui, |ui| self.status(ui));
+            .show_collapsible(ui, &mut status_visible, |ui| self.status(ui));
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(WORKSPACE))
             .show(ui, |ui| self.canvas(ui));
         self.dialogs(&ctx);
         self.resize_window(&ctx);
         self.text_window(&ctx);
+        self.appearance_windows(&ctx);
         self.request_text(&ctx);
+        if self.after_text.is_some() {
+            ctx.request_repaint();
+        }
         self.refresh_live_paint();
         self.request_render(&ctx);
         let s = self.current();
@@ -696,11 +747,11 @@ impl PaletteApp {
             if s.modified() { " •" } else { "" }
         )));
         if !self.screenshot_requested
-            && self.current().texture.is_some()
-            && !self.busy
+            && self.capture_is_settled(&ctx)
             && let Some(path) = self.screenshot.clone()
         {
             self.screenshot_requested = true;
+            self.allow_quit = true;
             let repaint = ctx.clone();
             ctx.request_screenshot(move |image| {
                 let bytes: Vec<u8> = image

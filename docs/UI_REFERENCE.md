@@ -8,16 +8,16 @@ The three left controls are stacked in the workspace, with exact numerical value
 
 The Filter menu preserves the reference category order. Only Adjustments > Invert and Brightness currently work. Other categories are disabled and identified as unimplemented; there is no fake Gaussian Blur or Gallery command.
 
-The Text icon is now functional. Clicking or dragging a canvas box opens a compact editor beside the canvas with live text preview; no permanent ribbon group was added. The Windows baseline was reviewed again with Text enabled. Native interaction captures additionally verified a brush stroke before release and text preview/commit onto a separate layer.
+The Text icon is functional. The latest pass replaces the earlier compact editor with direct canvas typing, eight resize handles, a move edge and a floating formatting strip beneath the ribbon. Historical live-stroke validation remains in LIVE_PAINT_TEXT_VALIDATION.md. The supplied video now guides menu spacing, split controls, centered dialogs, animations and the narrow layer tray; see [current behavior reference and validation](UI_BEHAVIOR_REFERENCE.md).
 
 ## Recorded comparison
 
 An initial actual wgpu capture was visually reviewed. Missing Unicode shape glyphs were replaced with drawn icons, oversized ribbon icons were reduced, the layer opacity control was constrained to the panel, and brush sliders gained cyan circular handles and numerical input. The final reviewed Windows baseline lives in `tests/fixtures/window-windows.png`.
 
-`tests/screenshot.rs` launches the actual executable, asks the wgpu backend for a screenshot, verifies 1386 × 963 dimensions and compares against the baseline. A pixel is changed when any RGB channel differs by more than 24; fewer than 0.5% changed pixels are permitted to tolerate small rasterization/hover differences. The screenshot callback waits until the canvas texture has rendered. It does not use eframe's Glow-only screenshot environment variable.
+`tests/screenshot.rs` launches the actual executable, asks the wgpu backend for a screenshot, verifies 1386 × 963 dimensions and compares against the baseline. A pixel is changed when any RGB channel differs by more than 24; fewer than 0.5% changed pixels are permitted to tolerate small rasterization/hover differences. The screenshot callback waits until the canvas texture has rendered and initial animations have settled. Six additional scene baselines cover File, Brushes, Colors, Text, Image Properties and expanded layer properties. It does not use eframe's Glow-only screenshot environment variable.
 
 ```sh
-cargo test --test screenshot -- --ignored
+cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
 This guards regressions against Palette's reviewed layout. It does not establish pixel equality with Microsoft Paint or equivalent platform presentation. Keep the Windows baseline on Windows; capture separately reviewed baselines on macOS/Linux when available. Test changed baselines visually before replacing them.

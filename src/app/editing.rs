@@ -27,15 +27,24 @@ pub enum Edit {
     Move([i32; 2]),
     Transform(Orthogonal),
     Resize(u32, u32, Resample),
+    Canvas(u32, u32),
 }
 
 impl PaletteApp {
     pub fn undo_current(&mut self) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Undo);
+            return;
+        }
         self.stroke = None;
         self.current_mut().end_gesture();
         self.current_mut().undo();
     }
     pub fn redo_current(&mut self) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Redo);
+            return;
+        }
         self.stroke = None;
         self.current_mut().end_gesture();
         self.current_mut().redo();
@@ -116,6 +125,10 @@ impl PaletteApp {
         }
     }
     pub fn edit(&mut self, operation: Edit, ctx: &Context) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::Edit(operation));
+            return;
+        }
         if self.edit_pending {
             return;
         }
@@ -131,6 +144,7 @@ impl PaletteApp {
             Edit::Move(_) => "Move selection",
             Edit::Transform(_) => "Transform image",
             Edit::Resize(..) => "Resize image",
+            Edit::Canvas(..) => "Canvas properties",
         };
         let sender = self.edit_tx.clone();
         let repaint = ctx.clone();
@@ -151,6 +165,14 @@ impl PaletteApp {
                     Edit::Transform(operation) => {
                         transform::orthogonal(&mut document, operation)?;
                         true
+                    }
+                    Edit::Canvas(width, height) => {
+                        if width == document.width && height == document.height {
+                            false
+                        } else {
+                            transform::canvas_resize(&mut document, width, height)?;
+                            true
+                        }
                     }
                     Edit::Resize(width, height, method) => {
                         if width == document.width && height == document.height {
@@ -298,6 +320,10 @@ impl PaletteApp {
     }
 
     pub fn show_resize(&mut self) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(text::AfterText::ResizeDialog);
+            return;
+        }
         let session = self.current();
         self.resize_dialog = Some(ResizeDialog {
             session: session.id,
