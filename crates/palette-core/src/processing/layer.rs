@@ -139,7 +139,15 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
                 Filter::GaussianBlur { radius } => radius > 0.,
                 Filter::BoxBlur { radius } | Filter::Median { radius } => radius > 0,
                 Filter::MotionBlur { distance, .. } => distance > 0.,
-                Filter::HighPass { .. } => true,
+                Filter::HighPass { .. }
+                | Filter::Average
+                | Filter::FindEdges
+                | Filter::Emboss { .. } => true,
+                Filter::Minimum { radius } | Filter::Maximum { radius } => radius > 0,
+                Filter::UnsharpMask { radius, amount, .. } => radius > 0. && amount > 0.,
+                Filter::Offset { x, y, .. } => x != 0 || y != 0,
+                Filter::Twirl { radius, angle } => radius > 0. && angle != 0.,
+                Filter::Wave { amplitude, .. } => amplitude != 0.,
                 Filter::Mosaic { block_size } => block_size > 1,
                 _ => false,
             }
@@ -171,6 +179,17 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::Average
+            | Filter::FindEdges
+            | Filter::Emboss { .. }
+            | Filter::UnsharpMask { .. }
+            | Filter::Minimum { .. }
+            | Filter::Maximum { .. }
+            | Filter::Offset { .. }
+            | Filter::Twirl { .. }
+            | Filter::Wave { .. } => {
+                pixels = super::conventional::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::GaussianBlur { radius } => {
                 pixels = gaussian_blur_cancel(&pixels, radius, cancel)?
             }

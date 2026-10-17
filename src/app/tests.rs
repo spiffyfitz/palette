@@ -3890,13 +3890,35 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         Kind::HighPass,
         Kind::Mosaic,
         Kind::AddNoise,
+        Kind::Average,
+        Kind::FindEdges,
+        Kind::Solarize,
+        Kind::Emboss,
+        Kind::UnsharpMask,
+        Kind::Minimum,
+        Kind::Maximum,
+        Kind::Offset,
+        Kind::Twirl,
+        Kind::Wave,
     ] {
         app.cancel_processing();
         let filter = label_position(&mut app, &ctx, "Filter");
         click_ui(&mut app, &ctx, filter);
         let category = label_position(&mut app, &ctx, kind.descriptor().category);
         click_ui(&mut app, &ctx, category);
-        let item = label_position(&mut app, &ctx, &format!("{}…", kind.descriptor().label));
+        let item = label_position(
+            &mut app,
+            &ctx,
+            &format!(
+                "{}{}",
+                kind.descriptor().label,
+                if kind.descriptor().parameters.is_empty() {
+                    ""
+                } else {
+                    "…"
+                }
+            ),
+        );
         click_ui(&mut app, &ctx, item);
         wait_for_processing(&mut app, &ctx);
         assert_eq!(
@@ -3925,4 +3947,30 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         }
         assert!(app.current().document.active().filters.is_empty());
     }
+}
+
+#[test]
+fn filter_gallery_is_first_disabled_and_unimplemented_conventional_filters_cannot_mutate_documents()
+{
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    let filter = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, filter);
+    let gallery = label_bounds(&mut app, &ctx, "Filter Gallery…");
+    let adjustments = label_bounds(&mut app, &ctx, "Adjustments");
+    assert!(gallery.bottom() < adjustments.top());
+    click_ui(&mut app, &ctx, gallery.center());
+    assert!(app.processing_dialog.is_none() && app.current().document == before);
+    if !egui::Popup::is_any_open(&ctx) {
+        let filter = label_position(&mut app, &ctx, "Filter");
+        click_ui(&mut app, &ctx, filter);
+    }
+    let artistic = label_position(&mut app, &ctx, "Artistic");
+    click_ui(&mut app, &ctx, artistic);
+    let dry = label_position(&mut app, &ctx, "Dry Brush…");
+    click_ui(&mut app, &ctx, dry);
+    assert!(app.current().document == before);
+    assert!(app.processing_dialog.is_none());
 }

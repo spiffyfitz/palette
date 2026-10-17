@@ -198,79 +198,63 @@ impl PaletteApp {
                     ui.checkbox(&mut self.show_layers, "Layers");
                 });
                 let filter_menu = ui.menu_button("Filter", |ui| {
-                    use palette_core::processing::{Kind, Operation, REGISTRY};
-                    if menu_item(ui, "Gaussian Blur…", "", None, self.close_pending_none())
-                        .clicked()
-                    {
-                        self.open_processing(Kind::GaussianBlur, None);
-                        ui.close();
-                    }
-                    for category in [
-                        "Adjustments",
-                        "Artistic",
-                        "Blur",
-                        "Brush Strokes",
-                        "Distort",
-                        "Noise",
-                        "Pixelate",
-                        "Render",
-                        "Sketch",
-                        "Stylize",
-                        "Texture",
-                        "Other",
-                        "Camera Distortion Correction",
-                    ] {
-                        let entries: Vec<_> = REGISTRY
-                            .iter()
-                            .filter(|d| {
-                                d.category == category
-                                    && matches!(d.kind.default_operation(), Operation::Filter(_))
-                            })
-                            .collect();
-                        if entries.is_empty() {
-                            menu_item(ui, category, "", None, false)
-                                .on_hover_text("Not implemented yet");
-                        } else {
-                            let response = ui.menu_button(category, |ui| {
-                                for descriptor in entries {
-                                    let label = format!(
-                                        "{}{}",
-                                        descriptor.label,
-                                        if descriptor.parameters.is_empty() {
-                                            ""
-                                        } else {
-                                            "…"
-                                        }
-                                    );
-                                    if menu_item(ui, &label, "", None, self.close_pending_none())
-                                        .clicked()
-                                    {
-                                        if descriptor.kind == Kind::Invert {
-                                            self.add_filter(Filter::Invert);
-                                        } else {
-                                            self.open_processing(descriptor.kind, None);
-                                        }
-                                        ui.close();
-                                    }
-                                }
-                            });
-                            let scene = match category {
-                                "Adjustments" => Some("adjustments-menu"),
-                                "Blur" => Some("blur-menu"),
-                                "Noise" => Some("noise-menu"),
-                                "Pixelate" => Some("pixelate-menu"),
-                                "Other" => Some("other-menu"),
-                                _ => None,
-                            };
-                            if let Some(scene) = scene {
-                                self.capture_submenu(scene, ui, &response.response);
-                            }
-                        }
-                    }
+                    use palette_core::processing::{Kind, menu::CATEGORIES};
+                    menu_item(ui, "Filter Gallery…", "", None, false).on_disabled_hover_text(
+                        "Filter Gallery is planned; sample-image previews are not implemented yet",
+                    );
                     ui.separator();
-                    if menu_item(ui, "Edit live filter stack…", "", None, true).clicked() {
-                        self.open_processing_toolbar(super::processing::Section::Filters);
-                        ui.close();
+                    for category in CATEGORIES {
+                        let response = ui.menu_button(category.label, |ui| {
+                            // A popup Area starts with a 400-point default size.
+                            // Let long conventional branches use the available
+                            // window height, with a visible rail when necessary.
+                            let height = (ctx.content_rect().height() - 48.).min(620.);
+                            ui.set_max_height(height);
+                            ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+                            ui.style_mut().spacing.scroll.dormant_handle_opacity = 0.6;
+                            egui::ScrollArea::vertical()
+                                .max_height(height)
+                                .show(ui, |ui| {
+                                    for &name in category.entries {
+                                        let descriptor = category.implemented(name);
+                                        let label = category.caption(name);
+                                        let response = menu_item(
+                                            ui,
+                                            &label,
+                                            "",
+                                            None,
+                                            descriptor.is_some() && self.close_pending_none(),
+                                        );
+                                        if let Some(descriptor) = descriptor {
+                                            if response.clicked() {
+                                                if descriptor.kind == Kind::Invert {
+                                                    self.add_filter(Filter::Invert);
+                                                } else {
+                                                    self.open_processing(descriptor.kind, None);
+                                                }
+                                                ui.close();
+                                            }
+                                        } else {
+                                            response.on_disabled_hover_text("Not implemented yet");
+                                        }
+                                    }
+                                });
+                        });
+                        let scene = match category.label {
+                            "Adjustments" => Some("adjustments-menu"),
+                            "Blur" => Some("blur-menu"),
+                            "Noise" => Some("noise-menu"),
+                            "Pixelate" => Some("pixelate-menu"),
+                            "Other" => Some("other-menu"),
+                            "Distort" => Some("distort-menu"),
+                            "Sharpen" => Some("sharpen-menu"),
+                            "Stylize" => Some("stylize-menu"),
+                            "Artistic" => Some("artistic-menu"),
+                            _ => None,
+                        };
+                        if let Some(scene) = scene {
+                            self.capture_submenu(scene, ui, &response.response);
+                        }
                     }
                 });
                 for scene in [
@@ -280,6 +264,10 @@ impl PaletteApp {
                     "blur-menu",
                     "pixelate-menu",
                     "other-menu",
+                    "distort-menu",
+                    "sharpen-menu",
+                    "stylize-menu",
+                    "artistic-menu",
                 ] {
                     self.capture_popup(scene, &filter_menu.response);
                 }

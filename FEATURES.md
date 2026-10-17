@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [style controls and six more filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md); [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [conventional menus and ten more filters](docs/FILTER_MENU_VALIDATION.md); [style controls and six more filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md); [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -117,14 +117,16 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [style contr
 - [x] Filter/effect stack edit/toggle/reorder/duplicate/delete, plus selection-derived individual filter-mask controls.
 - [x] Live Drop/Inner Shadow, Outer/Inner Glow, Stroke (outside/inside/center) and Color Overlay; source/mask updates and layer opacity/blending.
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
-- [x] Registry-driven Filter categories, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 24 implemented operations.
+- [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
+- [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 34 implemented operations.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
 - [ ] Filter Gallery and remaining filter/style catalog, including bevel, satin and gradient/pattern overlays.
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
 - [x] Levels, five-point Curves, Motion Blur, High Pass, Mosaic and seeded monochrome/color Uniform/Gaussian Add Noise.
+- [x] Average, Find Edges, Emboss, Solarize, Unsharp Mask, Minimum, Maximum, Offset, Twirl and Wave, with source/alpha/sampling/cancellation references.
 - [x] Glow Radius, shadow Angle/Distance/Spread and Stroke Width/Rounded corners controls; older native projects retain square strokes.
 - [ ] Remaining conventional filter catalog, including edge filters, radial/edge-preserving blurs, distortions and textures.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.

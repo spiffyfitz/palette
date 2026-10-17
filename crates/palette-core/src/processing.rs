@@ -1,13 +1,15 @@
 //! Implemented processing catalog and shared, UI-independent parameter metadata.
 //! The renderer never knows widget types; adding an operation extends this
 //! registry and its evaluator rather than introducing a second UI parameter model.
+mod conventional;
 mod extended;
 mod gaussian;
 mod layer;
+pub mod menu;
 mod neighborhood;
 mod point;
 mod round;
-use crate::document::{Effect, Filter, NoiseDistribution, StrokePosition};
+use crate::document::{Effect, Filter, FilterEdges, NoiseDistribution, StrokePosition};
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
 pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_cancel};
@@ -41,6 +43,16 @@ pub enum Kind {
     HighPass,
     Mosaic,
     AddNoise,
+    Average,
+    FindEdges,
+    Solarize,
+    Emboss,
+    UnsharpMask,
+    Minimum,
+    Maximum,
+    Offset,
+    Twirl,
+    Wave,
 }
 #[derive(Clone, Copy, Debug)]
 /// UI-independent input constraints, shared by model validation and controls.
@@ -85,6 +97,11 @@ const COLOR: Parameter = Parameter {
 };
 const OPACITY: Parameter = number("opacity", "Opacity", 0., 1., 0.01);
 const SPREAD: Parameter = number("spread", "Spread", 0., 1., 0.01);
+const EDGES: Parameter = Parameter {
+    key: "edges",
+    label: "Undefined areas",
+    kind: ParameterType::Choice(&["Wrap around", "Repeat edge pixels", "Transparent"]),
+};
 const SIZE: Parameter = number("size", "Size (px)", 0., 64., 0.1);
 /// Implemented operations only; unfinished catalog entries are never registered.
 pub const REGISTRY: &[Descriptor] = &[
@@ -305,6 +322,90 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
+    Descriptor {
+        kind: Kind::Average,
+        label: "Average",
+        category: "Blur",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::FindEdges,
+        label: "Find Edges",
+        category: "Stylize",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::Solarize,
+        label: "Solarize",
+        category: "Stylize",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::Emboss,
+        label: "Emboss",
+        category: "Stylize",
+        parameters: &[
+            number("angle", "Angle (°)", -180., 180., 1.),
+            number("height", "Height (px)", 1., 16., 1.),
+            number("strength", "Amount", 0., 5., 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::UnsharpMask,
+        label: "Unsharp Mask",
+        category: "Sharpen",
+        parameters: &[
+            number("strength", "Amount", 0., 5., 0.01),
+            number("radius", "Radius (px)", 0., 64., 0.1),
+            number("threshold", "Threshold", 0., 255., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Minimum,
+        label: "Minimum",
+        category: "Other",
+        parameters: &[number("radius", "Radius (px)", 0., 16., 1.)],
+    },
+    Descriptor {
+        kind: Kind::Maximum,
+        label: "Maximum",
+        category: "Other",
+        parameters: &[number("radius", "Radius (px)", 0., 16., 1.)],
+    },
+    Descriptor {
+        kind: Kind::Offset,
+        label: "Offset",
+        category: "Other",
+        parameters: &[
+            number("x", "Horizontal (px)", -16384., 16384., 1.),
+            number("y", "Vertical (px)", -16384., 16384., 1.),
+            EDGES,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Twirl,
+        label: "Twirl",
+        category: "Distort",
+        parameters: &[
+            number("angle", "Angle (°)", -720., 720., 1.),
+            number("radius", "Radius (px)", 0., 4096., 0.1),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Wave,
+        label: "Wave",
+        category: "Distort",
+        parameters: &[
+            number("amplitude", "Amplitude (px)", -128., 128., 0.1),
+            number("wavelength", "Wavelength (px)", 1., 1024., 0.1),
+            Parameter {
+                key: "vertical",
+                label: "Vertical",
+                kind: ParameterType::Boolean,
+            },
+            EDGES,
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -317,6 +418,36 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::Average => Operation::Filter(Filter::Average),
+            Self::FindEdges => Operation::Filter(Filter::FindEdges),
+            Self::Solarize => Operation::Filter(Filter::Solarize),
+            Self::Emboss => Operation::Filter(Filter::Emboss {
+                angle: 135.,
+                height: 1,
+                amount: 1.,
+            }),
+            Self::UnsharpMask => Operation::Filter(Filter::UnsharpMask {
+                radius: 2.,
+                amount: 1.,
+                threshold: 0,
+            }),
+            Self::Minimum => Operation::Filter(Filter::Minimum { radius: 2 }),
+            Self::Maximum => Operation::Filter(Filter::Maximum { radius: 2 }),
+            Self::Offset => Operation::Filter(Filter::Offset {
+                x: 16,
+                y: 16,
+                edges: FilterEdges::Wrap,
+            }),
+            Self::Twirl => Operation::Filter(Filter::Twirl {
+                radius: 128.,
+                angle: 90.,
+            }),
+            Self::Wave => Operation::Filter(Filter::Wave {
+                amplitude: 8.,
+                wavelength: 64.,
+                vertical: false,
+                edges: FilterEdges::Wrap,
+            }),
             Self::BrightnessContrast => Operation::Filter(Filter::BrightnessContrast {
                 brightness: 0.,
                 contrast: 0.,
@@ -416,6 +547,16 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::Average) => Kind::Average,
+            Self::Filter(Filter::FindEdges) => Kind::FindEdges,
+            Self::Filter(Filter::Solarize) => Kind::Solarize,
+            Self::Filter(Filter::Emboss { .. }) => Kind::Emboss,
+            Self::Filter(Filter::UnsharpMask { .. }) => Kind::UnsharpMask,
+            Self::Filter(Filter::Minimum { .. }) => Kind::Minimum,
+            Self::Filter(Filter::Maximum { .. }) => Kind::Maximum,
+            Self::Filter(Filter::Offset { .. }) => Kind::Offset,
+            Self::Filter(Filter::Twirl { .. }) => Kind::Twirl,
+            Self::Filter(Filter::Wave { .. }) => Kind::Wave,
             Self::Filter(Filter::BrightnessContrast { .. }) => Kind::BrightnessContrast,
             Self::Filter(Filter::Exposure { .. }) => Kind::Exposure,
             Self::Filter(Filter::HueSaturation { .. }) => Kind::HueSaturation,
@@ -445,6 +586,51 @@ impl Operation {
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
         match (self, key) {
+            (Self::Filter(Filter::Emboss { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Emboss { height: v, .. }), "height") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Emboss { amount: v, .. }), "strength") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::UnsharpMask { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::UnsharpMask { amount: v, .. }), "strength") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::UnsharpMask { threshold: v, .. }), "threshold") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Minimum { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Maximum { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Offset { x: v, .. }), "x") => Some(Value::Number(*v as f32)),
+            (Self::Filter(Filter::Offset { y: v, .. }), "y") => Some(Value::Number(*v as f32)),
+            (Self::Filter(Filter::Offset { edges: v, .. }), "edges") => Some(Value::Choice(
+                FilterEdges::ALL
+                    .iter()
+                    .position(|e| e == v)
+                    .expect("edge choice"),
+            )),
+            (Self::Filter(Filter::Twirl { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Twirl { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Wave { amplitude: v, .. }), "amplitude") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Wave { wavelength: v, .. }), "wavelength") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Wave { vertical: v, .. }), "vertical") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Wave { edges: v, .. }), "edges") => Some(Value::Choice(
+                FilterEdges::ALL
+                    .iter()
+                    .position(|e| e == v)
+                    .expect("edge choice"),
+            )),
             (Self::Filter(Filter::Levels { black: v, .. }), "black") => {
                 Some(Value::Number(*v as f32))
             }
@@ -638,6 +824,79 @@ impl Operation {
             return Err("Input black must be below input white".into());
         }
         match (self, key, value) {
+            (Self::Filter(Filter::Emboss { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Emboss { height: v, .. }), "height", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Emboss { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::UnsharpMask { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::UnsharpMask { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::UnsharpMask { threshold: v, .. }),
+                "threshold",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Minimum { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Maximum { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Offset { x: v, .. }), "x", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as i32;
+            }
+            (Self::Filter(Filter::Offset { y: v, .. }), "y", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as i32;
+            }
+            (Self::Filter(Filter::Offset { edges: v, .. }), "edges", Value::Choice(n)) => {
+                *v = FilterEdges::ALL[n];
+            }
+            (Self::Filter(Filter::Twirl { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Twirl { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wave { amplitude: v, .. }), "amplitude", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wave { wavelength: v, .. }), "wavelength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wave { vertical: v, .. }), "vertical", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wave { edges: v, .. }), "edges", Value::Choice(n)) => {
+                *v = FilterEdges::ALL[n];
+            }
             (Self::Filter(Filter::Levels { black: v, .. }), "black", Value::Number(n)) => {
                 if n.fract() != 0. {
                     return Err("Parameter requires a whole number".into());
@@ -937,7 +1196,18 @@ impl Operation {
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
-        for key in ["radius", "size", "distance", "width", "block_size"] {
+        for key in [
+            "radius",
+            "size",
+            "distance",
+            "width",
+            "block_size",
+            "height",
+            "amplitude",
+            "wavelength",
+            "x",
+            "y",
+        ] {
             if let Some(Value::Number(n)) = self.value(key) {
                 result
                     .set_value(
@@ -946,16 +1216,30 @@ impl Operation {
                             if matches!(
                                 self,
                                 Self::Filter(
-                                    Filter::BoxBlur { .. }
+                                    Filter::Minimum { .. }
+                                        | Filter::Maximum { .. }
+                                        | Filter::Emboss { .. }
+                                        | Filter::Offset { .. }
+                                        | Filter::BoxBlur { .. }
                                         | Filter::Median { .. }
                                         | Filter::Mosaic { .. }
                                 )
                             ) {
                                 (n * scale)
                                     .round()
-                                    .max(if key == "block_size" { 1. } else { 0. })
+                                    .max(if matches!(key, "block_size" | "height") {
+                                        1.
+                                    } else if matches!(key, "x" | "y") {
+                                        -16384.
+                                    } else {
+                                        0.
+                                    })
                             } else {
-                                n * scale
+                                (n * scale).max(if key == "wavelength" {
+                                    1.
+                                } else {
+                                    f32::NEG_INFINITY
+                                })
                             },
                         ),
                     )

@@ -355,6 +355,11 @@ fn every_catalog_entry_roundtrips_sources_masks_settings_and_baked_paint_appeara
 fn typed_catalog_parameters_reject_bad_integer_choice_and_nonfinite_values_before_saving() {
     for (kind, key, value) in [
         (Kind::Posterize, "levels", Value::Number(3.5)),
+        (Kind::Minimum, "radius", Value::Number(1.5)),
+        (Kind::Offset, "x", Value::Number(0.5)),
+        (Kind::Wave, "wavelength", Value::Number(0.)),
+        (Kind::Twirl, "angle", Value::Number(f32::NAN)),
+        (Kind::Offset, "edges", Value::Choice(3)),
         (Kind::Median, "radius", Value::Number(6.)),
         (Kind::Stroke, "position", Value::Choice(3)),
         (Kind::Exposure, "stops", Value::Number(f32::NAN)),

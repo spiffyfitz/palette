@@ -89,6 +89,26 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
             })
         }
 
+        Filter::Solarize => {
+            return [
+                if pixel[0] > 127 {
+                    255 - pixel[0]
+                } else {
+                    pixel[0]
+                },
+                if pixel[1] > 127 {
+                    255 - pixel[1]
+                } else {
+                    pixel[1]
+                },
+                if pixel[2] > 127 {
+                    255 - pixel[2]
+                } else {
+                    pixel[2]
+                },
+                pixel[3],
+            ];
+        }
         Filter::Invert => return [255 - pixel[0], 255 - pixel[1], 255 - pixel[2], pixel[3]],
         Filter::Brightness { amount } => {
             return [
@@ -154,7 +174,16 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
             input.map(|v| (v * steps).round() / steps)
         }
         // Zero-radius neighborhood operations can use the point fast path.
-        Filter::GaussianBlur { .. }
+        Filter::Average
+        | Filter::FindEdges
+        | Filter::Emboss { .. }
+        | Filter::UnsharpMask { .. }
+        | Filter::Minimum { .. }
+        | Filter::Maximum { .. }
+        | Filter::Offset { .. }
+        | Filter::Twirl { .. }
+        | Filter::Wave { .. }
+        | Filter::GaussianBlur { .. }
         | Filter::BoxBlur { .. }
         | Filter::Median { .. }
         | Filter::MotionBlur { .. }

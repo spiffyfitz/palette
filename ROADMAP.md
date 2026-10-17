@@ -9,7 +9,7 @@ This review follows the original phases. Functional source code and passing Wind
 | 2 — core painting | Live strokes, eraser, fill, shapes/polygon/curve, text, clipboard, selections, transforms and history work | Brush variants/tablet/mask painting, text metric parity, property gesture coalescing and persistent vectors remain explicit deferrals |
 | 3 — file compatibility | Real still AVIF codec/options; `.palette` v5 streamed shared assets, v1/v2/v3/v4 migration, backing color and opaque metadata; genuine two-layer `.paint` subset import/export; import layer, recents and recovery | User confirms Paint opening/appearance; edit/save-back, broader variants/platforms and metadata/color/conformance remain |
 | 4 — advanced layers/selections | 19 blend modes; Wand/freeform/edge-aware brush, live feather previews, canvas toolbars, coverage combination and basic layer-mask properties | Merges, polygon selection, morphology and mask painting/view/apply/link workflows |
-| 5 — filters/styles | 18 live filters, six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining catalog/styles, Filter Gallery, per-stage/tile caching, main-job cancellation and GPU processing |
+| 5 — filters/styles | 28 live filters, six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining catalog/styles, Filter Gallery, per-stage/tile caching, main-job cancellation and GPU processing |
 | 6 — platform polish | CI configuration and Windows native captures | Actual platform matrix, performance benchmarks on dense 4K/8K, accessibility, packaging and signing |
 
 ## Phase 3 acceptance status
@@ -24,7 +24,7 @@ AVIF Workflow I is tested locally on Windows with actual rav1e encoding and inde
 
 At the user's request, progress has moved to Phase 5. Its first complete vertical slice is implemented and validated: [live processing validation](docs/PHASE5_VALIDATION.md). This advances the roadmap without declaring all earlier deferrals complete.
 
-1. Continue with Find Edges/Emboss, radial or edge-preserving blur, noise reduction and distortions. Levels, five-point Curves, Motion Blur, seeded Add Noise, High Pass and Mosaic are now implemented alongside the earlier catalog.
+1. Continue with radial or edge-preserving blur, noise reduction, additional distortions and artistic/texture operations. Find Edges/Emboss, Solarize, Unsharp Mask, Average, Minimum/Maximum, Offset, Twirl and Wave are now implemented. Levels, five-point Curves, Motion Blur, seeded Add Noise, High Pass and Mosaic are now implemented alongside the earlier catalog.
 2. Reduce full-resolution styled-layer costs through alpha-only padded assets, per-stage/tile caching and cancellable main jobs before claiming smooth dense 4K/8K editing.
 3. Continue styles with Bevel/Emboss, Satin and Gradient/Pattern Overlay; build Filter Gallery around implemented entries. Inner Shadow/Glow and inside/outside/centered Stroke are implemented.
 4. Retain the open Phase 4 work: polygon selection, source-preserving mask painting/view/link/apply, selection morphology, selected/visible merges and confirmed flattening with backdrop-dependent blend tests.
@@ -42,3 +42,5 @@ Latest UI follow-up: [three layer controls and on-canvas processing](docs/LAYER_
 Latest Phase 5 batch: [expanded catalog validation](docs/PROCESSING_CATALOG_VALIDATION.md), including algorithm ranges, native preservation, independent references and measured Box/Median costs. Phase 5 remains in progress.
 
 Latest Phase 5 follow-up: [requested style controls and six filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md). Glow Radius, shadow Angle/Distance/Spread and Stroke Width/Rounded corners are functional. Native v5 prevents older readers silently losing round joins; v1–v4 remain readable.
+
+Current follow-up: [conventional menu and ten filters](docs/FILTER_MENU_VALIDATION.md). Filter Gallery is disabled and first in the menu. Its future window should compare filters using one shared example image, such as a flower or sailboat; this is an agreed design direction, not built functionality. Correction, Liquify, Vanishing Point and filter-plugin sections are excluded by user instruction. The remaining conventional branches are researched; inactive filters are explicitly disabled. Phase 5 remains in progress.

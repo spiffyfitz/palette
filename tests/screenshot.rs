@@ -61,6 +61,10 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "noise-menu",
         "pixelate-menu",
         "other-menu",
+        "distort-menu",
+        "sharpen-menu",
+        "stylize-menu",
+        "artistic-menu",
         "processing-hue",
         "processing-stroke",
         "processing-inner-shadow",
@@ -71,6 +75,12 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-noise",
         "processing-mosaic",
         "processing-high-pass",
+        "processing-edges",
+        "processing-emboss",
+        "processing-unsharp",
+        "processing-offset",
+        "processing-twirl",
+        "processing-wave",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

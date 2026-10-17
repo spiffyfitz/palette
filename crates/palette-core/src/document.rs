@@ -147,6 +147,52 @@ pub enum Filter {
         monochrome: bool,
         distribution: NoiseDistribution,
     },
+    Average,
+    FindEdges,
+    Solarize,
+    Emboss {
+        angle: f32,
+        height: u8,
+        amount: f32,
+    },
+    UnsharpMask {
+        radius: f32,
+        amount: f32,
+        threshold: u8,
+    },
+    Minimum {
+        radius: u8,
+    },
+    Maximum {
+        radius: u8,
+    },
+    Offset {
+        x: i32,
+        y: i32,
+        edges: FilterEdges,
+    },
+    Twirl {
+        radius: f32,
+        angle: f32,
+    },
+    Wave {
+        amplitude: f32,
+        wavelength: f32,
+        vertical: bool,
+        edges: FilterEdges,
+    },
+}
+
+/// Sampling outside source bounds; stable named values in native projects.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FilterEdges {
+    Wrap,
+    Repeat,
+    Transparent,
+}
+impl FilterEdges {
+    /// Stable order for the common sampling choice control.
+    pub const ALL: [Self; 3] = [Self::Wrap, Self::Repeat, Self::Transparent];
 }
 
 /// Independently generated noise distributions, with stable serialized names.

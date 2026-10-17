@@ -31,7 +31,13 @@ impl PaletteApp {
                 | "processing-motion"
                 | "processing-noise"
                 | "processing-mosaic"
-                | "processing-high-pass",
+                | "processing-high-pass"
+                | "processing-edges"
+                | "processing-emboss"
+                | "processing-unsharp"
+                | "processing-offset"
+                | "processing-twirl"
+                | "processing-wave",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -42,12 +48,27 @@ impl PaletteApp {
                     } else {
                         [255; 4]
                     };
+                let contrast_pattern = matches!(
+                    self.capture.scene.as_deref(),
+                    Some(
+                        "processing-edges"
+                            | "processing-emboss"
+                            | "processing-unsharp"
+                            | "processing-offset"
+                            | "processing-twirl"
+                            | "processing-wave"
+                    )
+                );
                 for y in 200..390 {
                     for x in 280..540 {
                         self.current_mut().document.active_mut().source.set(
                             x,
                             y,
-                            [225, 70, 55, 255],
+                            if contrast_pattern && x > 400 && y > 240 && y < 350 {
+                                [35, 140, 210, 255]
+                            } else {
+                                [225, 70, 55, 255]
+                            },
                         );
                     }
                 }
@@ -99,6 +120,12 @@ impl PaletteApp {
                         Some("processing-noise") => Kind::AddNoise,
                         Some("processing-mosaic") => Kind::Mosaic,
                         Some("processing-high-pass") => Kind::HighPass,
+                        Some("processing-edges") => Kind::FindEdges,
+                        Some("processing-emboss") => Kind::Emboss,
+                        Some("processing-unsharp") => Kind::UnsharpMask,
+                        Some("processing-offset") => Kind::Offset,
+                        Some("processing-twirl") => Kind::Twirl,
+                        Some("processing-wave") => Kind::Wave,
                         _ => Kind::GaussianBlur,
                     };
                     self.open_processing(kind, None);

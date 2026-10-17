@@ -67,3 +67,5 @@ Future packages should bundle required license notices, declare portal/Zenity/ru
 The CI matrix installs NASM and executes the same AVIF/native/recovery tests on each target. This configuration has not been run remotely here; local validation is Windows only. See [roadmap gates](../ROADMAP.md).
 
 Current Phase 5 desktop suite covers 56 states, including the six additional processing editors and Pixelate/Other menus; see [style/filter validation](STYLE_FILTER_CONTROLS_VALIDATION.md). Cold CPU diagnostics for this batch: `cargo run -p palette-core --example processing_extended_benchmark --locked`.
+
+The conventional-menu follow-up expands Windows desktop regression to 66 states. See [menu/filter validation](FILTER_MENU_VALIDATION.md); the extended CPU benchmark also includes the ten new operations.
