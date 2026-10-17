@@ -98,8 +98,8 @@ impl PaletteApp {
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let tool = if self.tool == Tool::MoveLayer {
-                Tool::MoveLayer
+            let tool = if matches!(self.tool, Tool::MoveLayer | Tool::Wand) {
+                self.tool
             } else {
                 Tool::Select
             };
@@ -108,6 +108,8 @@ impl PaletteApp {
                 tool,
                 if tool == Tool::MoveLayer {
                     Icon::Move
+                } else if tool == Tool::Wand {
+                    Icon::Wand
                 } else {
                     Icon::Select
                 },
@@ -117,6 +119,7 @@ impl PaletteApp {
             egui::Popup::menu(&response)
                 .style(interface::menu_style)
                 .show(|ui| {
+                    ui.set_min_width(230.);
                     if interface::menu_item(
                         ui,
                         "Rectangular selection",
@@ -137,6 +140,12 @@ impl PaletteApp {
                     }
                     interface::menu_item(ui, "Free-form selection", "", None, false)
                         .on_hover_text("Not implemented yet");
+                    if interface::menu_item(ui, "Magic Wand", "", Some(Icon::Wand), true).clicked()
+                    {
+                        self.choose_tool(Tool::Wand);
+                        ui.close();
+                    }
+                    self.selection_options(ui);
                     ui.separator();
                     if interface::menu_item(ui, "Select all", "Ctrl+A", None, true).clicked() {
                         self.select_all();
@@ -150,7 +159,38 @@ impl PaletteApp {
                         self.invert_selection();
                         ui.close();
                     }
+                    if interface::menu_item(
+                        ui,
+                        "Feather selection…",
+                        "",
+                        None,
+                        self.current().document.selection.is_some()
+                            && self.close_pending_none()
+                            && !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.show_feather(false);
+                        ui.close();
+                    }
+                    if interface::menu_item(
+                        ui,
+                        "Mask from selection",
+                        "",
+                        None,
+                        self.current().document.selection.is_some()
+                            && self.current().document.active().mask.is_none()
+                            && !self.current().document.active().locked
+                            && !self.edit_pending,
+                    )
+                    .clicked()
+                    {
+                        self.edit(crate::app::editing::Edit::MaskFromSelection, ui.ctx());
+                        ui.close();
+                    }
                 });
+            self.capture_popup("selection-options", &response);
+            self.capture_popup("wand-settings", &response);
         });
     }
     fn transform_control(&mut self, ui: &mut Ui, flip: bool) {

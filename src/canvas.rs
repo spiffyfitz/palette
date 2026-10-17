@@ -218,10 +218,22 @@ impl PaletteApp {
                     self.current_mut().text_drag = Some(point);
                 }
                 Tool::Select => {
+                    let mode = self.selection_mode(&ctx);
                     self.current_mut().selection_drag = Some(SelectionDrag {
                         start: point,
                         current: point,
+                        mode,
                     });
+                }
+                Tool::Wand => {
+                    self.edit(
+                        crate::app::editing::Edit::Wand(
+                            [point[0] as u32, point[1] as u32],
+                            self.current().wand,
+                            self.selection_mode(&ctx),
+                        ),
+                        &ctx,
+                    );
                 }
                 Tool::Fill => {
                     let color = if self.stroke_background {
@@ -428,7 +440,9 @@ impl PaletteApp {
         response.on_hover_text(if self.tool == Tool::MoveLayer {
             "Drag the active layer · Shift constrains axis · Arrows nudge · Escape cancels"
         } else if self.tool == Tool::Select {
-            "Drag selected pixels to move · Drag handles to resize or rotate · Shift constrains · Alt draws a new selection · Escape cancels"
+            "Drag selected pixels or handles · Shift adds · Alt subtracts · Shift+Alt intersects · Choose Replace for transforms · Escape cancels"
+        } else if self.tool==Tool::Wand {
+            "Click matching colors · Shift adds · Alt subtracts · Shift+Alt intersects · Options in Selection flyout"
         } else {
             "Ctrl + wheel to zoom · Middle mouse or Space + drag to pan"
         });

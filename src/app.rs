@@ -1,5 +1,7 @@
+mod advanced;
 pub(crate) mod appearance;
 mod capture;
+mod close;
 pub(crate) mod editing;
 mod files;
 mod panels;
@@ -148,6 +150,8 @@ pub struct PaletteApp {
     recovery_timer: std::time::Instant,
     deferred_close: bool,
     avif_export: Option<files::AvifExport>,
+    paint_export: Option<files::PaintExport>,
+    feather_dialog: Option<advanced::FeatherDialog>,
     text_editor: Option<text::TextEditor>,
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
@@ -303,6 +307,8 @@ impl PaletteApp {
             recovery_timer: std::time::Instant::now(),
             deferred_close: false,
             avif_export: None,
+            paint_export: None,
+            feather_dialog: None,
         };
         app.new_document();
         app
@@ -317,6 +323,8 @@ impl PaletteApp {
     pub fn close_pending_none(&self) -> bool {
         !self.recovery_prompt
             && self.avif_export.is_none()
+            && self.paint_export.is_none()
+            && self.feather_dialog.is_none()
             && self.close_pending.is_none()
             && self.error.is_none()
             && self.resize_dialog.is_none()
@@ -361,6 +369,7 @@ impl PaletteApp {
                 "Images and Palette projects",
                 &[
                     "palette", "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "avif",
+                    "paint",
                 ],
             )
             .pick_files()
@@ -408,7 +417,7 @@ impl PaletteApp {
         let path = path.or_else(|| {
             if export {
                 rfd::FileDialog::new()
-                    .set_title("Export flattened image")
+                    .set_title("Export image or Microsoft Paint project")
                     .add_filter("PNG — preserves transparency", &["png"])
                     .add_filter("JPEG — white background", &["jpg", "jpeg"])
                     .add_filter("BMP", &["bmp"])
@@ -416,6 +425,7 @@ impl PaletteApp {
                     .add_filter("TIFF", &["tiff"])
                     .add_filter("WebP — lossless", &["webp"])
                     .add_filter("AVIF — quality options", &["avif"])
+                    .add_filter("Microsoft Paint project — experimental", &["paint"])
                     .set_file_name(format!("{}.png", session.name))
                     .save_file()
             } else {
@@ -432,7 +442,14 @@ impl PaletteApp {
         if path.extension().is_none() {
             path.set_extension(if export { "png" } else { "palette" });
         }
-        if export && io::extension(&path) == "avif" {
+        if export && io::extension(&path) == "paint" {
+            self.paint_export = Some(files::PaintExport {
+                path,
+                session: self.current().id,
+                revision: self.current().history.revision,
+                backup_complete: false,
+            });
+        } else if export && io::extension(&path) == "avif" {
             self.avif_export = Some(files::AvifExport {
                 path,
                 options: io::AvifOptions::default(),
@@ -570,6 +587,8 @@ impl PaletteApp {
                         if io::extension(&path) == "gif" {
                             self.message =
                                 "Imported first GIF frame; animation is not preserved".into();
+                        } else if io::extension(&path) == "paint" {
+                            self.message = "Opened editable Paint layers; exported copies still require Microsoft Paint validation".into();
                         } else {
                             self.message = format!("Opened {}", path.display());
                         }
@@ -584,6 +603,14 @@ impl PaletteApp {
                     result,
                 } => match result {
                     Ok(()) => {
+                        if !export
+                            && io::extension(&path) == "palette"
+                            && let Some(dialog) = &mut self.paint_export
+                            && dialog.session == id
+                            && dialog.revision == revision
+                        {
+                            dialog.backup_complete = true;
+                        }
                         if !export {
                             self.remember(&path);
                         }
@@ -750,6 +777,8 @@ impl PaletteApp {
     fn shortcuts(&mut self, ctx: &Context) {
         if self.recovery_prompt
             || self.avif_export.is_some()
+            || self.paint_export.is_some()
+            || self.feather_dialog.is_some()
             || ctx.egui_wants_keyboard_input()
             || self.close_pending.is_some()
             || self.resize_dialog.is_some()

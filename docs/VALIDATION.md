@@ -1,5 +1,8 @@
 # Milestone validation
 
+> Historical milestone report. Current codec/specimen evidence and remaining gates are in [PHASE3_VALIDATION.md](PHASE3_VALIDATION.md) and [PAINT_RESEARCH.md](PAINT_RESEARCH.md).
+
+
 This records the initial foundation milestone. See [Phase 2 validation](PHASE2_VALIDATION.md) for the latest implemented workflow and checks.
 
 Recorded locally on 2026-10-15 (America/New_York). The repository began empty; this milestone implements the Phase 0 design and a runnable Phase 1 foundation with several early Phase 2 editing slices. Phase 0's specimen analysis remains incomplete because `Untitled.paint` was not supplied.

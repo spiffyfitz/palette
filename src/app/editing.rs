@@ -17,6 +17,19 @@ pub(super) struct EditResult {
 
 /// Image/selection edits available from menus, canvas and shortcuts.
 pub enum Edit {
+    Wand(
+        [u32; 2],
+        palette_core::selection::Wand,
+        palette_core::selection::Combine,
+    ),
+    Feather {
+        radius: f32,
+        mask: bool,
+    },
+    MaskFromSelection,
+    InvertMask,
+    ToggleMask,
+    DeleteMask,
     Fill {
         point: [u32; 2],
         color: [u8; 4],
@@ -174,6 +187,13 @@ impl PaletteApp {
         let select_tool =
             matches!(operation, Edit::Shape(..) | Edit::Path(..)).then_some(self.tool);
         let label = match operation {
+            Edit::Wand(..) => "Magic Wand selection",
+            Edit::Feather { mask: true, .. } => "Feather layer mask",
+            Edit::Feather { mask: false, .. } => "Feather selection",
+            Edit::MaskFromSelection => "Add layer mask",
+            Edit::InvertMask => "Invert layer mask",
+            Edit::ToggleMask => "Toggle layer mask",
+            Edit::DeleteMask => "Delete layer mask",
             Edit::Fill { .. } => "Fill",
             Edit::Clear => "Clear selection",
             Edit::Crop => "Crop",
@@ -204,6 +224,62 @@ impl PaletteApp {
         std::thread::spawn(move || {
             let result = (|| {
                 let changed = match operation {
+                    Edit::Wand(point, options, mode) => {
+                        let mask = palette_core::selection::wand(&document, point, options)?;
+                        let combined = palette_core::selection::combine(
+                            document.selection.as_ref(),
+                            &mask,
+                            mode,
+                        )?;
+                        let changed = document.selection.as_ref() != Some(&combined);
+                        document.selection = Some(combined);
+                        changed
+                    }
+                    Edit::Feather { radius, mask } => {
+                        if mask && document.active().locked {
+                            return Err("Unlock the layer before editing its mask".into());
+                        }
+                        let plane = if mask {
+                            &mut document.active_mut().mask
+                        } else {
+                            &mut document.selection
+                        };
+                        let before = plane.as_ref().ok_or("No mask or selection to feather")?;
+                        let after = palette_core::selection::feather(before, radius)?;
+                        let changed = before != &after;
+                        *plane = Some(after);
+                        changed
+                    }
+                    Edit::MaskFromSelection => {
+                        palette_core::selection::mask_from_selection(&mut document)?
+                    }
+                    Edit::DeleteMask | Edit::ToggleMask | Edit::InvertMask => {
+                        if document.active().locked {
+                            return Err("Unlock the layer before editing its mask".into());
+                        }
+                        let plane = &mut document.active_mut().mask;
+                        match operation {
+                            Edit::DeleteMask => plane.take().is_some(),
+                            Edit::ToggleMask => {
+                                if let Some(m) = plane {
+                                    m.enabled = !m.enabled;
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => {
+                                if let Some(m) = plane {
+                                    for v in std::sync::Arc::make_mut(&mut m.values) {
+                                        *v = 255 - *v;
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        }
+                    }
                     Edit::Fill {
                         point,
                         color,

@@ -124,6 +124,7 @@ impl PaletteApp {
             || self.current().selection_drag.is_some()
             || self.current().selection_transform.is_some()
             || ctx.input(|i| i.modifiers.alt)
+            || self.current().selection_mode != palette_core::selection::Combine::Replace
         {
             return false;
         }
@@ -148,7 +149,8 @@ impl PaletteApp {
             .map(|(h, _)| h)
             .or_else(|| {
                 let [x, y] = image_point(pointer, canvas, self.current().zoom);
-                (canvas.contains(pointer)
+                (!ctx.input(|i| i.modifiers.shift)
+                    && canvas.contains(pointer)
                     && self
                         .current()
                         .document
@@ -225,9 +227,17 @@ impl PaletteApp {
                     PixelRect::from_drag(drag.start, drag.current, doc.width, doc.height)
                 {
                     self.current_mut().command("Rectangular selection", |doc| {
-                        doc.selection = Some(editing::rectangle(doc.width, doc.height, rect));
+                        let incoming = editing::rectangle(doc.width, doc.height, rect);
+                        doc.selection = Some(
+                            palette_core::selection::combine(
+                                doc.selection.as_ref(),
+                                &incoming,
+                                drag.mode,
+                            )
+                            .expect("matching canvas masks"),
+                        );
                     });
-                } else {
+                } else if drag.mode == palette_core::selection::Combine::Replace {
                     self.deselect();
                 }
             } else {
@@ -276,6 +286,7 @@ impl PaletteApp {
         }
         if self.tool == Tool::Select
             && self.close_pending_none()
+            && self.current().selection_mode == palette_core::selection::Combine::Replace
             && self.current().selection_drag.is_none()
             && !self.current().document.active().locked
             && let Some(rect) = self.current_mut().selection_bounds()

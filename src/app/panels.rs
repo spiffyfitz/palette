@@ -665,13 +665,16 @@ impl PaletteApp {
         }
         let mut blend = self.current().document.active().blend;
         egui::ComboBox::from_id_salt("blend")
-            .selected_text(format!("{blend:?}"))
+            .selected_text(blend.label())
             .width(130.0)
+            .truncate()
             .show_ui(ui, |ui| {
-                for mode in [BlendMode::Normal, BlendMode::Multiply, BlendMode::Screen] {
-                    ui.selectable_value(&mut blend, mode, format!("{mode:?}"));
+                for mode in BlendMode::ALL {
+                    ui.selectable_value(&mut blend, mode, mode.label());
                 }
-            });
+            })
+            .response
+            .on_hover_text(blend.label());
         if blend != self.current().document.active().blend {
             self.current_mut()
                 .command("Blend mode", |doc| doc.active_mut().blend = blend);
@@ -679,6 +682,7 @@ impl PaletteApp {
         if ui.button("Live filters…").clicked() {
             self.show_filters = true;
         }
+        self.mask_properties(ui);
     }
 
     fn filter_window(&mut self, ctx: &Context) {
@@ -760,37 +764,11 @@ impl PaletteApp {
     }
 
     pub(super) fn dialogs(&mut self, ctx: &Context) {
-        if let Some(id) = self.close_pending {
-            let name = self
-                .sessions
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| s.name.clone())
-                .unwrap_or_default();
-            egui::Modal::new(egui::Id::unique("save-changes")).show(ctx, |ui| {
-                ui.label(format!("Save changes to {name} before closing?"));
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        self.active = self
-                            .sessions
-                            .iter()
-                            .position(|s| s.id == id)
-                            .expect("pending tab");
-                        self.save(ctx, false, false);
-                        if self.busy {
-                            self.close_pending = None;
-                            self.close_after_save = Some(id);
-                        }
-                    }
-                    if ui.button("Discard").clicked() {
-                        self.remove_tab(id, ctx);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.close_pending = None;
-                        self.quitting = false;
-                    }
-                });
-            });
+        self.feather_window(ctx);
+        if let Some(id) = self.close_pending
+            && self.error.is_none()
+        {
+            self.close_dialog(ctx, id);
         }
         if let Some(error) = self.error.clone() {
             egui::Modal::new(egui::Id::unique("file-error")).show(ctx, |ui| {

@@ -19,6 +19,7 @@ pub enum Icon {
     Picker,
     Zoom,
     Select,
+    Wand,
     Crop,
     Resize,
     Rotate,
@@ -210,6 +211,18 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
                 })
                 .collect();
             p.add(egui::Shape::line(points, s));
+        }
+        Icon::Wand => {
+            let p = ui.painter();
+            p.line_segment(
+                [rect.left_bottom(), rect.center() + egui::vec2(2., -2.)],
+                Stroke::new(1.5, color),
+            );
+            let star = rect.right_top() + egui::vec2(-3., 3.);
+            for d in [egui::vec2(3., 0.), egui::vec2(0., 3.)] {
+                p.line_segment([star - d, star + d], Stroke::new(1., color));
+            }
+            p.circle_filled(rect.left_top() + egui::vec2(1., 2.), 1., color);
         }
         Icon::Pencil | Icon::Picker => {
             line([0.15, 0.85], [0.8, 0.2]);

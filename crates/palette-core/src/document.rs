@@ -10,6 +10,72 @@ pub enum BlendMode {
     Normal,
     Multiply,
     Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    LinearDodge,
+    LinearBurn,
+    SoftLight,
+    HardLight,
+    Difference,
+    Exclusion,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
+    Divide,
+}
+
+impl BlendMode {
+    /// Stable presentation order; serde retains the existing named variants.
+    pub const ALL: [Self; 19] = [
+        Self::Normal,
+        Self::Darken,
+        Self::Multiply,
+        Self::ColorBurn,
+        Self::LinearBurn,
+        Self::Lighten,
+        Self::Screen,
+        Self::ColorDodge,
+        Self::LinearDodge,
+        Self::Overlay,
+        Self::SoftLight,
+        Self::HardLight,
+        Self::Difference,
+        Self::Exclusion,
+        Self::Divide,
+        Self::Hue,
+        Self::Saturation,
+        Self::Color,
+        Self::Luminosity,
+    ];
+
+    /// Human-readable names shared by layer properties and reference sheets.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "Normal",
+            Self::Multiply => "Multiply",
+            Self::Screen => "Screen",
+            Self::Overlay => "Overlay",
+            Self::Darken => "Darken",
+            Self::Lighten => "Lighten",
+            Self::ColorDodge => "Color Dodge",
+            Self::ColorBurn => "Color Burn",
+            Self::LinearDodge => "Linear Dodge (Add)",
+            Self::LinearBurn => "Linear Burn",
+            Self::SoftLight => "Soft Light",
+            Self::HardLight => "Hard Light",
+            Self::Difference => "Difference",
+            Self::Exclusion => "Exclusion",
+            Self::Hue => "Hue",
+            Self::Saturation => "Saturation",
+            Self::Color => "Color",
+            Self::Luminosity => "Luminosity",
+            Self::Divide => "Divide",
+        }
+    }
 }
 
 /// Only implemented filters enter the model and the registry.
@@ -64,6 +130,9 @@ pub struct Layer {
 pub struct Document {
     pub width: u32,
     pub height: u32,
+    /// Canvas backing color, separate from editable raster layers (HEIF iovl).
+    #[serde(default)]
+    pub background: [u8; 4],
     pub layers: Vec<Layer>,
     pub active_layer: u64,
     pub selection: Option<Coverage>,
@@ -122,6 +191,7 @@ impl Document {
         Self {
             width: source.width(),
             height: source.height(),
+            background: [0; 4],
             layers: vec![Layer {
                 id: 1,
                 name: "Background".into(),

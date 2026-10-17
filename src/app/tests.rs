@@ -1649,3 +1649,524 @@ fn discard_during_pending_autosave_does_not_resurrect_a_closed_document() {
     let store = crate::persistence::Store::new(data).unwrap();
     assert!(store.discover().unwrap().is_empty());
 }
+
+fn close_button(ctx: &Context, tab: u64, slot: &str) -> egui::Response {
+    ctx.read_response(egui::Id::unique(("close-button", tab, slot)))
+        .expect("close button")
+}
+
+#[test]
+fn close_prompt_matches_reference_geometry_and_cancel_or_outside_click_preserves_edits() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut()
+        .command("Edit", |d| d.active_mut().source.set(0, 0, [1, 2, 3, 255]));
+    let before = app.current().document.clone();
+    let id = app.current().id;
+    app.quitting = true;
+    app.request_close(id, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let save = close_button(&ctx, id, "save");
+    let discard = close_button(&ctx, id, "dont-save");
+    let cancel = close_button(&ctx, id, "cancel");
+    assert_eq!(save.rect.size(), vec2(92., 32.));
+    assert_eq!(discard.rect.min - save.rect.min, vec2(100., 0.));
+    assert_eq!(cancel.rect.min - save.rect.min, vec2(200., 0.));
+    assert!(
+        save.rect.min.distance(pos2(547., 517.5)) <= 0.5,
+        "centered at physical-pixel boundary"
+    );
+    assert!(save.has_focus());
+    let body = format!("There are unsaved changes in “{}”.", app.current().name);
+    let bounds = label_bounds(&mut app, &ctx, &body);
+    assert_eq!(bounds.left(), save.rect.left());
+    assert!(bounds.right() <= save.rect.left() + 292.);
+    click_ui(&mut app, &ctx, pos2(10., 300.));
+    assert_eq!(app.close_pending, Some(id));
+    assert!(app.current().document == before);
+    click_ui(&mut app, &ctx, cancel.rect.center());
+    assert!(app.close_pending.is_none());
+    assert!(!app.quitting);
+    assert!(app.current().modified());
+    assert!(app.current().document == before);
+    app.request_close(id, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    // Real Tab navigation must reach the secondary actions rather than being
+    // pulled back to Save by initial-focus handling.
+    for slot in ["dont-save", "cancel"] {
+        let tab = |pressed| Event::Key {
+            key: Key::Tab,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        frame(&mut app, &ctx, vec![tab(true)]);
+        frame(&mut app, &ctx, vec![tab(false)]);
+        assert!(
+            close_button(&ctx, id, slot).has_focus(),
+            "Tab reaches {slot}"
+        );
+    }
+    frame(&mut app, &ctx, vec![enter_event()]);
+    assert!(app.close_pending.is_none());
+    app.request_close(id, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.close_pending.is_none());
+    assert!(app.current().document == before);
+}
+
+#[test]
+fn close_prompt_discards_only_requested_tab_and_save_waits_for_atomic_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut()
+        .command("Edit", |d| d.active_mut().source.set(0, 0, [1, 2, 3, 255]));
+    let id = app.current().id;
+    let expected = app.current().document.clone();
+    app.current_mut().path = Some(dir.path().join("save.palette"));
+    app.new_document();
+    let other = app.current().id;
+    app.request_close(id, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    // Enter on the initial Save focus invokes the actual background writer.
+    frame(&mut app, &ctx, vec![enter_event()]);
+    wait_for_files(&mut app, &ctx);
+    assert!(app.sessions.iter().all(|s| s.id != id));
+    assert_eq!(app.current().id, other);
+    assert!(io::open(&dir.path().join("save.palette")).unwrap() == expected);
+    app.current_mut().command("Edit other", |d| {
+        d.active_mut().source.set(1, 1, [3, 2, 1, 255])
+    });
+    app.new_document();
+    let third = app.current().id;
+    app.request_close(other, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let discard = close_button(&ctx, other, "dont-save");
+    click_ui(&mut app, &ctx, discard.rect.center());
+    assert!(app.sessions.iter().all(|s| s.id != other));
+    assert_eq!(app.current().id, third);
+}
+
+#[test]
+fn paint_export_cancel_and_native_backup_are_bound_to_the_same_document_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().command("Live filter", |doc| {
+        let id = doc.allocate_id();
+        doc.active_mut().filters.push(FilterInstance {
+            id,
+            enabled: true,
+            filter: Filter::Invert,
+            mask: None,
+        });
+    });
+    let before = app.current().document.clone();
+    let path = dir.path().join("export.paint");
+    let draft = || files::PaintExport {
+        path: path.clone(),
+        session: 1,
+        revision: 1,
+        backup_complete: false,
+    };
+    let mut export = draft();
+    export.session = app.current().id;
+    export.revision = app.current().history.revision;
+    app.paint_export = Some(export);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.paint_export.is_none());
+    assert!(!path.exists());
+    assert!(app.current().document == before);
+    let mut export = draft();
+    export.session = app.current().id;
+    export.revision = app.current().history.revision;
+    app.paint_export = Some(export);
+    let native = dir.path().join("full.palette");
+    app.start_save(native.clone(), false, None, &ctx);
+    wait_for_files(&mut app, &ctx);
+    assert!(app.paint_export.as_ref().unwrap().backup_complete);
+    assert!(io::open(&native).unwrap() == before);
+    app.current_mut()
+        .command("New edit", |doc| doc.active_mut().opacity = 0.5);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.paint_export.is_none());
+    assert!(app.error.as_ref().unwrap().contains("document changed"));
+    assert!(!path.exists());
+}
+
+fn label_bounds(app: &mut PaletteApp, ctx: &Context, label: &str) -> egui::Rect {
+    fn find(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Rect> {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.text() == label => {
+                Some(t.galley.rect.translate(t.pos.to_vec2()))
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, label)),
+            _ => None,
+        }
+    }
+    let input = RawInput {
+        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+        ..Default::default()
+    };
+    let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+    let point = output
+        .shapes
+        .iter()
+        .find_map(|s| find(&s.shape, label))
+        .expect("visible label");
+    output.textures_delta.clear();
+    point
+}
+fn label_position(app: &mut PaletteApp, ctx: &Context, label: &str) -> egui::Pos2 {
+    label_bounds(app, ctx, label).center()
+}
+
+#[test]
+fn paint_export_ui_blocks_baking_before_native_save_then_writes_a_separate_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(12, 10).unwrap();
+    app.current_mut().command("Add filter", |doc| {
+        let id = doc.allocate_id();
+        doc.active_mut().filters.push(FilterInstance {
+            id,
+            enabled: true,
+            filter: Filter::Invert,
+            mask: None,
+        });
+    });
+    let before = app.current().document.clone();
+    let path = dir.path().join("copy.paint");
+    app.paint_export = Some(files::PaintExport {
+        path: path.clone(),
+        session: app.current().id,
+        revision: app.current().history.revision,
+        backup_complete: false,
+    });
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let button = label_position(&mut app, &ctx, "Export copy");
+    click_ui(&mut app, &ctx, button);
+    assert!(!app.busy);
+    assert!(!path.exists());
+    assert!(app.paint_export.is_some());
+    let native = dir.path().join("complete.palette");
+    app.start_save(native.clone(), false, None, &ctx);
+    wait_for_files(&mut app, &ctx);
+    assert!(app.paint_export.as_ref().unwrap().backup_complete);
+    let button = label_position(&mut app, &ctx, "Export copy");
+    click_ui(&mut app, &ctx, button);
+    wait_for_files(&mut app, &ctx);
+    assert!(app.paint_export.is_none());
+    assert!(io::open(&native).unwrap() == before);
+    assert!(app.current().document == before);
+    assert_eq!(app.current().path.as_ref(), Some(&native));
+    assert!(composite::render(&io::open(&path).unwrap()) == composite::render(&before));
+}
+
+fn modified_click(app: &mut PaletteApp, ctx: &Context, p: egui::Pos2, modifiers: Modifiers) {
+    for pressed in [true, false] {
+        frame(
+            app,
+            ctx,
+            vec![
+                Event::ModifiersChanged(modifiers),
+                Event::PointerMoved(p),
+                Event::PointerButton {
+                    pos: p,
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers,
+                },
+            ],
+        );
+    }
+    frame(app, ctx, vec![Event::ModifiersChanged(Modifiers::NONE)]);
+}
+#[test]
+fn wand_clicks_combine_at_fractional_zoom_and_keep_tabs_sources_and_undo_independent() {
+    use palette_core::selection::{Combine, Wand};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(24, 16).unwrap();
+    for x in [2, 3, 14, 15] {
+        for y in 3..7 {
+            app.current_mut()
+                .document
+                .active_mut()
+                .source
+                .set(x, y, [250, 0, 50, 255]);
+        }
+    }
+    app.current_mut().wand = Wand {
+        tolerance: 0.,
+        antialias: false,
+        ..Default::default()
+    };
+    app.choose_tool(Tool::Wand);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.current().document.clone();
+    let first = image_position(&app, [2.5, 4.5]);
+    let second = image_position(&app, [14.5, 4.5]);
+    click_ui(&mut app, &ctx, first);
+    wait_for_edit(&mut app, &ctx);
+    let one = app.current().document.clone();
+    assert_eq!(
+        one.selection
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .filter(|v| **v == 255)
+            .count(),
+        8
+    );
+    modified_click(&mut app, &ctx, second, Modifiers::SHIFT);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .filter(|v| **v == 255)
+            .count(),
+        16
+    );
+    modified_click(&mut app, &ctx, first, Modifiers::ALT);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.selection.as_ref().unwrap().at(2, 4),
+        0.
+    );
+    assert_eq!(
+        app.current().document.selection.as_ref().unwrap().at(14, 4),
+        1.
+    );
+    assert_eq!(
+        app.current().document.active().source,
+        before.active().source
+    );
+    app.undo_current();
+    app.undo_current();
+    assert!(app.current().document == one);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == one);
+    app.current_mut().selection_mode = Combine::Subtract;
+    app.new_document();
+    assert_eq!(app.current().selection_mode, Combine::Replace);
+    assert!(app.current().document.selection.is_none());
+    app.active = 0;
+    assert!(app.current().document == one);
+    assert_eq!(app.current().selection_mode, Combine::Subtract);
+}
+
+#[test]
+fn rectangle_combination_mode_does_not_move_pixels_inside_an_existing_selection() {
+    use palette_core::selection::Combine;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(100, 100).unwrap();
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        100,
+        100,
+        palette_core::editing::PixelRect {
+            x: 20,
+            y: 20,
+            width: 20,
+            height: 20,
+        },
+    ));
+    app.choose_tool(Tool::Select);
+    app.current_mut().selection_mode = Combine::Add;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let source = app.current().document.active().source.clone();
+    let a = image_position(&app, [30., 30.]);
+    let b = image_position(&app, [50., 50.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(a), pointer(a, true)],
+    );
+    assert!(app.current().selection_transform.is_none());
+    frame(&mut app, &ctx, vec![Event::PointerMoved(b)]);
+    frame(&mut app, &ctx, vec![pointer(b, false)]);
+    assert_eq!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .at(20, 20),
+        1.
+    );
+    assert_eq!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .at(49, 49),
+        1.
+    );
+    assert_eq!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .at(45, 20),
+        0.
+    );
+    assert!(app.current().document.active().source == source);
+}
+
+#[test]
+fn feather_and_mask_controls_are_transactional_source_preserving_and_saved_editably() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(50, 40).unwrap();
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        50,
+        40,
+        palette_core::editing::PixelRect {
+            x: 10,
+            y: 8,
+            width: 20,
+            height: 20,
+        },
+    ));
+    let before = app.current().document.clone();
+    app.show_feather(false);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(app.current().document == before);
+    app.show_feather(false);
+    app.feather_dialog.as_mut().unwrap().radius = 2.;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    wait_for_edit(&mut app, &ctx);
+    let soft = app.current().document.clone();
+    assert!(
+        soft.selection
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .any(|v| *v > 0 && *v < 255)
+    );
+    app.interface.layer_properties = true;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let add = label_position(&mut app, &ctx, "Mask from selection");
+    click_ui(&mut app, &ctx, add);
+    wait_for_edit(&mut app, &ctx);
+    let masked = app.current().document.clone();
+    assert!(masked.active().source == before.active().source);
+    assert_eq!(
+        masked.active().mask.as_ref().unwrap().values,
+        soft.selection.as_ref().unwrap().values
+    );
+    let invert = label_position(&mut app, &ctx, "Invert mask");
+    click_ui(&mut app, &ctx, invert);
+    wait_for_edit(&mut app, &ctx);
+    let inverted = app.current().document.clone();
+    assert_eq!(inverted.selection, soft.selection);
+    assert_eq!(inverted.active().mask.as_ref().unwrap().at(0, 0), 1.);
+    app.undo_current();
+    assert!(app.current().document == masked);
+    app.redo_current();
+    assert!(app.current().document == inverted);
+    let enabled = label_position(&mut app, &ctx, "Enabled");
+    click_ui(&mut app, &ctx, enabled);
+    wait_for_edit(&mut app, &ctx);
+    assert!(
+        !app.current()
+            .document
+            .active()
+            .mask
+            .as_ref()
+            .unwrap()
+            .enabled
+    );
+    assert!(app.current().document.active().source == before.active().source);
+    let disabled = app.current().document.clone();
+    app.show_feather(true);
+    app.feather_dialog.as_mut().unwrap().radius = 3.;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    wait_for_edit(&mut app, &ctx);
+    assert!(
+        !app.current()
+            .document
+            .active()
+            .mask
+            .as_ref()
+            .unwrap()
+            .enabled
+    );
+    assert!(app.current().document.active().source == before.active().source);
+    assert_ne!(app.current().document.active().mask, disabled.active().mask);
+    app.undo_current();
+    assert!(app.current().document == disabled);
+    let saved = app.current().document.clone();
+    let path = dir.path().join("masked.palette");
+    app.start_save(path.clone(), false, None, &ctx);
+    wait_for_files(&mut app, &ctx);
+    assert!(io::open(&path).unwrap() == saved);
+    let delete = label_position(&mut app, &ctx, "Delete mask");
+    click_ui(&mut app, &ctx, delete);
+    wait_for_edit(&mut app, &ctx);
+    assert!(app.current().document.active().mask.is_none());
+    app.undo_current();
+    assert!(app.current().document == saved);
+}
+
+#[test]
+fn selection_submenus_and_blend_dropdown_change_real_settings() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    // Chevron position from the reference-resolution ribbon capture.
+    click_ui(&mut app, &ctx, pos2(39., 117.));
+    let wand = label_position(&mut app, &ctx, "      Magic Wand");
+    click_ui(&mut app, &ctx, wand);
+    assert_eq!(app.tool, Tool::Wand);
+    click_ui(&mut app, &ctx, pos2(39., 117.));
+    let options = label_position(&mut app, &ctx, "Magic Wand options");
+    click_ui(&mut app, &ctx, options);
+    let contiguous = label_position(&mut app, &ctx, "Contiguous");
+    click_ui(&mut app, &ctx, contiguous);
+    assert!(!app.current().wand.contiguous);
+    egui::Popup::close_all(&ctx);
+    app.interface.layer_properties = true;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let normal = label_position(&mut app, &ctx, "Normal");
+    click_ui(&mut app, &ctx, normal);
+    let burn = label_position(&mut app, &ctx, "Color Burn");
+    click_ui(&mut app, &ctx, burn);
+    assert_eq!(app.current().document.active().blend, BlendMode::ColorBurn);
+    app.undo_current();
+    assert_eq!(app.current().document.active().blend, BlendMode::Normal);
+}

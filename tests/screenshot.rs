@@ -33,6 +33,13 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "selection-rotate-preview",
         "avif-export",
         "recovery",
+        "close-dialog",
+        "paint-project",
+        "paint-export",
+        "selection-options",
+        "wand-settings",
+        "mask-layer",
+        "feather-selection",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

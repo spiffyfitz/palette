@@ -2,6 +2,7 @@
 //! same-directory atomic replacement. A failed encoder never touches the target.
 use crate::{composite, document::Document, raster::Raster};
 mod avif;
+pub mod paint;
 mod project;
 pub use avif::{AvifOptions, export_avif};
 use flate2::read::ZlibDecoder;
@@ -14,7 +15,7 @@ use std::{
 use thiserror::Error;
 
 const MAGIC: &[u8; 8] = b"PALETTE\0";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_PROJECT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Recoverable format, codec and filesystem failures suitable for a user dialog.
@@ -42,7 +43,7 @@ pub fn extension(path: &Path) -> String {
 pub fn open(path: &Path) -> Result<Document, FileError> {
     match extension(path).as_str() {
         "palette" => read_project(path),
-        "paint" => Err(FileError::Invalid("Microsoft .paint is not enabled: the specimen and native Paint round-trip validation are still required. No flattened substitute is imported.".into())),
+        "paint" => paint::read(path),
         "avif" => avif::read(path),
         "heif" | "heic" => Err(FileError::Invalid("HEIF/HEIC is not enabled.".into())),
         _ => {
@@ -57,14 +58,18 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
                 icc_profile: std::sync::Arc::new(decoder.icc_profile()?.unwrap_or_default()),
                 exif: std::sync::Arc::new(decoder.exif_metadata()?.unwrap_or_default()),
             };
-            if metadata.icc_profile.len() > 4 * 1024 * 1024 || metadata.exif.len() > 4 * 1024 * 1024 {
+            if metadata.icc_profile.len() > 4 * 1024 * 1024 || metadata.exif.len() > 4 * 1024 * 1024
+            {
                 return Err(FileError::Invalid("ICC/Exif metadata exceeds 4 MiB".into()));
             }
             let orientation = decoder.orientation()?;
             let mut image = DynamicImage::from_decoder(decoder)?;
             image.apply_orientation(orientation);
             let image = image.to_rgba8();
-            let mut document = Document::from_raster(Raster::from_rgba(image.width(), image.height(), image.as_raw()).map_err(FileError::Invalid)?);
+            let mut document = Document::from_raster(
+                Raster::from_rgba(image.width(), image.height(), image.as_raw())
+                    .map_err(FileError::Invalid)?,
+            );
             document.metadata = metadata;
             document.validate().map_err(FileError::Invalid)?;
             Ok(document)
@@ -86,7 +91,7 @@ pub fn read_project(path: &Path) -> Result<Document, FileError> {
         return Err(FileError::Invalid("Not a Palette project".into()));
     }
     let version = u32::from_le_bytes(header[8..12].try_into().expect("version"));
-    if version == 2 {
+    if matches!(version, 2 | 3) {
         return project::read(file);
     }
     if version != 1 {

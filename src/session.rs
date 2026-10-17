@@ -33,6 +33,8 @@ pub struct Session {
     pub selection_transform: Option<SelectionGesture>,
     pub gesture_error: Option<String>,
     pub construction: Option<Construction>,
+    pub selection_mode: palette_core::selection::Combine,
+    pub wand: palette_core::selection::Wand,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -63,6 +65,8 @@ impl Session {
             selection_transform: None,
             gesture_error: None,
             construction: None,
+            selection_mode: Default::default(),
+            wand: Default::default(),
             selection_cache: None,
         }
     }
@@ -198,11 +202,13 @@ struct SelectionCache {
 pub struct SelectionDrag {
     pub start: [f32; 2],
     pub current: [f32; 2],
+    pub mode: palette_core::selection::Combine,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Select,
+    Wand,
     Polygon,
     Curve,
     MoveLayer,
@@ -227,6 +233,7 @@ impl Tool {
             Self::Polygon => "Polygon",
             Self::Curve => "Curve",
             Self::Select => "Rectangular selection",
+            Self::Wand => "Magic Wand",
             Self::Fill => "Fill bucket",
             Self::Pencil => "Pencil",
             Self::Brush => "Brush",

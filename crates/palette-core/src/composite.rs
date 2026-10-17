@@ -1,4 +1,5 @@
 //! Deterministic reference CPU compositor. Working RGB is sRGB (not linear light).
+mod blend;
 use crate::document::{BlendMode, Document, Effect, Filter, Layer};
 use crate::editing::PixelRect;
 use crate::raster::Raster;
@@ -13,14 +14,15 @@ pub fn over(back: [u8; 4], front: [u8; 4], opacity: f32, mode: BlendMode) -> [u8
         return [0; 4];
     }
     let mut out = [0; 4];
+    let mixed = blend::rgb(
+        mode,
+        std::array::from_fn(|c| f32::from(back[c]) / 255.),
+        std::array::from_fn(|c| f32::from(front[c]) / 255.),
+    );
     for c in 0..3 {
         let b = f32::from(back[c]) / 255.0;
         let f = f32::from(front[c]) / 255.0;
-        let blend = match mode {
-            BlendMode::Normal => f,
-            BlendMode::Multiply => b * f,
-            BlendMode::Screen => b + f - b * f,
-        };
+        let blend = mixed[c];
         out[c] = (((1.0 - af) * ab * b + (1.0 - ab) * af * f + ab * af * blend) / a * 255.0)
             .round()
             .clamp(0.0, 255.0) as u8;
@@ -86,7 +88,7 @@ pub fn render_region(document: &Document, region: PixelRect) -> Result<Raster, S
     {
         return Err("Composite region is outside the canvas".into());
     }
-    let mut result = Raster::new(region.width, region.height, [0; 4])?;
+    let mut result = Raster::new(region.width, region.height, document.background)?;
     for layer in document
         .layers
         .iter()

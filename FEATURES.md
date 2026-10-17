@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -8,7 +8,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](do
 - [x] Select and resolve current compatible Rust dependencies.
 - [x] Document UI-independent, layered/nondestructive architecture.
 - [x] Evaluate libheif and Rust overlay binding support from primary sources.
-- [ ] Inspect missing `Untitled.paint`; verify reported brands/items/layers/metadata.
+- [x] Inspect supplied `Untitled.paint`; verify brands, two source layers, iovl ordering/background/offsets and Exif.
 
 ## Phase 1
 
@@ -24,7 +24,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](do
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for eighteen UI states.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for twenty-five UI states, including Wand settings, selection options, masks and feathering.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -43,7 +43,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](do
 - [x] Core grayscale selections, layer masks and filter masks; serialization/compositing tests.
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
 - [x] Rectangular selection interface with clear, inversion and selected pixel movement.
-- [ ] Advanced selection, mask and style editing interfaces.
+- [x] Magic Wand, selection combination/feathering and basic live layer-mask property controls.
+- [ ] Lasso/polygon/brush selections, mask painting and advanced style editing interfaces.
 
 ## Phase 2
 
@@ -79,17 +80,29 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 3](do
 
 - [x] Real still AVIF read/write, alpha/quality/speed options and Windows codec tests.
 - [ ] AVIF execution on macOS/Linux/Windows 10; matrix configured, not run locally.
-- [ ] `.paint` fixture analysis, layered import, real export and Microsoft Paint validation.
-- [x] Native v2 binary assets with tile sharing, bounded decoding, preserved ICC/Exif bytes and v1 migration.
+- [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
+- [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
+- [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
+- [x] Native v3 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes and v1/v2 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
-- [ ] Explicit handling of unsupported features in `.paint` export.
+- [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
 
-## Phases 4–6
+## Phase 4
 
-- [ ] Remaining Photoshop-style blend modes and merge/flatten.
-- [ ] Coverage-based lasso/polygon/wand/brush selections and combination modes.
-- [ ] Selection feather/expand/contract; complete dynamic mask workflows.
+- [x] All 18 requested blend modes plus Divide; analytic/partial-alpha tests and reference sheet.
+- [x] Magic Wand: Oklab/alpha tolerance, contiguous/all-matching, current/all-visible sampling and antialiasing.
+- [x] Coverage-based Replace/Add/Subtract/Intersect for rectangle and Wand tools, including modifier shortcuts.
+- [x] Selection and mask feathering; background Apply/Cancel transaction, source preservation and native saving.
+- [x] Reveal-all or selection-derived layer masks, grayscale thumbnail, enable/disable, invert and delete.
+- [x] Marching ants use 50% coverage boundaries while edits retain all fractional coverage.
+- [ ] Merge selected/visible layers and confirmed flattening.
+- [ ] Lasso, polygon and brush selection with configurable tolerance.
+- [ ] Selection expand/contract and live feather previews.
+- [ ] Brush/eraser mask editing, direct mask view, link/unlink and explicit permanent application.
+
+## Phases 5–6
+
 - [ ] Gaussian Blur and neighborhood filter stages; registry and common parameters.
 - [ ] Apply/Cancel preview dialogs, individual filter mask UI and filter gallery.
 - [ ] Drop/inner shadows, glows, bevel, stroke, satin and gradient/pattern overlays.

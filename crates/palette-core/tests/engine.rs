@@ -188,11 +188,15 @@ fn bad_project_or_failed_export_cannot_overwrite_target() {
     fs::write(&path, b"existing contents").unwrap();
     assert!(io::export(&path, &Document::new(1, 1).unwrap()).is_err());
     assert_eq!(fs::read(&path).unwrap(), b"existing contents");
+    assert!(matches!(
+        io::open(&dir.path().join("missing.paint")),
+        Err(io::FileError::Io(_))
+    ));
+    let impostor = dir.path().join("sample.paint");
+    fs::write(&impostor, b"PALETTE\0\x01\0\0\0").unwrap();
     assert!(
-        io::open(&dir.path().join("sample.paint"))
-            .unwrap_err()
-            .to_string()
-            .contains("not enabled")
+        io::open(&impostor).is_err(),
+        "renaming a native project is not Paint interoperability"
     );
 }
 

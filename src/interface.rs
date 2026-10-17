@@ -77,6 +77,27 @@ pub fn configure(ctx: &Context) {
             .families
             .insert(egui::FontFamily::Name(name.into()), vec![name.to_owned()]);
     }
+    // Use installed Windows typography for the Paint-style close dialog only.
+    // No Microsoft font resources are bundled; other platforms use our fallback.
+    for (name, filename) in [
+        ("Dialog", "segoeui.ttf"),
+        ("Dialog Semibold", "seguisb.ttf"),
+    ] {
+        let mut family = fonts.families[&egui::FontFamily::Proportional].clone();
+        if cfg!(target_os = "windows")
+            && let Some(root) = std::env::var_os("WINDIR")
+            && let Ok(bytes) =
+                std::fs::read(std::path::PathBuf::from(root).join("Fonts").join(filename))
+        {
+            fonts
+                .font_data
+                .insert(name.into(), egui::FontData::from_owned(bytes).into());
+            family.insert(0, name.into());
+        }
+        fonts
+            .families
+            .insert(egui::FontFamily::Name(name.into()), family);
+    }
     ctx.set_fonts(fonts);
 
     let mut style = (*ctx.global_style()).clone();

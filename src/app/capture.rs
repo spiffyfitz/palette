@@ -16,6 +16,74 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("selection-options" | "wand-settings") => self.tool = Tool::Wand,
+            Some("mask-layer") | Some("feather-selection") => {
+                self.current_mut().document = Document::new(819, 594).expect("capture canvas");
+                self.current_mut().command("Capture coverage", |doc| {
+                    doc.add_layer();
+                    for y in 120..470 {
+                        for x in 180..680 {
+                            doc.active_mut().source.set(
+                                x,
+                                y,
+                                [40, (80 + (x - 180) / 3) as u8, 210, 255],
+                            );
+                        }
+                    }
+                    doc.selection = Some(palette_core::editing::rectangle(
+                        doc.width,
+                        doc.height,
+                        palette_core::editing::PixelRect {
+                            x: 280,
+                            y: 180,
+                            width: 300,
+                            height: 220,
+                        },
+                    ));
+                });
+                self.tool = Tool::Select;
+                self.current_mut().zoom = 1.;
+                if self.capture.scene.as_deref() == Some("mask-layer") {
+                    let doc = &mut self.current_mut().document;
+                    doc.selection = Some(
+                        palette_core::selection::feather(
+                            doc.selection.as_ref().expect("capture selection"),
+                            18.,
+                        )
+                        .expect("capture feather"),
+                    );
+                    palette_core::selection::mask_from_selection(doc).expect("capture mask");
+                    doc.selection = None;
+                    self.interface.layer_properties = true;
+                } else {
+                    self.show_feather(false);
+                }
+            }
+            Some("close-dialog") => {
+                self.current_mut()
+                    .command("Capture unsaved drawing", |doc| {
+                        doc.active_mut().source =
+                            Raster::new(1280, 720, [138, 0, 23, 255]).expect("capture canvas");
+                    });
+                self.tool = Tool::Select;
+                self.close_pending = Some(self.current().id);
+            }
+            Some("paint-project") | Some("paint-export") => {
+                let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("crates/palette-core/tests/fixtures/microsoft-paint.paint");
+                self.current_mut().document = io::open(&path).expect("capture Paint specimen");
+                self.current_mut().name = "Untitled".into();
+                self.current_mut().zoom = 1.;
+                self.current_mut().invalidate_preview();
+                if self.capture.scene.as_deref() == Some("paint-export") {
+                    self.paint_export = Some(super::files::PaintExport {
+                        path: PathBuf::from("target/capture.paint"),
+                        session: self.current().id,
+                        revision: self.current().history.revision,
+                        backup_complete: false,
+                    });
+                }
+            }
             Some("avif-export") => {
                 self.avif_export = Some(super::files::AvifExport {
                     path: PathBuf::from("target/capture.avif"),
@@ -258,6 +326,15 @@ impl PaletteApp {
     pub(crate) fn capture_popup(&self, name: &str, response: &egui::Response) {
         if self.screenshot.is_some() && self.capture.scene.as_deref() == Some(name) {
             egui::Popup::open_id(&response.ctx, egui::Popup::default_response_id(response));
+        }
+    }
+    pub(crate) fn capture_submenu(&self, name: &str, ui: &Ui, response: &egui::Response) {
+        if self.screenshot.is_some() && self.capture.scene.as_deref() == Some(name) {
+            egui::containers::menu::MenuState::from_ui(ui, |state, _| {
+                state.open_item = Some(egui::containers::menu::SubMenu::id_from_widget_id(
+                    response.id,
+                ));
+            });
         }
     }
     pub(super) fn capture_is_settled(&mut self, ctx: &Context) -> bool {

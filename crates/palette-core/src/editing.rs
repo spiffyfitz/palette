@@ -83,7 +83,7 @@ pub fn bounds(mask: &Coverage) -> Option<PixelRect> {
     })
 }
 
-/// Directed coalesced boundaries, with selected pixels to the right of each edge.
+/// Directed visual boundaries at 50% coverage, with selected pixels to the right.
 /// Direction changes split runs so diagonal islands remain separate contours.
 pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
     let inside = |x: i64, y: i64| {
@@ -91,7 +91,7 @@ pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
             && y >= 0
             && x < i64::from(mask.width)
             && y < i64::from(mask.height)
-            && mask.at(x as u32, y as u32) > 0.
+            && mask.at(x as u32, y as u32) >= 0.5
     };
     let mut edges = Vec::new();
     for vertical in [false, true] {

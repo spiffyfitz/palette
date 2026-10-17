@@ -1,5 +1,8 @@
 > Historical live-paint/text milestone. The later video-guided pass replaces the modal text editor with inline text. See [current UI behavior and validation](UI_BEHAVIOR_REFERENCE.md).
 
+> Historical milestone report. Current codec/specimen evidence and remaining gates are in [PHASE3_VALIDATION.md](PHASE3_VALIDATION.md) and [PAINT_RESEARCH.md](PAINT_RESEARCH.md).
+
+
 # Live painting and text milestone — 2026-10-16
 
 This completes the live-stroke fix and the next Phase 2 tool slice. It does not declare the entire Phase 2 roadmap finished. Changes remain uncommitted, following the current root `AGENTS.md`.

@@ -1,5 +1,8 @@
 # Phase 2 construction tools and selection-aware transforms
 
+> Historical milestone report. Current codec/specimen evidence and remaining gates are in [PHASE3_VALIDATION.md](PHASE3_VALIDATION.md) and [PAINT_RESEARCH.md](PAINT_RESEARCH.md).
+
+
 Current follow-up: selected-pixel move/resize/rotation handles and live previews are implemented; see [selection handle validation](SELECTION_HANDLES_VALIDATION.md). Earlier pending items and test counts below describe the historical milestone.
 
 ## Requested fixes and next milestone
