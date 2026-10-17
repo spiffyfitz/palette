@@ -20,6 +20,9 @@ pub enum Icon {
     Zoom,
     Select,
     Wand,
+    Lasso,
+    Combine(palette_core::selection::Combine),
+    InvertSelection,
     Crop,
     Resize,
     Rotate,
@@ -113,6 +116,58 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::Lasso => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    at(0.1, 0.35),
+                    at(0.2, 0.1),
+                    at(0.65, 0.05),
+                    at(0.95, 0.3),
+                    at(0.8, 0.65),
+                    at(0.35, 0.75),
+                ],
+                s,
+            ));
+            line([0.35, 0.75], [0.25, 1.]);
+        }
+        Icon::Combine(mode) => {
+            use palette_core::selection::Combine;
+            let a = Rect::from_min_max(at(0.05, 0.1), at(0.65, 0.7));
+            let b = Rect::from_min_max(at(0.35, 0.4), at(0.95, 1.));
+            if matches!(mode, Combine::Replace) {
+                p.rect_stroke(a, 0, s, StrokeKind::Inside);
+            } else {
+                p.rect_stroke(a, 0, s, StrokeKind::Inside);
+                p.rect_stroke(b, 0, s, StrokeKind::Inside);
+                match mode {
+                    Combine::Add => {
+                        line([0.75, 0.05], [0.75, 0.3]);
+                        line([0.625, 0.175], [0.875, 0.175]);
+                    }
+                    Combine::Subtract => {
+                        line([0.625, 0.175], [0.875, 0.175]);
+                    }
+                    Combine::Intersect => {
+                        p.rect_filled(a.intersect(b), 0, color);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Icon::InvertSelection => {
+            p.rect_stroke(
+                Rect::from_min_max(at(0.05, 0.1), at(0.95, 0.9)),
+                0,
+                s,
+                StrokeKind::Inside,
+            );
+            p.rect_filled(Rect::from_min_max(at(0.5, 0.1), at(0.95, 0.9)), 0, color);
+            p.rect_filled(
+                Rect::from_min_max(at(0.5, 0.35), at(0.7, 0.65)),
+                0,
+                Color32::from_gray(40),
+            );
+        }
         Icon::Move => {
             line([0.5, 0.05], [0.5, 0.95]);
             line([0.05, 0.5], [0.95, 0.5]);

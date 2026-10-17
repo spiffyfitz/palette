@@ -40,6 +40,13 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "wand-settings",
         "mask-layer",
         "feather-selection",
+        "rectangle-toolbar",
+        "wand-toolbar",
+        "freeform-toolbar",
+        "freeform-preview",
+        "feather-outline",
+        "inverted-selection",
+        "canvas-scrollbars",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

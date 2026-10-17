@@ -16,6 +16,72 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("feather-outline") => {
+                self.current_mut().document = Document::new(819, 594).expect("capture canvas");
+                let doc = &mut self.current_mut().document;
+                let raw = palette_core::editing::rectangle(
+                    819,
+                    594,
+                    palette_core::editing::PixelRect {
+                        x: 240,
+                        y: 180,
+                        width: 300,
+                        height: 210,
+                    },
+                );
+                palette_core::selection::apply_region(
+                    doc,
+                    &raw,
+                    palette_core::selection::Combine::Replace,
+                    20.,
+                )
+                .expect("capture feather");
+                self.current_mut().zoom = 1.;
+                self.current_mut().selection_feather = 20.;
+                self.tool = Tool::Select;
+            }
+            Some("inverted-selection") => {
+                let doc = &mut self.current_mut().document;
+                doc.selection = Some(palette_core::editing::rectangle(
+                    doc.width,
+                    doc.height,
+                    palette_core::editing::PixelRect {
+                        x: 500,
+                        y: 260,
+                        width: 260,
+                        height: 200,
+                    },
+                ));
+                palette_core::selection::invert(doc);
+                self.current_mut().zoom = 1.75;
+                self.tool = Tool::Wand;
+            }
+            Some("canvas-scrollbars") => {
+                self.current_mut().zoom = 2.;
+                self.interface.layer_properties = true;
+            }
+            Some(
+                "rectangle-toolbar" | "wand-toolbar" | "freeform-toolbar" | "freeform-preview",
+            ) => {
+                self.tool = match self.capture.scene.as_deref() {
+                    Some("wand-toolbar") => Tool::Wand,
+                    Some("freeform-toolbar" | "freeform-preview") => Tool::Lasso,
+                    _ => Tool::Select,
+                };
+                self.current_mut().selection_feather = 4.;
+                if self.capture.scene.as_deref() == Some("freeform-preview") {
+                    self.current_mut().lasso_drag = Some(crate::session::LassoDrag {
+                        points: vec![
+                            [260., 240.],
+                            [400., 180.],
+                            [540., 280.],
+                            [470., 390.],
+                            [330., 370.],
+                        ],
+                        mode: palette_core::selection::Combine::Replace,
+                    });
+                }
+            }
             Some("selection-options" | "wand-settings") => self.tool = Tool::Wand,
             Some("mask-layer") | Some("feather-selection") => {
                 self.current_mut().document = Document::new(819, 594).expect("capture canvas");

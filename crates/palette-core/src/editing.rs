@@ -86,12 +86,15 @@ pub fn bounds(mask: &Coverage) -> Option<PixelRect> {
 /// Directed visual boundaries at 50% coverage, with selected pixels to the right.
 /// Direction changes split runs so diagonal islands remain separate contours.
 pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
+    outline_at(mask, 128)
+}
+fn outline_at(mask: &Coverage, threshold: u8) -> Vec<[[f32; 2]; 2]> {
     let inside = |x: i64, y: i64| {
         x >= 0
             && y >= 0
             && x < i64::from(mask.width)
             && y < i64::from(mask.height)
-            && mask.at(x as u32, y as u32) >= 0.5
+            && mask.at(x as u32, y as u32) * 255. >= f32::from(threshold)
     };
     let mut edges = Vec::new();
     for vertical in [false, true] {
@@ -143,8 +146,13 @@ pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
 /// Ordered closed loops for animated outlines. Right turns at diagonal contacts
 /// keep touching islands separate. Geometry depends only on mask data, not time.
 pub fn contours(mask: &Coverage) -> Vec<Vec<[f32; 2]>> {
+    contours_at(mask, 128)
+}
+/// Trace a coverage isocontour. Threshold 1 shows the actual feather support;
+/// threshold 128 retains the ordinary half-coverage marching selection boundary.
+pub fn contours_at(mask: &Coverage, threshold: u8) -> Vec<Vec<[f32; 2]>> {
     use std::collections::HashMap;
-    let edges = outline(mask);
+    let edges = outline_at(mask, threshold.max(1));
     let key = |p: [f32; 2]| (p[0] as u32, p[1] as u32);
     let mut starts: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
     for (i, edge) in edges.iter().enumerate() {
@@ -335,6 +343,7 @@ pub fn paste(document: &mut Document, pixels: Raster) -> Result<(), String> {
     layer.offset = [anchor[0] as i32, anchor[1] as i32];
     layer.source = pixels;
     document.selection = Some(rectangle(document.width, document.height, rect));
+    document.selection_base = None;
     Ok(())
 }
 

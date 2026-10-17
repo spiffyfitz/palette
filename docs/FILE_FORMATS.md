@@ -4,7 +4,7 @@
 
 | Format | Open | Write | Meaning |
 |---|---|---|---|
-| `.palette` v1/v2/v3 | Yes | Save/Save As writes v3 | All implemented editable model state; older versions migrate on explicit save |
+| `.palette` v1/v2/v3/v4 | Yes | Save/Save As writes v4 | All implemented editable model state; older versions migrate on explicit save |
 | PNG | Yes | Export | Lossless RGBA; alpha round-trip tested |
 | JPEG | Yes | Export | Lossy RGB; transparency composited over white |
 | BMP | Yes | Export | Raster; alpha behavior depends on BMP variant |
@@ -19,12 +19,12 @@ Raster imports create a single editable source layer. They do not recreate layer
 
 The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved.
 
-## `.palette` version 3 — current writer (version 2 migration)
+## `.palette` version 4 — current writer (versions 1–3 migration)
 
 | Offset | Encoding | Value |
 |---|---|---|
 | 0 | 8 bytes | ASCII `PALETTE` followed by NUL |
-| 8 | little-endian u32 | `3` |
+| 8 | little-endian u32 | `4` |
 | 12 | little-endian u32 | UTF-8 JSON manifest byte length |
 | 16 | bytes | JSON manifest |
 | After manifest | repeated records | little-endian u64 compressed length, then one zlib stream |
@@ -33,7 +33,7 @@ The manifest contains `width`, `height`, `background` (four straight-alpha RGBA8
 
 Asset records follow `asset_lengths` order, zero-based. Shared Arc backing buffers have one asset, preserving tile sharing on load. Zlib checksums, exact decoded lengths, consumed compressed lengths and trailing-file rejection detect malformed/truncated data. The reader preflights references, dimensions and counts before decompression, then validates the reconstructed model. Unknown versions or enum variants fail explicitly. Limits: 4 MiB manifest, 65536 assets, 512 MiB summed unique decoded bytes, 1 GiB file, 4 MiB each ICC/Exif field, existing 64-megapixel plane and model count limits. These are format/allocation policies rather than a total process-memory cap.
 
-Saving streams assets directly to the same-directory temporary file, backfilling each compressed length with seeks. It does not serialize pixels to JSON or hold every compressed asset in memory. Metadata descriptors remain a small bounded JSON buffer. Existing v1 projects are read into the current model without rewriting the input; an explicit successful Save writes v3 atomically. Version 2 uses the same binary layout without `background`; its reader defaults this field to transparent. Earlier builds cannot read v3 and fail at version dispatch, avoiding silent background loss. No future-format placeholders or silent downgrade are used.
+Saving streams assets directly to the same-directory temporary file, backfilling each compressed length with seeks. It does not serialize pixels to JSON or hold every compressed asset in memory. Metadata descriptors remain a small bounded JSON buffer. Existing v1 projects are read into the current model without rewriting the input; an explicit successful Save writes v4 atomically. Version 2 uses the same binary layout without `background`; its reader defaults this field to transparent. Version 3 introduced backing color. Version 4 additionally stores optional `selection_base`, a canvas-sized coverage asset containing the original contour before feathering. Existing versions default it to absent. Older builds reject v4 at version dispatch, preventing silent loss of the retained original during re-save. No future-format placeholders or silent downgrade are used.
 
 ## `.palette` version 1 — legacy reader
 
@@ -71,7 +71,7 @@ Local source/composite round trips and an independent raw-BGRA/Deflate/Pillow or
 
 ## Shape and layer movement preservation
 
-The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. The underlying selection/layer model remains compatible with the v1 migration reader; the current writer stores it in v3. A translated layer with a mask and live filter has a real `.palette` round-trip test. These geometry changes do not establish `.paint` interoperability. AVIF support is independently provided by the codec path above.
+The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. The underlying selection/layer model remains compatible with the v1 migration reader; the current writer stores it in v4. A translated layer with a mask and live filter has a real `.palette` round-trip test. These geometry changes do not establish `.paint` interoperability. AVIF support is independently provided by the codec path above.
 
 ## Still AVIF scope
 
@@ -87,4 +87,4 @@ Stable committed changes are captured about every 30 seconds, one job at a time.
 
 ## Phase 4 preservation
 
-All 19 blend modes serialize as named enum variants in the existing version 3 layer descriptors. Older builds reject unfamiliar variants explicitly. Wand/rectangle results, fractional selection coverage and local layer masks are stored as ordinary coverage assets; no flattening or new native format version is required. Selection-tool options are per-tab UI state, not file data. Filters/styles and source RGB/alpha stay intact when masks are created or edited. Export to `.paint` continues to require native preservation before baking unsupported blending/masks.
+All 19 blend modes serialize as named enum variants in the layer descriptors. Older builds reject unfamiliar variants explicitly. Wand/rectangle results, fractional selection coverage and local layer masks are stored as ordinary coverage assets; no flattening is required. Version 4 also preserves original feather contours; pre-v4 files migrate without this optional field. Selection-tool options are per-tab UI state, not file data. Filters/styles and source RGB/alpha stay intact when masks are created or edited. Export to `.paint` continues to require native preservation before baking unsupported blending/masks.

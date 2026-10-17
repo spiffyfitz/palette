@@ -389,6 +389,26 @@ pub fn paint_path(doc: &mut Document, path: &Path, style: Style) -> Result<bool,
 /// Four vertical samples plus analytic horizontal span coverage. Even/odd scanline
 /// intersections handle concave paths, with no repeated alpha buildup at vertices.
 fn fill(raster: &mut Raster, path: &Path, coverage: impl Fn(u32, u32) -> f32, color: [u8; 4]) {
+    fill_coverage(raster.width(), raster.height(), path, |x, y, edge| {
+        let alpha = edge * coverage(x, y);
+        if alpha > 0. {
+            raster.set(
+                x,
+                y,
+                composite::over(raster.get(x, y), color, alpha, BlendMode::Normal),
+            );
+        }
+    });
+}
+
+/// Shared antialiased even/odd spans for raster shapes and freeform selection.
+/// Callers validate finite coordinates, bounded dimensions and point count.
+pub(crate) fn fill_coverage(
+    width: u32,
+    height: u32,
+    path: &Path,
+    mut visit: impl FnMut(u32, u32, f32),
+) {
     let min_y = path
         .points
         .iter()
@@ -403,8 +423,8 @@ fn fill(raster: &mut Raster, path: &Path, coverage: impl Fn(u32, u32) -> f32, co
         .fold(f32::NEG_INFINITY, f32::max)
         .ceil()
         .max(0.) as u32)
-        .min(raster.height());
-    let mut row = vec![0.0_f32; raster.width() as usize];
+        .min(height);
+    let mut row = vec![0.0_f32; width as usize];
     let mut intersections = Vec::with_capacity(path.points.len());
     for y in min_y..max_y {
         row.fill(0.);
@@ -421,7 +441,7 @@ fn fill(raster: &mut Raster, path: &Path, coverage: impl Fn(u32, u32) -> f32, co
             intersections.sort_by(f32::total_cmp);
             for pair in intersections.as_chunks::<2>().0 {
                 let left = pair[0].max(0.);
-                let right = pair[1].min(raster.width() as f32);
+                let right = pair[1].min(width as f32);
                 for x in left.floor() as u32..right.ceil().max(0.) as u32 {
                     row[x as usize] +=
                         ((x as f32 + 1.).min(right) - (x as f32).max(left)).max(0.) * 0.25;
@@ -435,14 +455,7 @@ fn fill(raster: &mut Raster, path: &Path, coverage: impl Fn(u32, u32) -> f32, co
             .filter(|(_, edge)| *edge > 0.)
         {
             let x = x as u32;
-            let alpha = edge * coverage(x, y);
-            if alpha > 0. {
-                raster.set(
-                    x,
-                    y,
-                    composite::over(raster.get(x, y), color, alpha, BlendMode::Normal),
-                );
-            }
+            visit(x, y, edge);
         }
     }
 }
@@ -505,6 +518,7 @@ pub fn paint_selected(doc: &mut Document, path: &Path, style: Style) -> Result<b
         }
     }
     doc.selection = Some(mask);
+    doc.selection_base = None;
     Ok(true)
 }
 /// Flatten a cubic into bounded image-space segments for both preview and commit.

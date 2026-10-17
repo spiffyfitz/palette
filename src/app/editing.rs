@@ -17,6 +17,8 @@ pub(super) struct EditResult {
 
 /// Image/selection edits available from menus, canvas and shortcuts.
 pub enum Edit {
+    Rectangle(editing::PixelRect, palette_core::selection::Combine),
+    Freeform(Vec<[f32; 2]>, palette_core::selection::Combine),
     Wand(
         [u32; 2],
         palette_core::selection::Wand,
@@ -73,6 +75,7 @@ impl PaletteApp {
     }
     pub(super) fn edit_shortcuts(&mut self, ctx: &Context) {
         if !self.close_pending_none()
+            || crate::canvas::navigation::has_focus(ctx, self.current().id)
             || self.interface.popup_was_open
             || egui::Popup::is_any_open(ctx)
         {
@@ -142,6 +145,9 @@ impl PaletteApp {
             self.edit(Edit::Clear, ctx);
         }
         if escape && !self.interface.popup_was_open {
+            if self.current_mut().lasso_drag.take().is_some() {
+                return;
+            }
             let cancelled_shape = self.stroke.take().is_some() && self.tool.shape();
             if !self.current_mut().cancel_selection_transform()
                 && !self.current_mut().cancel_layer_move()
@@ -184,9 +190,14 @@ impl PaletteApp {
         let session = self.current();
         let (id, generation) = (session.id, session.generation);
         let mut document = session.document.clone();
+        // Feather each incoming region before set algebra, rather than blurring
+        // the previous selection repeatedly when adding/subtracting regions.
+        let selection_feather = session.selection_feather;
         let select_tool =
             matches!(operation, Edit::Shape(..) | Edit::Path(..)).then_some(self.tool);
         let label = match operation {
+            Edit::Rectangle(..) => "Rectangular selection",
+            Edit::Freeform(..) => "Freeform selection",
             Edit::Wand(..) => "Magic Wand selection",
             Edit::Feather { mask: true, .. } => "Feather layer mask",
             Edit::Feather { mask: false, .. } => "Feather selection",
@@ -224,31 +235,51 @@ impl PaletteApp {
         std::thread::spawn(move || {
             let result = (|| {
                 let changed = match operation {
-                    Edit::Wand(point, options, mode) => {
-                        let mask = palette_core::selection::wand(&document, point, options)?;
-                        let combined = palette_core::selection::combine(
-                            document.selection.as_ref(),
+                    Edit::Rectangle(rect, mode) => {
+                        let incoming = editing::rectangle(document.width, document.height, rect);
+                        palette_core::selection::apply_region(
+                            &mut document,
+                            &incoming,
+                            mode,
+                            selection_feather,
+                        )?
+                    }
+                    Edit::Freeform(points, mode) => {
+                        let mask = palette_core::selection::freeform(
+                            document.width,
+                            document.height,
+                            &points,
+                        )?;
+                        palette_core::selection::apply_region(
+                            &mut document,
                             &mask,
                             mode,
-                        )?;
-                        let changed = document.selection.as_ref() != Some(&combined);
-                        document.selection = Some(combined);
-                        changed
+                            selection_feather,
+                        )?
+                    }
+                    Edit::Wand(point, options, mode) => {
+                        let mask = palette_core::selection::wand(&document, point, options)?;
+                        palette_core::selection::apply_region(
+                            &mut document,
+                            &mask,
+                            mode,
+                            selection_feather,
+                        )?
                     }
                     Edit::Feather { radius, mask } => {
                         if mask && document.active().locked {
                             return Err("Unlock the layer before editing its mask".into());
                         }
-                        let plane = if mask {
-                            &mut document.active_mut().mask
+                        if mask {
+                            let plane = &mut document.active_mut().mask;
+                            let before = plane.as_ref().ok_or("No mask to feather")?;
+                            let after = palette_core::selection::feather(before, radius)?;
+                            let changed = before != &after;
+                            *plane = Some(after);
+                            changed
                         } else {
-                            &mut document.selection
-                        };
-                        let before = plane.as_ref().ok_or("No mask or selection to feather")?;
-                        let after = palette_core::selection::feather(before, radius)?;
-                        let changed = before != &after;
-                        *plane = Some(after);
-                        changed
+                            palette_core::selection::feather_selection(&mut document, radius)?
+                        }
                     }
                     Edit::MaskFromSelection => {
                         palette_core::selection::mask_from_selection(&mut document)?
@@ -364,6 +395,7 @@ impl PaletteApp {
 
     pub fn select_all(&mut self) {
         self.current_mut().command("Select all", |doc| {
+            doc.selection_base = None;
             doc.selection = Some(editing::rectangle(
                 doc.width,
                 doc.height,
@@ -379,13 +411,15 @@ impl PaletteApp {
     pub fn deselect(&mut self) {
         self.current_mut().selection_drag = None;
         if self.current().document.selection.is_some() {
-            self.current_mut()
-                .command("Deselect", |doc| doc.selection = None);
+            self.current_mut().command("Deselect", |doc| {
+                doc.selection = None;
+                doc.selection_base = None;
+            });
         }
     }
     pub fn invert_selection(&mut self) {
         self.current_mut().command("Invert selection", |doc| {
-            let mut mask = doc.selection.take().unwrap_or_else(|| {
+            let mask = doc.selection.take().unwrap_or_else(|| {
                 editing::rectangle(
                     doc.width,
                     doc.height,
@@ -397,11 +431,8 @@ impl PaletteApp {
                     },
                 )
             });
-            for value in std::sync::Arc::make_mut(&mut mask.values) {
-                *value = 255 - *value;
-            }
-            mask.enabled = true;
             doc.selection = Some(mask);
+            palette_core::selection::invert(doc);
         });
     }
 

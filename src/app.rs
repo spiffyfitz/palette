@@ -5,6 +5,7 @@ mod close;
 pub(crate) mod editing;
 mod files;
 mod panels;
+mod selection_toolbar;
 mod text;
 
 use crate::{
@@ -127,6 +128,8 @@ pub struct PaletteApp {
     file_rx: mpsc::Receiver<FileResult>,
     thumbnails: HashMap<(u64, u64), (u64, TextureHandle)>,
     pub canvas_rect: egui::Rect,
+    pub selection_toolbar_rect: egui::Rect,
+    pub canvas_scrollbars: [Option<egui::Rect>; 2],
     pub image_rect: egui::Rect,
     pub resize_start: Option<([u32; 2], egui::Pos2)>,
     pub resize_preview: Option<[u32; 2]>,
@@ -278,6 +281,8 @@ impl PaletteApp {
             file_rx,
             thumbnails: HashMap::new(),
             canvas_rect: egui::Rect::NOTHING,
+            selection_toolbar_rect: egui::Rect::NOTHING,
+            canvas_scrollbars: [None, None],
             image_rect: egui::Rect::NOTHING,
             resize_start: None,
             resize_preview: None,

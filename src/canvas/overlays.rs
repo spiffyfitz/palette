@@ -121,21 +121,83 @@ pub(super) fn dashes(points: &[Pos2], phase: f32, clip: Rect) -> Vec<[Pos2; 2]> 
     segments
 }
 pub(super) fn ants(painter: &egui::Painter, points: &[Pos2], phase: f32) -> bool {
+    ants_alpha(painter, points, phase, 255)
+}
+pub(super) fn ants_alpha(painter: &egui::Painter, points: &[Pos2], phase: f32, alpha: u8) -> bool {
     let clip = painter.clip_rect();
     let mut visible = false;
     for pair in points.windows(2) {
         if let Some((dir, _, from, to)) = visible_span(pair[0], pair[1], clip) {
             painter.line_segment(
                 [pair[0] + dir * from, pair[0] + dir * to],
-                Stroke::new(1., Color32::WHITE),
+                Stroke::new(1., Color32::from_white_alpha(alpha)),
             );
             visible = true;
         }
     }
     for pair in dashes(points, phase, clip) {
-        painter.line_segment(pair, Stroke::new(1., Color32::BLACK));
+        painter.line_segment(pair, Stroke::new(1., Color32::from_black_alpha(alpha)));
     }
     visible
+}
+
+/// Close the visible selected region along viewport/canvas edges. Without this
+/// continuation a zoomed inverted selection loses its outer contour offscreen.
+/// Sampling only the four borders is O(visible width + height), not a mask copy.
+pub(super) fn viewport_ants(
+    painter: &egui::Painter,
+    mask: &palette_core::raster::Coverage,
+    canvas: Rect,
+    zoom: f32,
+    phase: f32,
+) -> bool {
+    let visible = canvas.intersect(painter.clip_rect());
+    if !visible.is_positive() {
+        return false;
+    }
+    let inset = 0.75 / painter.ctx().pixels_per_point();
+    let border = visible.shrink(inset);
+    let mut drawn = false;
+    let mut perimeter = 0.;
+    for (a, b) in [
+        (border.left_top(), border.right_top()),
+        (border.right_top(), border.right_bottom()),
+        (border.right_bottom(), border.left_bottom()),
+        (border.left_bottom(), border.left_top()),
+    ] {
+        let length = a.distance(b);
+        // Sample at physical display pixels, rather than shifting image-space
+        // bins: partial pixels at a clipped/high-zoom edge stay within one pixel.
+        let count = (length * painter.ctx().pixels_per_point()).ceil().max(1.) as usize;
+        let mut first = None;
+        for index in 0..=count {
+            let selected = index < count && {
+                let p = a.lerp(b, (index as f32 + 0.5) / count as f32);
+                let x = ((p.x - canvas.left()) / zoom)
+                    .floor()
+                    .clamp(0., mask.width as f32 - 1.) as u32;
+                let y = ((p.y - canvas.top()) / zoom)
+                    .floor()
+                    .clamp(0., mask.height as f32 - 1.) as u32;
+                mask.at(x, y) >= 0.5
+            };
+            if selected && first.is_none() {
+                first = Some(index);
+            }
+            if !selected && let Some(start) = first.take() {
+                drawn |= ants(
+                    painter,
+                    &[
+                        a.lerp(b, start as f32 / count as f32),
+                        a.lerp(b, index as f32 / count as f32),
+                    ],
+                    phase - perimeter - length * start as f32 / count as f32,
+                );
+            }
+        }
+        perimeter += length;
+    }
+    drawn
 }
 
 #[cfg(test)]

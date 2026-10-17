@@ -98,7 +98,7 @@ impl PaletteApp {
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let tool = if matches!(self.tool, Tool::MoveLayer | Tool::Wand) {
+            let tool = if matches!(self.tool, Tool::MoveLayer | Tool::Wand | Tool::Lasso) {
                 self.tool
             } else {
                 Tool::Select
@@ -110,6 +110,8 @@ impl PaletteApp {
                     Icon::Move
                 } else if tool == Tool::Wand {
                     Icon::Wand
+                } else if tool == Tool::Lasso {
+                    Icon::Lasso
                 } else {
                     Icon::Select
                 },
@@ -138,8 +140,12 @@ impl PaletteApp {
                         self.choose_tool(Tool::MoveLayer);
                         ui.close();
                     }
-                    interface::menu_item(ui, "Free-form selection", "", None, false)
-                        .on_hover_text("Not implemented yet");
+                    if interface::menu_item(ui, "Freeform selection", "", Some(Icon::Lasso), true)
+                        .clicked()
+                    {
+                        self.choose_tool(Tool::Lasso);
+                        ui.close();
+                    }
                     if interface::menu_item(ui, "Magic Wand", "", Some(Icon::Wand), true).clicked()
                     {
                         self.choose_tool(Tool::Wand);

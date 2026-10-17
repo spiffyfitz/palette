@@ -1,4 +1,5 @@
 mod construction;
+pub(crate) mod navigation;
 mod overlays;
 mod selection;
 use crate::{
@@ -38,11 +39,18 @@ impl PaletteApp {
                 0.0
             };
         let right_width = 12.0 + (tray_width + 12.0) * tray_visibility;
-        let view = Rect::from_min_max(
+        let workspace = Rect::from_min_max(
             pos2(bounds.left() + left_width, bounds.top()),
             pos2(bounds.right() - right_width, bounds.bottom()),
         );
+        let image_size = vec2(
+            self.current().document.width as f32,
+            self.current().document.height as f32,
+        ) * self.current().zoom;
+        let viewport = navigation::layout(workspace, image_size, self.current().fit);
+        let view = viewport.view;
         self.canvas_rect = view;
+        self.selection_toolbar(ui.ctx());
         let response = ui.interact(
             view,
             ui.scope_id().with("canvas-view"),
@@ -71,7 +79,13 @@ impl PaletteApp {
                 i.pointer.primary_released() || i.pointer.secondary_released(),
             )
         });
-        let hovered = response.hovered();
+        let over_toolbar = pointer.is_some_and(|p| self.selection_toolbar_rect.contains(p));
+        let hovered = response.hovered() && !over_toolbar;
+        if hovered && (pressed || middle) {
+            for axis in 0..2 {
+                ctx.memory_mut(|m| m.surrender_focus(navigation::id(self.current().id, axis)));
+            }
+        }
         if hovered {
             if ctrl && scroll.y != 0.0 {
                 let session = self.current_mut();
@@ -97,6 +111,7 @@ impl PaletteApp {
             self.current().document.width as f32,
             self.current().document.height as f32,
         ) * zoom;
+        self.canvas_scrollbars(ui, &viewport, size);
         let mut origin = view.center() - size * 0.5 + self.current().pan;
         // Snap display origin to physical pixels; coordinates still use logical points.
         let dpi = ctx.pixels_per_point();
@@ -173,7 +188,7 @@ impl PaletteApp {
         );
 
         self.cursor = pointer
-            .filter(|p| view.contains(*p) && canvas.contains(*p))
+            .filter(|p| view.contains(*p) && canvas.contains(*p) && !over_toolbar)
             .map(|p| {
                 let point = image_point(p, canvas, zoom);
                 [point[0].floor() as u32, point[1].floor() as u32]
@@ -188,7 +203,7 @@ impl PaletteApp {
             &ctx,
             &painter,
             canvas,
-            pointer,
+            pointer.filter(|_| !over_toolbar),
             hovered && pressed && !space && !middle && drawing_allowed,
         );
         if hovered
@@ -222,6 +237,13 @@ impl PaletteApp {
                     self.current_mut().selection_drag = Some(SelectionDrag {
                         start: point,
                         current: point,
+                        mode,
+                    });
+                }
+                Tool::Lasso => {
+                    let mode = self.selection_mode(&ctx);
+                    self.current_mut().lasso_drag = Some(crate::session::LassoDrag {
+                        points: vec![point],
                         mode,
                     });
                 }
@@ -359,7 +381,8 @@ impl PaletteApp {
             && self.close_pending_none()
             && !selection_handled
             && self.current().selection_transform.is_none()
-            && !(self.tool == Tool::Select && self.current().document.selection.is_some())
+            && !(matches!(self.tool, Tool::Select | Tool::Lasso)
+                && self.current().document.selection.is_some())
         {
             let resize = ui
                 .interact(handle, ui.scope_id().with("resize-canvas"), Sense::drag())
@@ -439,10 +462,10 @@ impl PaletteApp {
         }
         response.on_hover_text(if self.tool == Tool::MoveLayer {
             "Drag the active layer · Shift constrains axis · Arrows nudge · Escape cancels"
-        } else if self.tool == Tool::Select {
+        } else if matches!(self.tool, Tool::Select | Tool::Lasso) {
             "Drag selected pixels or handles · Shift adds · Alt subtracts · Shift+Alt intersects · Choose Replace for transforms · Escape cancels"
         } else if self.tool==Tool::Wand {
-            "Click matching colors · Shift adds · Alt subtracts · Shift+Alt intersects · Options in Selection flyout"
+            "Click matching colors · Shift adds · Alt subtracts · Shift+Alt intersects · Options above canvas"
         } else {
             "Ctrl + wheel to zoom · Middle mouse or Space + drag to pan"
         });

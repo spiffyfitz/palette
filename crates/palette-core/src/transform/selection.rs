@@ -44,9 +44,19 @@ impl SelectionTransform {
             return Ok(false);
         }
         let mut bytes = 0;
-        reserve_plane(&mut bytes, rect.width, rect.height, 8)?;
-        reserve_plane(&mut bytes, size[0], size[1], 8)?;
-        let (pixels, mask) = extracted(doc, rect)?;
+        let planes = if doc.selection_base.is_some() { 12 } else { 8 };
+        reserve_plane(&mut bytes, rect.width, rect.height, planes)?;
+        reserve_plane(&mut bytes, size[0], size[1], planes)?;
+        let (pixels, mask, base) = extracted(doc, rect)?;
+        let base = base
+            .map(|b| {
+                if size == [rect.width, rect.height] {
+                    Ok(b)
+                } else {
+                    resample(&b, size[0], size[1], Resample::Bilinear)
+                }
+            })
+            .transpose()?;
         let (pixels, mask) = if size == [rect.width, rect.height] {
             (pixels, mask)
         } else {
@@ -55,7 +65,7 @@ impl SelectionTransform {
                 resample(&mask, size[0], size[1], Resample::Bilinear)?,
             )
         };
-        replace_selection(doc, pixels, mask, anchor)
+        replace_selection(doc, pixels, mask, base, anchor)
     }
 }
 
@@ -95,10 +105,15 @@ fn sample(source: &Raster, x: f64, y: f64) -> [u8; 4] {
     out[3] = alpha.round().clamp(0., 255.) as u8;
     out
 }
-fn extracted(doc: &Document, rect: PixelRect) -> Result<(Raster, Raster), String> {
+fn extracted(doc: &Document, rect: PixelRect) -> Result<(Raster, Raster, Option<Raster>), String> {
     let mut pixels = Raster::new(rect.width, rect.height, [0; 4])?;
     // Coverage is a separate plane, including selected transparent pixels.
     let mut mask = Raster::new(rect.width, rect.height, [0; 4])?;
+    let mut base = doc
+        .selection_base
+        .as_ref()
+        .map(|_| Raster::new(rect.width, rect.height, [0; 4]))
+        .transpose()?;
     let layer = doc.active();
     for y in 0..rect.height {
         for x in 0..rect.width {
@@ -119,9 +134,17 @@ fn extracted(doc: &Document, rect: PixelRect) -> Result<(Raster, Raster), String
             p[3] = (f32::from(p[3]) * coverage).round() as u8;
             pixels.set(x, y, p);
             mask.set(x, y, [255, 255, 255, (coverage * 255.).round() as u8]);
+            if let Some(base) = &mut base {
+                let amount = doc
+                    .selection_base
+                    .as_ref()
+                    .expect("retained original")
+                    .at(cx, cy);
+                base.set(x, y, [255, 255, 255, (amount * 255.).round() as u8]);
+            }
         }
     }
-    Ok((pixels, mask))
+    Ok((pixels, mask, base))
 }
 fn permuted(source: &Raster, op: Orthogonal) -> Result<Raster, String> {
     let size = dimensions(op, source.width(), source.height());
@@ -163,6 +186,7 @@ fn replace_selection(
     doc: &mut Document,
     pixels: Raster,
     mask: Raster,
+    base: Option<Raster>,
     anchor: [i64; 2],
 ) -> Result<bool, String> {
     let mut out = doc.clone();
@@ -180,6 +204,7 @@ fn replace_selection(
         },
     );
     let bytes = Arc::make_mut(&mut selected.values);
+    let mut original = base.as_ref().map(|_| vec![0; (width * height) as usize]);
     let layer = out.active_mut();
     for y in 0..pixels.height() {
         for x in 0..pixels.width() {
@@ -189,6 +214,9 @@ fn replace_selection(
                 continue;
             }
             bytes[(dy as u32 * width + dx as u32) as usize] = mask.get(x, y)[3];
+            if let (Some(values), Some(base)) = (&mut original, &base) {
+                values[(dy as u32 * width + dx as u32) as usize] = base.get(x, y)[3];
+            }
             let tx = (dx - i64::from(layer.offset[0])) as u32;
             let ty = (dy - i64::from(layer.offset[1])) as u32;
             let pixel = pixels.get(x, y);
@@ -205,6 +233,12 @@ fn replace_selection(
         }
     }
     out.selection = Some(selected);
+    out.selection_base = original.map(|values| Coverage {
+        width,
+        height,
+        values: Arc::new(values),
+        enabled: true,
+    });
     let changed = out != *doc;
     *doc = out;
     Ok(changed)
@@ -220,15 +254,21 @@ pub fn selected_orthogonal(doc: &mut Document, op: Orthogonal) -> Result<bool, S
         return Ok(false);
     };
     let mut staging = 0;
-    reserve_plane(&mut staging, rect.width, rect.height, 16)?;
-    let (pixels, mask) = extracted(doc, rect)?;
+    reserve_plane(
+        &mut staging,
+        rect.width,
+        rect.height,
+        if doc.selection_base.is_some() { 24 } else { 16 },
+    )?;
+    let (pixels, mask, base) = extracted(doc, rect)?;
     let pixels = permuted(&pixels, op)?;
     let mask = permuted(&mask, op)?;
+    let base = base.map(|b| permuted(&b, op)).transpose()?;
     let anchor = [
         i64::from(rect.x) + i64::from(rect.width / 2) - i64::from(pixels.width() / 2),
         i64::from(rect.y) + i64::from(rect.height / 2) - i64::from(pixels.height() / 2),
     ];
-    replace_selection(doc, pixels, mask, anchor)
+    replace_selection(doc, pixels, mask, base, anchor)
 }
 fn rotation(degrees: f64) -> Result<(f64, f64), String> {
     if !degrees.is_finite() || degrees.abs() > 360000. {
@@ -385,9 +425,23 @@ pub fn rotate(doc: &mut Document, degrees: f64) -> Result<bool, String> {
             trig.1,
         )?;
         let mut bytes = 0;
-        reserve_plane(&mut bytes, rect.width, rect.height, 8)?;
-        reserve_plane(&mut bytes, size[0], size[1], 8)?;
-        let (pixels, mask) = extracted(doc, rect)?;
+        let planes = if doc.selection_base.is_some() { 12 } else { 8 };
+        reserve_plane(&mut bytes, rect.width, rect.height, planes)?;
+        reserve_plane(&mut bytes, size[0], size[1], planes)?;
+        let (pixels, mask, base) = extracted(doc, rect)?;
+        let base = base
+            .map(|b| {
+                rotated_plane(
+                    &b,
+                    [rect.x as i32, rect.y as i32],
+                    anchor,
+                    size,
+                    center,
+                    center,
+                    trig,
+                )
+            })
+            .transpose()?;
         let pixels = rotated_plane(
             &pixels,
             [rect.x as i32, rect.y as i32],
@@ -406,7 +460,7 @@ pub fn rotate(doc: &mut Document, degrees: f64) -> Result<bool, String> {
             center,
             trig,
         )?;
-        return replace_selection(doc, pixels, mask, anchor.map(i64::from));
+        return replace_selection(doc, pixels, mask, base, anchor.map(i64::from));
     }
     let size = [
         (f64::from(doc.width) * trig.0.abs() + f64::from(doc.height) * trig.1.abs()).ceil() as u32,

@@ -105,6 +105,7 @@ pub fn crop(document: &mut Document) -> Result<bool, String> {
     document.width = rect.width;
     document.height = rect.height;
     document.selection = None;
+    document.selection_base = None;
     Ok(true)
 }
 
@@ -124,6 +125,9 @@ pub fn orthogonal(document: &mut Document, operation: Orthogonal) -> Result<(), 
         }
     }
     if document.selection.is_some() {
+        reserve_plane(&mut bytes, width, height, 1)?;
+    }
+    if document.selection_base.is_some() {
         reserve_plane(&mut bytes, width, height, 1)?;
     }
     // Work on a cheap COW clone: any size/offset error leaves the caller unchanged.
@@ -169,6 +173,11 @@ pub fn orthogonal(document: &mut Document, operation: Orthogonal) -> Result<(), 
     }
     let size = dimensions(operation, width, height);
     output.selection = document.selection.as_ref().map(|m| {
+        coverage_map(m, width, height, size, |x, y| {
+            mapped(operation, x, y, width, height)
+        })
+    });
+    output.selection_base = document.selection_base.as_ref().map(|m| {
         coverage_map(m, width, height, size, |x, y| {
             mapped(operation, x, y, width, height)
         })
@@ -298,6 +307,9 @@ pub fn resize(
     if document.selection.is_some() {
         reserve_plane(&mut bytes, width, height, 1)?;
     }
+    if document.selection_base.is_some() {
+        reserve_plane(&mut bytes, width, height, 1)?;
+    }
     // Masks may have different local dimensions from their source. Validate all
     // scaled planes before allocating any, including malicious oversized ratios.
     for mask in document.layers.iter().flat_map(|l| {
@@ -353,6 +365,10 @@ pub fn resize(
         .selection
         .as_ref()
         .map(|m| resize_coverage(m, width, height, method));
+    output.selection_base = output
+        .selection_base
+        .as_ref()
+        .map(|m| resize_coverage(m, width, height, method));
     output.width = width;
     output.height = height;
     *document = output;
@@ -365,19 +381,21 @@ pub fn canvas_resize(document: &mut Document, width: u32, height: u32) -> Result
     Raster::new(width, height, [0; 4])?;
     document.width = width;
     document.height = height;
-    if let Some(mask) = &document.selection {
-        let mut values = vec![0; (width * height) as usize];
-        for y in 0..height.min(mask.height) {
-            for x in 0..width.min(mask.width) {
-                values[(y * width + x) as usize] = mask.values[(y * mask.width + x) as usize];
+    for plane in [&mut document.selection, &mut document.selection_base] {
+        if let Some(mask) = plane {
+            let mut values = vec![0; (width * height) as usize];
+            for y in 0..height.min(mask.height) {
+                for x in 0..width.min(mask.width) {
+                    values[(y * width + x) as usize] = mask.values[(y * mask.width + x) as usize];
+                }
             }
+            *plane = Some(Coverage {
+                width,
+                height,
+                values: Arc::new(values),
+                enabled: mask.enabled,
+            });
         }
-        document.selection = Some(Coverage {
-            width,
-            height,
-            values: Arc::new(values),
-            enabled: mask.enabled,
-        });
     }
     Ok(())
 }

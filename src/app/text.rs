@@ -332,75 +332,74 @@ impl PaletteApp {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 ui.set_width((ctx.content_rect().width() - 32.0).min(980.0));
-                egui::Frame::popup(ui.style())
-                    .inner_margin(8)
-                    .show(ui, |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            egui::ComboBox::from_id_salt("text-font")
-                                .width(145.0)
-                                .selected_text(if editor.spec.font == 0 {
-                                    "Ubuntu Light"
-                                } else {
-                                    "Hack"
-                                })
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut editor.spec.font, 0, "Ubuntu Light");
-                                    ui.selectable_value(&mut editor.spec.font, 1, "Hack");
-                                });
-                            ui.add(
-                                egui::DragValue::new(&mut editor.spec.size)
-                                    .range(6.0..=256.0)
-                                    .suffix(" px"),
-                            )
-                            .on_hover_text("Font size in image pixels");
-                            ui.separator();
-                            for label in ["B", "I", "U", "S"] {
-                                ui.add_enabled(
-                                    false,
-                                    egui::Button::new(label).min_size(vec2(26.0, 28.0)),
-                                )
-                                .on_hover_text("This text style is not implemented yet");
-                            }
-                            ui.separator();
-                            for (label, alignment) in [
-                                ("Left", Alignment::Left),
-                                ("Center", Alignment::Center),
-                                ("Right", Alignment::Right),
-                            ] {
-                                ui.selectable_value(&mut editor.spec.alignment, alignment, label);
-                            }
-                            ui.separator();
-                            let mut opaque = editor.spec.background.is_some();
-                            if ui.checkbox(&mut opaque, "Background fill").changed() {
-                                editor.spec.background =
-                                    opaque.then_some(self.background.to_srgba_unmultiplied());
-                            }
-                            ui.menu_button("More", |ui| {
-                                ui.label("Line spacing");
-                                ui.add(
-                                    egui::DragValue::new(&mut editor.spec.line_height)
-                                        .range(1.0..=3.0)
-                                        .speed(0.05),
-                                );
-                                ui.add(
-                                    egui::Slider::new(&mut editor.spec.opacity, 0.0..=1.0)
-                                        .text("Opacity"),
-                                );
-                                ui.label("Text is committed as a separate raster layer.");
+                crate::interface::context_toolbar_frame(ui.style()).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.set_min_height(crate::interface::CONTEXT_CONTROL_HEIGHT);
+                        egui::ComboBox::from_id_salt("text-font")
+                            .width(145.0)
+                            .selected_text(if editor.spec.font == 0 {
+                                "Ubuntu Light"
+                            } else {
+                                "Hack"
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut editor.spec.font, 0, "Ubuntu Light");
+                                ui.selectable_value(&mut editor.spec.font, 1, "Hack");
                             });
-                            ui.separator();
-                            apply = ui
-                                .add_enabled(editor.ready(), egui::Button::new("Done"))
-                                .on_hover_text(
-                                    "Commit text (Ctrl+Enter), or click outside the text box",
-                                )
-                                .clicked();
-                            cancel = ui
-                                .button("Cancel")
-                                .on_hover_text("Discard text (Escape)")
-                                .clicked();
+                        ui.add(
+                            egui::DragValue::new(&mut editor.spec.size)
+                                .range(6.0..=256.0)
+                                .suffix(" px"),
+                        )
+                        .on_hover_text("Font size in image pixels");
+                        ui.separator();
+                        for label in ["B", "I", "U", "S"] {
+                            ui.add_enabled(
+                                false,
+                                egui::Button::new(label).min_size(vec2(26.0, 28.0)),
+                            )
+                            .on_hover_text("This text style is not implemented yet");
+                        }
+                        ui.separator();
+                        for (label, alignment) in [
+                            ("Left", Alignment::Left),
+                            ("Center", Alignment::Center),
+                            ("Right", Alignment::Right),
+                        ] {
+                            ui.selectable_value(&mut editor.spec.alignment, alignment, label);
+                        }
+                        ui.separator();
+                        let mut opaque = editor.spec.background.is_some();
+                        if ui.checkbox(&mut opaque, "Background fill").changed() {
+                            editor.spec.background =
+                                opaque.then_some(self.background.to_srgba_unmultiplied());
+                        }
+                        ui.menu_button("More", |ui| {
+                            ui.label("Line spacing");
+                            ui.add(
+                                egui::DragValue::new(&mut editor.spec.line_height)
+                                    .range(1.0..=3.0)
+                                    .speed(0.05),
+                            );
+                            ui.add(
+                                egui::Slider::new(&mut editor.spec.opacity, 0.0..=1.0)
+                                    .text("Opacity"),
+                            );
+                            ui.label("Text is committed as a separate raster layer.");
                         });
+                        ui.separator();
+                        apply = ui
+                            .add_enabled(editor.ready(), egui::Button::new("Done"))
+                            .on_hover_text(
+                                "Commit text (Ctrl+Enter), or click outside the text box",
+                            )
+                            .clicked();
+                        cancel = ui
+                            .button("Cancel")
+                            .on_hover_text("Discard text (Escape)")
+                            .clicked();
                     });
+                });
             });
         editor.toolbar = toolbar.response.rect;
         let family = egui::FontFamily::Name(

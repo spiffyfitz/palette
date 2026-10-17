@@ -109,7 +109,7 @@ fn target(gesture: &SelectionGesture, point: [f32; 2], shift: bool) -> Selection
 
 impl PaletteApp {
     /// Give handles priority over canvas rectangle creation, including the
-    /// rotation handle above the canvas edge. Alt starts a fresh selection.
+    /// rotation handle above the canvas edge. Modifiers combine new selections.
     pub(super) fn selection_handle_press(
         &mut self,
         ctx: &egui::Context,
@@ -118,10 +118,11 @@ impl PaletteApp {
         pointer: Option<Pos2>,
         pressed: bool,
     ) -> bool {
-        if self.tool != Tool::Select
+        if !matches!(self.tool, Tool::Select | Tool::Lasso)
             || !self.close_pending_none()
             || self.current().document.active().locked
             || self.current().selection_drag.is_some()
+            || self.current().lasso_drag.is_some()
             || self.current().selection_transform.is_some()
             || ctx.input(|i| i.modifiers.alt)
             || self.current().selection_mode != palette_core::selection::Combine::Replace
@@ -179,7 +180,41 @@ impl PaletteApp {
         buttons: [bool; 2],
     ) {
         let zoom = self.current().zoom;
-        if self.tool == Tool::Select
+        if self.tool == Tool::Lasso
+            && let Some(mut drag) = self.current_mut().lasso_drag.take()
+        {
+            if let Some(pointer) = pointer {
+                drag.sample(image_point(pointer, canvas, zoom), zoom);
+            }
+            if !self.is_capturing() && (buttons[1] || !buttons[0]) {
+                if drag.points.len() >= 3 {
+                    self.edit(
+                        crate::app::editing::Edit::Freeform(drag.points, drag.mode),
+                        ui.ctx(),
+                    );
+                }
+            } else {
+                let mut points: Vec<_> = drag
+                    .points
+                    .iter()
+                    .map(|p| canvas.min + vec2(p[0], p[1]) * zoom)
+                    .collect();
+                if let Some(first) = points.first().copied() {
+                    points.push(first);
+                }
+                let phase = if self.is_capturing() {
+                    0.
+                } else {
+                    overlays::phase(ui.input(|i| i.time))
+                };
+                if overlays::ants(painter, &points, phase) && !self.is_capturing() {
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(50));
+                }
+                self.current_mut().lasso_drag = Some(drag);
+            }
+        }
+        if matches!(self.tool, Tool::Select | Tool::Lasso)
             && !self.is_capturing()
             && let Some(gesture) = &self.current().selection_transform
             && !gesture.released
@@ -226,17 +261,18 @@ impl PaletteApp {
                 if let Some(rect) =
                     PixelRect::from_drag(drag.start, drag.current, doc.width, doc.height)
                 {
-                    self.current_mut().command("Rectangular selection", |doc| {
-                        let incoming = editing::rectangle(doc.width, doc.height, rect);
-                        doc.selection = Some(
-                            palette_core::selection::combine(
-                                doc.selection.as_ref(),
-                                &incoming,
-                                drag.mode,
-                            )
-                            .expect("matching canvas masks"),
+                    if self.current().selection_feather > 0. {
+                        self.edit(
+                            crate::app::editing::Edit::Rectangle(rect, drag.mode),
+                            ui.ctx(),
                         );
-                    });
+                    } else {
+                        self.current_mut().command("Rectangular selection", |doc| {
+                            let incoming = editing::rectangle(doc.width, doc.height, rect);
+                            palette_core::selection::apply_region(doc, &incoming, drag.mode, 0.)
+                                .expect("matching canvas masks");
+                        });
+                    }
                 } else if drag.mode == palette_core::selection::Combine::Replace {
                     self.deselect();
                 }
@@ -272,6 +308,13 @@ impl PaletteApp {
                 phase,
             );
         } else {
+            for contour in self.current_mut().feather_contours() {
+                let points: Vec<_> = contour
+                    .iter()
+                    .map(|[x, y]| canvas.min + vec2(*x, *y) * zoom)
+                    .collect();
+                visible |= overlays::ants_alpha(painter, &points, phase, 128);
+            }
             for contour in self.current_mut().selection_contours() {
                 let points: Vec<_> = contour
                     .iter()
@@ -279,15 +322,24 @@ impl PaletteApp {
                     .collect();
                 visible |= overlays::ants(painter, &points, phase);
             }
+            if let Some(mask) = self.current().document.selection_base.as_ref().or(self
+                .current()
+                .document
+                .selection
+                .as_ref())
+            {
+                visible |= overlays::viewport_ants(painter, mask, canvas, zoom, phase);
+            }
         }
         if visible && !self.is_capturing() {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(50));
         }
-        if self.tool == Tool::Select
+        if matches!(self.tool, Tool::Select | Tool::Lasso)
             && self.close_pending_none()
             && self.current().selection_mode == palette_core::selection::Combine::Replace
             && self.current().selection_drag.is_none()
+            && self.current().lasso_drag.is_none()
             && !self.current().document.active().locked
             && let Some(rect) = self.current_mut().selection_bounds()
         {
@@ -327,11 +379,17 @@ impl PaletteApp {
                 );
                 painter.rect_stroke(bounds, 0, Stroke::new(1., ACCENT), StrokeKind::Outside);
             }
-        } else if self.tool == Tool::Select {
+        } else if matches!(self.tool, Tool::Select | Tool::Lasso) {
             if self.cursor.is_some() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
-            self.selection_handle_press(ui.ctx(), painter, canvas, pointer, false);
+            self.selection_handle_press(
+                ui.ctx(),
+                painter,
+                canvas,
+                pointer.filter(|p| !self.selection_toolbar_rect.contains(*p)),
+                false,
+            );
         }
     }
 }

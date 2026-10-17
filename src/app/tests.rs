@@ -2170,3 +2170,554 @@ fn selection_submenus_and_blend_dropdown_change_real_settings() {
     app.undo_current();
     assert_eq!(app.current().document.active().blend, BlendMode::Normal);
 }
+
+#[test]
+fn selection_toolbar_matches_text_height_fits_content_and_does_not_shift_canvas() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    let image = app.image_rect;
+    app.choose_tool(Tool::Select);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let rectangle = app.selection_toolbar_rect;
+    assert_eq!(app.image_rect, image);
+    assert!((rectangle.top() - app.canvas_rect.top() - 4.).abs() < 1.);
+    app.choose_tool(Tool::Lasso);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert_eq!(app.selection_toolbar_rect.size(), rectangle.size());
+    app.choose_tool(Tool::Wand);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let wand = app.selection_toolbar_rect;
+    assert!(wand.width() > rectangle.width() + 100.);
+    assert_eq!(wand.height(), rectangle.height());
+    assert_eq!(app.image_rect, image);
+    app.choose_tool(Tool::Text);
+    app.start_text(palette_core::editing::PixelRect {
+        x: 100,
+        y: 200,
+        width: 300,
+        height: 100,
+    });
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let text = ctx
+        .read_response(egui::Id::unique("text-toolbar"))
+        .unwrap()
+        .rect;
+    assert!(
+        (text.height() - wand.height()).abs() < 1.,
+        "text={text:?}, wand={wand:?}"
+    );
+    assert_eq!(app.selection_toolbar_rect, Rect::NOTHING);
+}
+
+#[test]
+fn selection_toolbar_numeric_fields_are_precise_validated_and_tab_local() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().zoom = 2.;
+    app.choose_tool(Tool::Wand);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let before = app.current().document.clone();
+    for (name, input, expected) in [
+        ("Tolerance", "35.5", 35.5),
+        ("Feather", "8.5", 8.5),
+        ("Feather", "NaN", 8.5),
+    ] {
+        let id = egui::Id::unique(("selection-number", app.current().id, name));
+        let position = ctx.read_response(id).unwrap().rect.center();
+        click_ui(&mut app, &ctx, position);
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::Key {
+                key: Key::A,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::COMMAND,
+            }],
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::Text(input.into()), enter_event()],
+        );
+        assert_eq!(
+            if name == "Tolerance" {
+                app.current().wand.tolerance
+            } else {
+                app.current().selection_feather
+            },
+            expected
+        );
+    }
+    assert!(app.current().document == before);
+    assert!(!app.edit_pending);
+    app.new_document();
+    assert_eq!(app.current().selection_feather, 0.);
+    app.active = 0;
+    assert_eq!(app.current().selection_feather, 8.5);
+}
+
+#[test]
+fn freeform_preview_cancel_commit_and_feather_at_fractional_zoom_are_one_undo() {
+    use palette_core::selection::{self, Combine};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.choose_tool(Tool::Lasso);
+    app.current_mut().selection_feather = 3.;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.current().document.clone();
+    let points = [
+        [300.25, 250.5],
+        [450.25, 260.5],
+        [420.25, 390.5],
+        [300.25, 360.5],
+    ];
+    let start = image_position(&app, points[0]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    for p in &points[1..] {
+        let p = image_position(&app, *p);
+        frame(&mut app, &ctx, vec![Event::PointerMoved(p)]);
+    }
+    assert!(app.current().lasso_drag.as_ref().unwrap().points.len() >= 4);
+    assert!(app.current().document == before);
+    let end = image_position(&app, points[3]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    let expected =
+        selection::feather(&selection::freeform(1280, 720, &points).unwrap(), 3.).unwrap();
+    assert_eq!(app.current().document.selection.as_ref(), Some(&expected));
+    assert_eq!(
+        app.current().document.active().source,
+        before.active().source
+    );
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    let selected = app.current().document.clone();
+    app.current_mut().selection_mode = Combine::Add;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    frame(&mut app, &ctx, vec![pointer(start, false)]);
+    assert!(app.current().lasso_drag.is_none());
+    assert!(app.current().document == selected);
+}
+
+#[test]
+fn rectangle_and_wand_feather_new_coverage_before_combining() {
+    use palette_core::{
+        editing::{PixelRect, rectangle},
+        selection::{self, Combine, Wand},
+    };
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(24, 16).unwrap();
+    let rect = PixelRect {
+        x: 4,
+        y: 4,
+        width: 10,
+        height: 8,
+    };
+    let raw = rectangle(24, 16, rect);
+    let expected = selection::feather(&raw, 2.).unwrap();
+    app.current_mut().selection_feather = 2.;
+    app.edit(editing::Edit::Rectangle(rect, Combine::Replace), &ctx);
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.current().document.selection.as_ref(), Some(&expected));
+    app.undo_current();
+    for y in 4..12 {
+        for x in 4..14 {
+            app.current_mut()
+                .document
+                .active_mut()
+                .source
+                .set(x, y, [200, 0, 0, 255]);
+        }
+    }
+    app.edit(
+        editing::Edit::Wand(
+            [6, 6],
+            Wand {
+                tolerance: 0.,
+                antialias: false,
+                ..Default::default()
+            },
+            Combine::Replace,
+        ),
+        &ctx,
+    );
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(app.current().document.selection.as_ref(), Some(&expected));
+}
+
+#[test]
+fn toolbar_combine_icons_and_inversion_work_without_clicking_through_to_the_canvas() {
+    use palette_core::selection::Combine;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    // The canvas extends behind the toolbar: an accidental fallthrough would
+    // start a rectangle gesture or transform on every toolbar press.
+    app.current_mut().zoom = 2.;
+    app.choose_tool(Tool::Select);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let before = app.current().document.clone();
+    for (index, mode) in [
+        Combine::Replace,
+        Combine::Add,
+        Combine::Subtract,
+        Combine::Intersect,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let rect = app.selection_toolbar_rect;
+        let button = pos2(rect.right() - 166. + index as f32 * 33., rect.center().y);
+        assert!(app.image_rect.contains(button));
+        click_ui(&mut app, &ctx, button);
+        assert_eq!(app.current().selection_mode, mode);
+        assert!(app.current().selection_drag.is_none());
+        assert!(app.current().document == before);
+    }
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        1280,
+        720,
+        palette_core::editing::PixelRect {
+            x: 10,
+            y: 10,
+            width: 10,
+            height: 10,
+        },
+    ));
+    let selected = app.current().document.clone();
+    let rect = app.selection_toolbar_rect;
+    click_ui(&mut app, &ctx, pos2(rect.right() - 22., rect.center().y));
+    let mask = app.current().document.selection.as_ref().unwrap();
+    assert_eq!(mask.at(15, 15), 0.);
+    assert_eq!(mask.at(100, 100), 1.);
+    assert_eq!(
+        app.current().document.active().source,
+        before.active().source
+    );
+    app.undo_current();
+    assert!(app.current().document == selected);
+}
+
+#[test]
+fn compact_selection_toolbars_fit_above_canvas_with_layer_properties_and_high_dpi() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    for properties in [false, true] {
+        app.interface.layer_properties = properties;
+        for dpi in [1., 1.5, 2.] {
+            ctx.set_pixels_per_point(dpi);
+            for tool in [Tool::Select, Tool::Wand, Tool::Lasso] {
+                app.choose_tool(tool);
+                for _ in 0..4 {
+                    let mut output = ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                vec2(780., 520.),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| app.draw(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                assert!(
+                    app.canvas_rect.contains_rect(app.selection_toolbar_rect),
+                    "{tool:?}: {:?} outside {:?}",
+                    app.selection_toolbar_rect,
+                    app.canvas_rect
+                );
+                assert!((app.selection_toolbar_rect.height() - 46.).abs() < 1.);
+            }
+        }
+    }
+}
+
+#[test]
+fn freeform_selection_is_available_through_the_ribbon_and_bounds_long_drags() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    click_ui(&mut app, &ctx, pos2(39., 117.));
+    let freeform = label_position(&mut app, &ctx, "      Freeform selection");
+    click_ui(&mut app, &ctx, freeform);
+    assert_eq!(app.tool, Tool::Lasso);
+    let mut drag = crate::session::LassoDrag {
+        points: vec![[0., 0.]],
+        mode: palette_core::selection::Combine::Replace,
+    };
+    for i in 1..20_000 {
+        drag.sample([i as f32, (i % 15) as f32], 1.);
+    }
+    assert!(drag.points.len() <= 4096);
+    assert_eq!(drag.points[0], [0., 0.]);
+    assert_eq!(drag.points.last(), Some(&[19_999., 4.]));
+}
+
+#[test]
+fn wand_slider_moves_from_exact_to_all_colors_and_does_not_invert_coverage() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(256, 32).unwrap();
+    for x in 0..256 {
+        for y in 0..32 {
+            app.current_mut().document.active_mut().source.set(
+                x,
+                y,
+                [x as u8, x as u8, x as u8, 255],
+            );
+        }
+    }
+    app.current_mut().wand.antialias = false;
+    app.choose_tool(Tool::Wand);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let id = egui::Id::unique(("selection-number", app.current().id, "Tolerance"));
+    let field = ctx.read_response(id).unwrap().rect;
+    let seed = image_position(&app, [0.5, 15.5]);
+    let center = pos2(field.left() - 36., field.center().y);
+    let left = center - vec2(120., 0.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(center), pointer(center, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(left)]);
+    frame(&mut app, &ctx, vec![pointer(left, false)]);
+    assert!(
+        app.current().wand.tolerance < 1.,
+        "value={}, field={field:?}, toolbar={:?}",
+        app.current().wand.tolerance,
+        app.selection_toolbar_rect
+    );
+    click_ui(&mut app, &ctx, seed);
+    wait_for_edit(&mut app, &ctx);
+    let count = app
+        .current()
+        .document
+        .selection
+        .as_ref()
+        .unwrap()
+        .values
+        .iter()
+        .filter(|v| **v > 0)
+        .count();
+    let right = center + vec2(120., 0.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(center), pointer(center, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(right)]);
+    frame(&mut app, &ctx, vec![pointer(right, false)]);
+    assert!(app.current().wand.tolerance > 99.);
+    click_ui(&mut app, &ctx, seed);
+    wait_for_edit(&mut app, &ctx);
+    assert!(count < 256 * 32);
+    assert!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .all(|v| *v == 255)
+    );
+}
+
+#[test]
+fn scrollbars_drag_both_axes_keep_vertical_rail_clear_of_layers_and_do_not_edit() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().zoom = 2.;
+    app.interface.layer_properties = true;
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let before = app.current().document.clone();
+    for axis in 0..2 {
+        let rail = app.canvas_scrollbars[axis].expect("oversized canvas rail");
+        assert!(!app.canvas_rect.intersects(rail));
+        if axis == 1 {
+            assert!(rail.right() < 1386. - 12. - 180.);
+        }
+        let start = rail.center();
+        let mut end = start;
+        end[axis] = rail.max[axis] - 1.;
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::PointerMoved(start), pointer(start, true)],
+        );
+        frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![pointer(end, false)]);
+        assert!(app.current().pan[axis] < -100.);
+        assert!(app.current().document == before);
+    }
+    let pan = app.current().pan;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::ArrowUp,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert!(app.current().pan.y > pan.y);
+    assert!(app.current().document == before);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::End,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    let pan = app.current().pan;
+    app.new_document();
+    app.active = 0;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.current().pan, pan);
+    app.current_mut().fit = true;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.canvas_scrollbars, [None, None]);
+    assert_eq!(app.current().pan, Vec2::ZERO);
+}
+
+#[test]
+fn inverted_selection_draws_animated_ants_on_every_visible_canvas_edge() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().zoom = 2.;
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        1280,
+        720,
+        palette_core::editing::PixelRect {
+            x: 500,
+            y: 300,
+            width: 100,
+            height: 100,
+        },
+    ));
+    app.invert_selection();
+    let mut output = ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    let view = app.canvas_rect;
+    let mut sides = [false; 4];
+    for shape in &output.shapes {
+        if let egui::Shape::LineSegment { points, stroke } = shape.shape
+            && stroke.color == Color32::BLACK
+            && view.contains(points[0])
+            && view.contains(points[1])
+        {
+            for (index, distance) in [
+                (points[0].x - view.left()).abs(),
+                (points[0].x - view.right()).abs(),
+                (points[0].y - view.top()).abs(),
+                (points[0].y - view.bottom()).abs(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                sides[index] |= distance < 1.;
+            }
+        }
+    }
+    output.textures_delta.clear();
+    assert!(sides.into_iter().all(|v| v), "{sides:?}");
+}
+
+#[test]
+fn feather_draws_original_opaque_ants_and_separate_half_opacity_extent() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(819, 594).unwrap();
+    let raw = palette_core::editing::rectangle(
+        819,
+        594,
+        palette_core::editing::PixelRect {
+            x: 240,
+            y: 180,
+            width: 300,
+            height: 210,
+        },
+    );
+    palette_core::selection::apply_region(
+        &mut app.current_mut().document,
+        &raw,
+        palette_core::selection::Combine::Replace,
+        20.,
+    )
+    .unwrap();
+    let mut output = ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    let (mut original, mut feather) = (false, false);
+    let original_left = app.image_rect.left() + 240. * app.current().zoom;
+    for shape in &output.shapes {
+        if let egui::Shape::LineSegment { points, stroke } = shape.shape
+            && app.image_rect.contains(points[0])
+        {
+            original |= stroke.color == Color32::BLACK && (points[0].x - original_left).abs() < 0.1;
+            feather |=
+                stroke.color == Color32::from_black_alpha(128) && points[0].x < original_left - 5.;
+        }
+    }
+    output.textures_delta.clear();
+    assert!(original && feather);
+    assert_eq!(app.current().document.selection_base.as_ref(), Some(&raw));
+}

@@ -136,6 +136,10 @@ pub struct Document {
     pub layers: Vec<Layer>,
     pub active_layer: u64,
     pub selection: Option<Coverage>,
+    /// Original selection contour retained separately from feathered editing
+    /// coverage. Shared immutable data participates in history and native saving.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_base: Option<Coverage>,
     pub(crate) next_id: u64,
     /// Opaque source metadata retained by native projects. Pixels currently use
     /// the editor's RGBA8/sRGB working interpretation; profiles are not applied.
@@ -164,6 +168,9 @@ impl Document {
         };
         if let Some(selection) = &self.selection {
             mask(selection);
+        }
+        if let Some(base) = &self.selection_base {
+            mask(base);
         }
         for layer in &self.layers {
             if let Some(m) = &layer.mask {
@@ -207,6 +214,7 @@ impl Document {
             }],
             active_layer: 1,
             selection: None,
+            selection_base: None,
             next_id: 2,
             metadata: DocumentMetadata::default(),
         }
@@ -298,6 +306,7 @@ impl Document {
             })
             .sum::<usize>()
             + self.selection.as_ref().map_or(0, |m| m.values.len())
+            + self.selection_base.as_ref().map_or(0, |m| m.values.len())
             + self.metadata.icc_profile.len()
             + self.metadata.exif.len()
     }
@@ -356,7 +365,10 @@ impl Document {
         if !self.layers.iter().any(|l| l.id == self.active_layer) {
             return Err("Active layer is missing".into());
         }
-        if let Some(selection) = &self.selection {
+        if self.selection_base.is_some() && self.selection.is_none() {
+            return Err("Original selection requires editing coverage".into());
+        }
+        for selection in self.selection.iter().chain(&self.selection_base) {
             selection.validate()?;
             if selection.width != self.width || selection.height != self.height {
                 return Err("Selection dimensions must match the canvas".into());

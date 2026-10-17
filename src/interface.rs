@@ -10,6 +10,12 @@ pub const POPUP_SECONDS: f32 = 0.16;
 pub const PANEL_SECONDS: f32 = 0.18;
 pub const MENU_ROW_HEIGHT: f32 = 32.0;
 pub const LAYER_TRAY_WIDTH: f32 = 112.0;
+pub const CONTEXT_CONTROL_HEIGHT: f32 = 28.0;
+
+/// Shared popup geometry keeps text and selection controls on the same baseline.
+pub fn context_toolbar_frame(style: &egui::Style) -> egui::Frame {
+    egui::Frame::popup(style).inner_margin(8)
+}
 
 /// Transient presentation state never enters the serialized document.
 pub struct InterfaceState {

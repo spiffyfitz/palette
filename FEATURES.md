@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -24,7 +24,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 sli
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for twenty-five UI states, including Wand settings, selection options, masks and feathering.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for thirty-two UI states, including Wand settings, selection options, masks and feathering.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -44,7 +44,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 sli
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
 - [x] Rectangular selection interface with clear, inversion and selected pixel movement.
 - [x] Magic Wand, selection combination/feathering and basic live layer-mask property controls.
-- [ ] Lasso/polygon/brush selections, mask painting and advanced style editing interfaces.
+- [ ] Polygon/brush selections, mask painting and advanced style editing interfaces.
 
 ## Phase 2
 
@@ -83,7 +83,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 sli
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
-- [x] Native v3 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes and v1/v2 migration.
+- [x] Native v4 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
@@ -92,12 +92,15 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 4 sli
 
 - [x] All 18 requested blend modes plus Divide; analytic/partial-alpha tests and reference sheet.
 - [x] Magic Wand: Oklab/alpha tolerance, contiguous/all-matching, current/all-visible sampling and antialiasing.
-- [x] Coverage-based Replace/Add/Subtract/Intersect for rectangle and Wand tools, including modifier shortcuts.
+- [x] Coverage-based Replace/Add/Subtract/Intersect for rectangle, freeform and Wand tools, including modifier shortcuts.
 - [x] Selection and mask feathering; background Apply/Cancel transaction, source preservation and native saving.
 - [x] Reveal-all or selection-derived layer masks, grayscale thumbnail, enable/disable, invert and delete.
-- [x] Marching ants use 50% coverage boundaries while edits retain all fractional coverage.
+- [x] Original selection ants plus separate 50%-opacity feather-extent ants; inverted selection continues around visible canvas edges.
+- [x] Horizontal/vertical canvas scrollbars outside image hit testing and clear of the layers tray; bounded pan, keyboard controls and Fit handling.
 - [ ] Merge selected/visible layers and confirmed flattening.
-- [ ] Lasso, polygon and brush selection with configurable tolerance.
+- [x] Freeform/lasso selection with live closed ants, antialiased coverage, combine modes and undo.
+- [x] Canvas selection toolbar matching text-bar height; dynamic width, precise feather input and Wand tolerance.
+- [ ] Polygon and edge-aware brush selection with configurable tolerance.
 - [ ] Selection expand/contract and live feather previews.
 - [ ] Brush/eraser mask editing, direct mask view, link/unlink and explicit permanent application.
 

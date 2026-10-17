@@ -27,6 +27,7 @@ pub struct Session {
     /// Selection gestures belong to a tab, so switching documents cannot commit
     /// a drag into another document or discard a different tab's tool state.
     pub selection_drag: Option<SelectionDrag>,
+    pub lasso_drag: Option<LassoDrag>,
     pub paint_stroke: Option<palette_core::brush::PaintStroke>,
     pub text_drag: Option<[f32; 2]>,
     pub layer_drag: Option<LayerDrag>,
@@ -35,6 +36,9 @@ pub struct Session {
     pub construction: Option<Construction>,
     pub selection_mode: palette_core::selection::Combine,
     pub wand: palette_core::selection::Wand,
+    pub selection_feather: f32,
+    pub selection_feather_text: String,
+    pub wand_tolerance_text: String,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -59,6 +63,7 @@ impl Session {
             pan: Vec2::ZERO,
             fit: false,
             selection_drag: None,
+            lasso_drag: None,
             paint_stroke: None,
             text_drag: None,
             layer_drag: None,
@@ -67,6 +72,9 @@ impl Session {
             construction: None,
             selection_mode: Default::default(),
             wand: Default::default(),
+            selection_feather: 0.,
+            selection_feather_text: "0".into(),
+            wand_tolerance_text: "12".into(),
             selection_cache: None,
         }
     }
@@ -128,6 +136,7 @@ impl Session {
         }
         self.paint_stroke = None;
         self.selection_drag = None;
+        self.lasso_drag = None;
         self.text_drag = None;
         self.history.finish(&self.document);
     }
@@ -154,17 +163,33 @@ impl Session {
             self.selection_cache = None;
             return;
         };
-        if self
-            .selection_cache
-            .as_ref()
-            .is_some_and(|cache| std::sync::Arc::ptr_eq(&cache.values, &mask.values))
-        {
+        if self.selection_cache.as_ref().is_some_and(|cache| {
+            std::sync::Arc::ptr_eq(&cache.values, &mask.values)
+                && cache.geometry == (mask.width, mask.height, mask.enabled)
+                && match (&cache.base, &self.document.selection_base) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => {
+                        std::sync::Arc::ptr_eq(&a.values, &b.values)
+                            && (a.width, a.height, a.enabled) == (b.width, b.height, b.enabled)
+                    }
+                    _ => false,
+                }
+        }) {
             return;
         }
         self.selection_cache = Some(SelectionCache {
             values: mask.values.clone(),
+            geometry: (mask.width, mask.height, mask.enabled),
+            base: self.document.selection_base.clone(),
             bounds: palette_core::editing::bounds(mask),
-            contours: palette_core::editing::contours(mask),
+            contours: palette_core::editing::contours(
+                self.document.selection_base.as_ref().unwrap_or(mask),
+            ),
+            feather: if self.document.selection_base.is_some() {
+                palette_core::editing::contours_at(mask, 1)
+            } else {
+                vec![]
+            },
         });
     }
     pub fn selection_contours(&mut self) -> &[Vec<[f32; 2]>] {
@@ -172,6 +197,12 @@ impl Session {
         self.selection_cache
             .as_ref()
             .map_or(&[], |cache| &cache.contours)
+    }
+    pub fn feather_contours(&mut self) -> &[Vec<[f32; 2]>] {
+        self.cache_selection();
+        self.selection_cache
+            .as_ref()
+            .map_or(&[], |cache| &cache.feather)
     }
 }
 
@@ -195,8 +226,11 @@ impl Session {
 
 struct SelectionCache {
     values: std::sync::Arc<Vec<u8>>,
+    geometry: (u32, u32, bool),
+    base: Option<palette_core::raster::Coverage>,
     bounds: Option<PixelRect>,
     contours: Vec<Vec<[f32; 2]>>,
+    feather: Vec<Vec<[f32; 2]>>,
 }
 
 pub struct SelectionDrag {
@@ -205,10 +239,38 @@ pub struct SelectionDrag {
     pub mode: palette_core::selection::Combine,
 }
 
+/// In-progress freehand contour, retained per tab until release or cancellation.
+pub struct LassoDrag {
+    pub points: Vec<[f32; 2]>,
+    pub mode: palette_core::selection::Combine,
+}
+impl LassoDrag {
+    pub fn sample(&mut self, point: [f32; 2], zoom: f32) {
+        if self
+            .points
+            .last()
+            .is_some_and(|p| (p[0] - point[0]).hypot(p[1] - point[1]) * zoom < 0.5)
+        {
+            return;
+        }
+        if self.points.len() >= 4096 {
+            // Preserve both endpoints while bounding exceptionally long drags.
+            // Sampling uses display distance so high zoom retains fine details.
+            let last = self.points.last().copied();
+            self.points = self.points.iter().step_by(2).copied().collect();
+            if let Some(last) = last {
+                self.points.push(last);
+            }
+        }
+        self.points.push(point);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Select,
     Wand,
+    Lasso,
     Polygon,
     Curve,
     MoveLayer,
@@ -234,6 +296,7 @@ impl Tool {
             Self::Curve => "Curve",
             Self::Select => "Rectangular selection",
             Self::Wand => "Magic Wand",
+            Self::Lasso => "Freeform selection",
             Self::Fill => "Fill bucket",
             Self::Pencil => "Pencil",
             Self::Brush => "Brush",
