@@ -1,0 +1,21 @@
+Rows are 32 pixels high, top to bottom. Columns: opaque / partial alpha / transparent backdrop.
+
+ 1: Normal
+ 2: Darken
+ 3: Multiply
+ 4: Color Burn
+ 5: Linear Burn
+ 6: Lighten
+ 7: Screen
+ 8: Color Dodge
+ 9: Linear Dodge (Add)
+10: Overlay
+11: Soft Light
+12: Hard Light
+13: Difference
+14: Exclusion
+15: Divide
+16: Hue
+17: Saturation
+18: Color
+19: Luminosity

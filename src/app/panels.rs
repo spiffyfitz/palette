@@ -198,37 +198,17 @@ impl PaletteApp {
                     ui.checkbox(&mut self.show_layers, "Layers");
                 });
                 let filter_menu = ui.menu_button("Filter", |ui| {
-                    ui.menu_button("Adjustments", |ui| {
-                        if menu_item(ui, "Invert", "", None, self.close_pending_none()).clicked() {
-                            self.add_filter(Filter::Invert);
-                            ui.close();
-                        }
-                        if menu_item(ui, "Brightness…", "", None, self.close_pending_none())
-                            .clicked()
-                        {
-                            self.open_processing(palette_core::processing::Kind::Brightness, None);
-                            ui.close();
-                        }
-                    });
+                    use palette_core::processing::{Kind, Operation, REGISTRY};
                     if menu_item(ui, "Gaussian Blur…", "", None, self.close_pending_none())
                         .clicked()
                     {
-                        self.open_processing(palette_core::processing::Kind::GaussianBlur, None);
+                        self.open_processing(Kind::GaussianBlur, None);
                         ui.close();
                     }
-                    ui.menu_button("Blur", |ui| {
-                        if menu_item(ui, "Gaussian Blur…", "", None, self.close_pending_none())
-                            .clicked()
-                        {
-                            self.open_processing(
-                                palette_core::processing::Kind::GaussianBlur,
-                                None,
-                            );
-                            ui.close();
-                        }
-                    });
                     for category in [
+                        "Adjustments",
                         "Artistic",
+                        "Blur",
                         "Brush Strokes",
                         "Distort",
                         "Noise",
@@ -240,8 +220,52 @@ impl PaletteApp {
                         "Other",
                         "Camera Distortion Correction",
                     ] {
-                        menu_item(ui, category, "", None, false)
-                            .on_hover_text("Not implemented yet");
+                        let entries: Vec<_> = REGISTRY
+                            .iter()
+                            .filter(|d| {
+                                d.category == category
+                                    && matches!(d.kind.default_operation(), Operation::Filter(_))
+                            })
+                            .collect();
+                        if entries.is_empty() {
+                            menu_item(ui, category, "", None, false)
+                                .on_hover_text("Not implemented yet");
+                        } else {
+                            let response = ui.menu_button(category, |ui| {
+                                for descriptor in entries {
+                                    let label = format!(
+                                        "{}{}",
+                                        descriptor.label,
+                                        if descriptor.parameters.is_empty() {
+                                            ""
+                                        } else {
+                                            "…"
+                                        }
+                                    );
+                                    if menu_item(ui, &label, "", None, self.close_pending_none())
+                                        .clicked()
+                                    {
+                                        if descriptor.kind == Kind::Invert {
+                                            self.add_filter(Filter::Invert);
+                                        } else {
+                                            self.open_processing(descriptor.kind, None);
+                                        }
+                                        ui.close();
+                                    }
+                                }
+                            });
+                            self.capture_submenu(
+                                if category == "Adjustments" {
+                                    "adjustments-menu"
+                                } else if category == "Noise" {
+                                    "noise-menu"
+                                } else {
+                                    "blur-menu"
+                                },
+                                ui,
+                                &response.response,
+                            );
+                        }
                     }
                     ui.separator();
                     if menu_item(ui, "Edit live filter stack…", "", None, true).clicked() {
@@ -249,7 +273,9 @@ impl PaletteApp {
                         ui.close();
                     }
                 });
-                self.capture_popup("filter-menu", &filter_menu.response);
+                for scene in ["filter-menu", "adjustments-menu", "noise-menu", "blur-menu"] {
+                    self.capture_popup(scene, &filter_menu.response);
+                }
                 ui.separator();
                 if icons::button(
                     ui,

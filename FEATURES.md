@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -24,7 +24,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [layer contr
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for forty-one UI states, including Wand settings, selection options, masks and feathering.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for forty-eight UI states, including Wand settings, selection options, masks and feathering.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -109,18 +109,22 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [layer contr
 
 - [x] Feathering below 5 px displays one decimal, supports real subpixel coverage changes, and shares mild shifted-log fine-adjustment sliders with Wand tolerance. Outer feather ants use 40% opacity.
 
-## Phase 5 — first vertical slice
+## Phase 5 — live processing
 
 - [x] Gaussian Blur with alpha-safe tile/halo processing (0–64 px); registry and common numeric/color parameters.
 - [x] Background on-canvas Apply/Cancel previews (full size through 2048 px); obsolete jobs cancel and cannot affect other tabs.
 - [x] Three-icon Filters/Effects/Blend row beneath layer Opacity; contextual processing toolbars share Text/Selection height and fence canvas input. All style parameters remain accessible through a compact selector.
 - [x] Filter/effect stack edit/toggle/reorder/duplicate/delete, plus selection-derived individual filter-mask controls.
-- [x] Live Drop Shadow, Outer Glow and editable Color Overlay; padded extents, source/mask updates and layer opacity/blending.
+- [x] Live Drop/Inner Shadow, Outer/Inner Glow, Stroke (outside/inside/center) and Color Overlay; source/mask updates and layer opacity/blending.
+- [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
+- [x] Registry-driven Filter categories, scrollable Add lists and common numeric/color/choice controls; validated integer settings.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 18 implemented operations.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
-- [ ] Filter Gallery and remaining filter/style catalog, including inner shadows/glows, bevel, stroke, satin and gradient/pattern overlays.
-- [ ] Broader independently implemented filter catalog and research inventory.
+- [ ] Filter Gallery and remaining filter/style catalog, including bevel, satin and gradient/pattern overlays.
+- [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
+- [ ] Remaining conventional filter catalog, including Levels/Curves, Motion Blur, noise generation, distortions and textures.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
 

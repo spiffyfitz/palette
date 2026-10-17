@@ -1,6 +1,6 @@
 //! Deterministic reference CPU compositor. Working RGB is sRGB (not linear light).
 mod blend;
-use crate::document::{BlendMode, Document, Effect, Filter, Layer};
+use crate::document::{BlendMode, Document, Effect, Layer};
 use crate::editing::PixelRect;
 use crate::raster::Raster;
 
@@ -46,15 +46,7 @@ pub(crate) fn point_pixel(layer: &Layer, x: u32, y: u32) -> [u8; 4] {
     let mut pixel = layer.source.get(x, y);
     for instance in layer.filters.iter().filter(|f| f.enabled) {
         let original = pixel;
-        for c in 0..3 {
-            pixel[c] = match instance.filter {
-                Filter::Invert => 255 - original[c],
-                Filter::Brightness { amount } => (f32::from(original[c]) + amount * 255.0)
-                    .round()
-                    .clamp(0.0, 255.0) as u8,
-                Filter::GaussianBlur { .. } => original[c],
-            };
-        }
+        pixel = crate::processing::point_filter(&instance.filter, original);
         let coverage = instance.mask.as_ref().map_or(1.0, |m| m.at(x, y));
         for c in 0..3 {
             pixel[c] = (f32::from(original[c]) * (1.0 - coverage) + f32::from(pixel[c]) * coverage)

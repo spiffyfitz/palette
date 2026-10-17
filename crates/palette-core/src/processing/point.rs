@@ -1,0 +1,131 @@
+//! Shared point-filter mathematics for both fast point compositing and spatial
+//! pipelines. Alpha is coverage and is never changed by these adjustments.
+use crate::document::Filter;
+
+fn linear(v: f32) -> f32 {
+    if v <= 0.04045 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
+}
+fn encoded(v: f32) -> f32 {
+    if v <= 0.0031308 {
+        v * 12.92
+    } else {
+        1.055 * v.powf(1. / 2.4) - 0.055
+    }
+}
+fn hsl(rgb: [f32; 3]) -> [f32; 3] {
+    let [r, g, b] = rgb;
+    let hi = r.max(g).max(b);
+    let lo = r.min(g).min(b);
+    let delta = hi - lo;
+    let l = (hi + lo) * 0.5;
+    if delta == 0. {
+        return [0., 0., l];
+    }
+    let hue = if hi == r {
+        ((g - b) / delta).rem_euclid(6.)
+    } else if hi == g {
+        (b - r) / delta + 2.
+    } else {
+        (r - g) / delta + 4.
+    };
+    [hue / 6., delta / (1. - (2. * l - 1.).abs()), l]
+}
+fn rgb([h, s, l]: [f32; 3]) -> [f32; 3] {
+    let c = (1. - (2. * l - 1.).abs()) * s;
+    let h = h.rem_euclid(1.) * 6.;
+    let x = c * (1. - (h.rem_euclid(2.) - 1.).abs());
+    let base = match h as u8 {
+        0 => [c, x, 0.],
+        1 => [x, c, 0.],
+        2 => [0., c, x],
+        3 => [0., x, c],
+        4 => [x, 0., c],
+        _ => [c, 0., x],
+    };
+    base.map(|v| v + l - c * 0.5)
+}
+
+pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4]) -> [u8; 4] {
+    let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
+    let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
+    let result = match *filter {
+        Filter::Invert => return [255 - pixel[0], 255 - pixel[1], 255 - pixel[2], pixel[3]],
+        Filter::Brightness { amount } => {
+            return [
+                (f32::from(pixel[0]) + amount * 255.)
+                    .round()
+                    .clamp(0., 255.) as u8,
+                (f32::from(pixel[1]) + amount * 255.)
+                    .round()
+                    .clamp(0., 255.) as u8,
+                (f32::from(pixel[2]) + amount * 255.)
+                    .round()
+                    .clamp(0., 255.) as u8,
+                pixel[3],
+            ];
+        }
+        Filter::BrightnessContrast {
+            brightness,
+            contrast,
+        } => {
+            let gain = (1. + contrast) / (1. - contrast);
+            input.map(|v| ((v - 0.5) * gain + 0.5) + brightness)
+        }
+        Filter::Exposure { stops } => {
+            if stops == 0. {
+                return pixel;
+            }
+            input.map(|v| encoded((linear(v) * stops.exp2()).clamp(0., 1.)))
+        }
+        Filter::HueSaturation {
+            hue,
+            saturation,
+            lightness,
+        } => {
+            if hue == 0. && saturation == 0. && lightness == 0. {
+                return pixel;
+            }
+            let [h, s, l] = hsl(input);
+            rgb([
+                h + hue / 360.,
+                (s * (1. + saturation)).clamp(0., 1.),
+                (l + lightness).clamp(0., 1.),
+            ])
+        }
+        Filter::Vibrance { amount } => {
+            if amount == 0. {
+                return pixel;
+            }
+            let [h, s, l] = hsl(input);
+            // Prefer lower-saturation colors. This is an independent HSL
+            // operation, without proprietary skin-tone protection heuristics.
+            rgb([h, (s * (1. + amount * (1. - s))).clamp(0., 1.), l])
+        }
+        Filter::BlackWhite { strength } => input.map(|v| v + (luminance() - v) * strength),
+        Filter::Threshold { level } => {
+            [if luminance() * 255. >= f32::from(level) {
+                1.
+            } else {
+                0.
+            }; 3]
+        }
+        Filter::Posterize { levels } => {
+            let steps = f32::from(levels - 1);
+            input.map(|v| (v * steps).round() / steps)
+        }
+        // Zero-radius neighborhood operations can use the point fast path.
+        Filter::GaussianBlur { .. } | Filter::BoxBlur { .. } | Filter::Median { .. } => {
+            return pixel;
+        }
+    };
+    [
+        (result[0] * 255.).round().clamp(0., 255.) as u8,
+        (result[1] * 255.).round().clamp(0., 255.) as u8,
+        (result[2] * 255.).round().clamp(0., 255.) as u8,
+        pixel[3],
+    ]
+}

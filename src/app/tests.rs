@@ -3695,3 +3695,97 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
         assert!(app.current().document.layers[0].filters.is_empty());
     }
 }
+
+#[test]
+fn registry_filter_menu_opens_new_adjustments_and_noise_with_live_parameter_previews() {
+    use palette_core::processing::{Kind, Operation};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let source = app.current().document.active().source.clone();
+    let filter = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, filter);
+    let adjustments = label_position(&mut app, &ctx, "Adjustments");
+    click_ui(&mut app, &ctx, adjustments);
+    let hue = label_position(&mut app, &ctx, "Hue/Saturation…");
+    click_ui(&mut app, &ctx, hue);
+    wait_for_processing(&mut app, &ctx);
+    assert_eq!(
+        app.processing_dialog.as_ref().unwrap().operation.kind(),
+        Kind::HueSaturation
+    );
+    let hue = label_position(&mut app, &ctx, "Hue (°)");
+    click_ui(&mut app, &ctx, hue);
+    let saturation = label_position(&mut app, &ctx, "Saturation");
+    click_ui(&mut app, &ctx, saturation);
+    let saturation = scoped_label_bounds(&mut app, &ctx, "Saturation", true);
+    click_ui(
+        &mut app,
+        &ctx,
+        pos2(saturation.right() + 90., saturation.center().y),
+    );
+    wait_for_processing(&mut app, &ctx);
+    assert!(matches!(app.processing_dialog.as_ref().unwrap().operation,
+        Operation::Filter(Filter::HueSaturation { saturation, .. }) if saturation != 0.));
+    assert!(app.current().document.active().filters.is_empty());
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    assert!(app.current().document.active().source == source);
+    assert_eq!(app.current().document.active().filters.len(), 1);
+    let filter = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, filter);
+    let noise = label_position(&mut app, &ctx, "Noise");
+    click_ui(&mut app, &ctx, noise);
+    let median = label_position(&mut app, &ctx, "Median…");
+    click_ui(&mut app, &ctx, median);
+    wait_for_processing(&mut app, &ctx);
+    assert_eq!(
+        app.processing_dialog.as_ref().unwrap().operation.kind(),
+        Kind::Median
+    );
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert_eq!(app.current().document.active().filters.len(), 1);
+}
+
+#[test]
+fn stroke_placement_choice_previews_on_canvas_and_commits_as_an_editable_undoable_style() {
+    use palette_core::{
+        document::{Effect, StrokePosition},
+        processing::Kind,
+    };
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    app.open_processing(Kind::Stroke, None);
+    wait_for_processing(&mut app, &ctx);
+    let color = label_position(&mut app, &ctx, "Color");
+    click_ui(&mut app, &ctx, color);
+    let position = label_position(&mut app, &ctx, "Position");
+    click_ui(&mut app, &ctx, position);
+    let outside = label_position(&mut app, &ctx, "Outside");
+    click_ui(&mut app, &ctx, outside);
+    let center = label_position(&mut app, &ctx, "Center");
+    click_ui(&mut app, &ctx, center);
+    wait_for_processing(&mut app, &ctx);
+    assert!(app.current().document == before);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    assert!(matches!(
+        app.current().document.active().effects[0].effect,
+        Effect::Stroke {
+            position: StrokePosition::Center,
+            ..
+        }
+    ));
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert_eq!(app.current().document.active().effects.len(), 1);
+    assert!(app.current().document.active().source == before.active().source);
+}

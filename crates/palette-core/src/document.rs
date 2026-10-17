@@ -89,6 +89,49 @@ pub enum Filter {
     GaussianBlur {
         radius: f32,
     },
+    BrightnessContrast {
+        brightness: f32,
+        contrast: f32,
+    },
+    /// Stops applied in linear-light RGB, encoded back to sRGB.
+    Exposure {
+        stops: f32,
+    },
+    HueSaturation {
+        hue: f32,
+        saturation: f32,
+        lightness: f32,
+    },
+    Vibrance {
+        amount: f32,
+    },
+    BlackWhite {
+        strength: f32,
+    },
+    Threshold {
+        level: u8,
+    },
+    Posterize {
+        levels: u8,
+    },
+    BoxBlur {
+        radius: u8,
+    },
+    Median {
+        radius: u8,
+    },
+}
+
+/// Placement relative to the layer's alpha silhouette.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StrokePosition {
+    Outside,
+    Inside,
+    Center,
+}
+impl StrokePosition {
+    /// Stable order for registry choice controls.
+    pub const ALL: [Self; 3] = [Self::Outside, Self::Inside, Self::Center];
 }
 
 /// Stable, individually maskable instance in a layer's ordered filter pipeline.
@@ -118,6 +161,27 @@ pub enum Effect {
         opacity: f32,
         spread: f32,
         size: f32,
+    },
+    InnerShadow {
+        color: [u8; 3],
+        opacity: f32,
+        angle: f32,
+        distance: f32,
+        spread: f32,
+        size: f32,
+    },
+    InnerGlow {
+        color: [u8; 3],
+        opacity: f32,
+        spread: f32,
+        size: f32,
+    },
+    /// Subpixel box-morphology contour, preserving the original source alpha.
+    Stroke {
+        color: [u8; 3],
+        opacity: f32,
+        width: f32,
+        position: StrokePosition,
     },
 }
 
@@ -388,7 +452,18 @@ impl Document {
                         .div_ceil(u64::from(crate::raster::TILE));
                     let h = u64::from(layer.source.height() + 2 * pad)
                         .div_ceil(u64::from(crate::raster::TILE));
-                    prepared += w * h * u64::from(crate::raster::TILE).pow(2) * 4;
+                    let planes = if matches!(
+                        effect.effect,
+                        Effect::Stroke {
+                            position: StrokePosition::Center,
+                            ..
+                        }
+                    ) {
+                        2
+                    } else {
+                        1
+                    };
+                    prepared += w * h * u64::from(crate::raster::TILE).pow(2) * 4 * planes;
                 }
             }
             if prepared > 512 * 1024 * 1024 {

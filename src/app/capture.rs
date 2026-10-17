@@ -21,7 +21,11 @@ impl PaletteApp {
                 | "processing-shadow"
                 | "processing-glow"
                 | "processing-stack"
-                | "processing-effects-stack",
+                | "processing-effects-stack"
+                | "processing-stroke"
+                | "processing-inner-shadow"
+                | "processing-inner-glow"
+                | "processing-hue",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -79,9 +83,25 @@ impl PaletteApp {
                     let kind = match self.capture.scene.as_deref() {
                         Some("processing-shadow") => Kind::DropShadow,
                         Some("processing-glow") => Kind::OuterGlow,
+                        Some("processing-stroke") => Kind::Stroke,
+                        Some("processing-inner-shadow") => Kind::InnerShadow,
+                        Some("processing-inner-glow") => Kind::InnerGlow,
+                        Some("processing-hue") => Kind::HueSaturation,
                         _ => Kind::GaussianBlur,
                     };
                     self.open_processing(kind, None);
+                    if let Some(d) = &mut self.processing_dialog {
+                        if kind == Kind::Stroke {
+                            d.operation
+                                .set_value("width", palette_core::processing::Value::Number(8.))
+                                .expect("capture width");
+                            d.parameter = 3;
+                        } else if kind == Kind::HueSaturation {
+                            d.operation
+                                .set_value("hue", palette_core::processing::Value::Number(120.))
+                                .expect("capture hue");
+                        }
+                    }
                 }
             }
             Some("layer-blending") => self.interface.layer_properties = true,
