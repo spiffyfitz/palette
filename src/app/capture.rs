@@ -17,7 +17,11 @@ impl PaletteApp {
         }
         match self.capture.scene.as_deref() {
             Some(
-                "processing-blur" | "processing-shadow" | "processing-glow" | "processing-stack",
+                "processing-blur"
+                | "processing-shadow"
+                | "processing-glow"
+                | "processing-stack"
+                | "processing-effects-stack",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -38,7 +42,11 @@ impl PaletteApp {
                     }
                 }
                 self.current_mut().zoom = 1.;
-                if self.capture.scene.as_deref() == Some("processing-stack") {
+                self.interface.layer_properties = true;
+                if matches!(
+                    self.capture.scene.as_deref(),
+                    Some("processing-stack" | "processing-effects-stack")
+                ) {
                     let doc = &mut self.current_mut().document;
                     for kind in [Kind::GaussianBlur, Kind::DropShadow, Kind::OuterGlow] {
                         let id = doc.allocate_id();
@@ -60,7 +68,13 @@ impl PaletteApp {
                             ),
                         }
                     }
-                    self.show_filters = true;
+                    self.open_processing_toolbar(
+                        if self.capture.scene.as_deref() == Some("processing-stack") {
+                            super::processing::Section::Filters
+                        } else {
+                            super::processing::Section::Effects
+                        },
+                    );
                 } else {
                     let kind = match self.capture.scene.as_deref() {
                         Some("processing-shadow") => Kind::DropShadow,
@@ -70,6 +84,7 @@ impl PaletteApp {
                     self.open_processing(kind, None);
                 }
             }
+            Some("layer-blending") => self.interface.layer_properties = true,
             Some("brush-selection" | "brush-selection-options") => {
                 self.current_mut().document = Document::new(819, 594).expect("capture canvas");
                 let raster = &mut self.current_mut().document.active_mut().source;

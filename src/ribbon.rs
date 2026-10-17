@@ -641,14 +641,16 @@ impl PaletteApp {
                         if icons::button(
                             ui,
                             Icon::Effects,
-                            "Live filters",
-                            self.show_filters,
+                            "Live effects",
+                            self.processing_section_is(crate::app::processing::Section::Effects),
                             true,
                             vec2(48.0, 62.0),
                         )
                         .clicked()
                         {
-                            self.show_filters = !self.show_filters;
+                            self.toggle_processing_toolbar(
+                                crate::app::processing::Section::Effects,
+                            );
                         }
                     });
                     ui.vertical(|ui| {

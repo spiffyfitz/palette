@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -24,7 +24,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 5 liv
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for thirty-nine UI states, including Wand settings, selection options, masks and feathering.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for forty-one UI states, including Wand settings, selection options, masks and feathering.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -112,7 +112,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 5 liv
 ## Phase 5 — first vertical slice
 
 - [x] Gaussian Blur with alpha-safe tile/halo processing (0–64 px); registry and common numeric/color parameters.
-- [x] Background reduced-resolution Apply/Cancel previews; obsolete preview jobs cancel and cannot affect other tabs.
+- [x] Background on-canvas Apply/Cancel previews (full size through 2048 px); obsolete jobs cancel and cannot affect other tabs.
+- [x] Three-icon Filters/Effects/Blend row beneath layer Opacity; contextual processing toolbars share Text/Selection height and fence canvas input. All style parameters remain accessible through a compact selector.
 - [x] Filter/effect stack edit/toggle/reorder/duplicate/delete, plus selection-derived individual filter-mask controls.
 - [x] Live Drop Shadow, Outer Glow and editable Color Overlay; padded extents, source/mask updates and layer opacity/blending.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.

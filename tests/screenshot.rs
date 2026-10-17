@@ -53,6 +53,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-shadow",
         "processing-glow",
         "processing-stack",
+        "processing-effects-stack",
+        "layer-blending",
         "filter-menu",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));

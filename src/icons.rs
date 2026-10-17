@@ -35,6 +35,8 @@ pub enum Icon {
     Ellipse,
     Layers,
     Effects,
+    Filters,
+    Blend,
     Save,
     Undo,
     Redo,
@@ -117,6 +119,25 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::Filters => {
+            for (y, x) in [(0.2, 0.35), (0.5, 0.7), (0.8, 0.45)] {
+                line([0.05, y], [0.95, y]);
+                p.rect_filled(
+                    Rect::from_center_size(at(x, y), rect.size() * egui::vec2(0.16, 0.24)),
+                    1,
+                    color,
+                );
+            }
+        }
+        Icon::Blend => {
+            p.circle_stroke(at(0.35, 0.5), rect.width() * 0.3, s);
+            p.circle_filled(
+                at(0.65, 0.5),
+                rect.width() * 0.3,
+                color.gamma_multiply(0.45),
+            );
+            p.circle_stroke(at(0.65, 0.5), rect.width() * 0.3, s);
+        }
         Icon::SelectBrush => {
             draw(ui, rect, Icon::Select, color);
             draw(ui, rect.shrink(rect.width() * 0.18), Icon::Pencil, color);
@@ -394,7 +415,24 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
                 ));
             }
         }
-        Icon::Effects | Icon::Hardness => {
+        Icon::Effects => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    at(0.38, 0.04),
+                    at(0.49, 0.36),
+                    at(0.81, 0.47),
+                    at(0.49, 0.58),
+                    at(0.38, 0.94),
+                    at(0.27, 0.58),
+                    at(0.01, 0.47),
+                    at(0.27, 0.36),
+                ],
+                s,
+            ));
+            line([0.83, 0.01], [0.83, 0.25]);
+            line([0.71, 0.13], [0.95, 0.13]);
+        }
+        Icon::Hardness => {
             p.circle_stroke(rect.center(), rect.width() * 0.42, s);
             p.circle_filled(rect.center(), rect.width() * 0.18, color);
         }

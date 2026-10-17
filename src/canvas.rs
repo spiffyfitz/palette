@@ -53,6 +53,7 @@ impl PaletteApp {
         let viewport = navigation::layout(workspace, image_size, self.current().fit);
         let view = viewport.view;
         self.canvas_rect = view;
+        self.processing_toolbar_window(ui.ctx());
         self.selection_toolbar(ui.ctx());
         let response = ui.interact(
             view,
@@ -82,7 +83,9 @@ impl PaletteApp {
                 i.pointer.primary_released() || i.pointer.secondary_released(),
             )
         });
-        let over_toolbar = pointer.is_some_and(|p| self.selection_toolbar_rect.contains(p));
+        let over_toolbar = pointer.is_some_and(|p| {
+            self.selection_toolbar_rect.contains(p) || self.processing_toolbar_rect.contains(p)
+        });
         let hovered = response.hovered() && !over_toolbar;
         if hovered && (pressed || middle) {
             for axis in 0..2 {
@@ -151,7 +154,10 @@ impl PaletteApp {
                 }
             }
         }
-        if let Some(texture) = &self.current().texture {
+        if let Some(texture) = self
+            .processing_preview()
+            .or(self.current().texture.as_ref())
+        {
             painter.image(
                 texture.id(),
                 canvas,

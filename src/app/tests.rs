@@ -1818,27 +1818,52 @@ fn paint_export_cancel_and_native_backup_are_bound_to_the_same_document_revision
 }
 
 fn label_bounds(app: &mut PaletteApp, ctx: &Context, label: &str) -> egui::Rect {
-    fn find(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Rect> {
+    scoped_label_bounds(app, ctx, label, false)
+}
+fn scoped_label_bounds(
+    app: &mut PaletteApp,
+    ctx: &Context,
+    label: &str,
+    toolbar: bool,
+) -> egui::Rect {
+    fn find(shape: &egui::epaint::Shape, label: &str, bounds: Rect) -> Option<egui::Rect> {
         match shape {
             egui::epaint::Shape::Text(t) if t.galley.text() == label => {
-                Some(t.galley.rect.translate(t.pos.to_vec2()))
+                let rect = t.galley.rect.translate(t.pos.to_vec2());
+                bounds.contains_rect(rect).then_some(rect)
             }
-            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, label)),
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, label, bounds)),
             _ => None,
         }
     }
-    let input = RawInput {
-        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
-        ..Default::default()
-    };
-    let mut output = ctx.run_ui(input, |ui| app.draw(ui));
-    let point = output
-        .shapes
-        .iter()
-        .find_map(|s| find(&s.shape, label))
-        .expect("visible label");
-    output.textures_delta.clear();
-    point
+    // Areas have an invisible sizing pass and may re-anchor after changing
+    // content. Measure stable geometry, and clear texture deltas before a test
+    // assertion can unwind (epaint intentionally panics on unhandled deltas).
+    let mut previous = None;
+    for _ in 0..6 {
+        let input = RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        let bounds = if toolbar {
+            app.processing_toolbar_rect
+        } else {
+            Rect::EVERYTHING
+        };
+        let point = output
+            .shapes
+            .iter()
+            .find_map(|s| find(&s.shape, label, bounds));
+        output.textures_delta.clear();
+        if let Some(point) = point {
+            if previous == Some(point) {
+                return point;
+            }
+            previous = Some(point);
+        }
+    }
+    panic!("stable visible label: {label}");
 }
 fn label_position(app: &mut PaletteApp, ctx: &Context, label: &str) -> egui::Pos2 {
     label_bounds(app, ctx, label).center()
@@ -2178,8 +2203,8 @@ fn selection_submenus_and_blend_dropdown_change_real_settings() {
     app.interface.layer_properties = true;
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
-    let normal = label_position(&mut app, &ctx, "Normal");
-    click_ui(&mut app, &ctx, normal);
+    let blending = app.layer_processing_buttons[2].center();
+    click_ui(&mut app, &ctx, blending);
     let burn = label_position(&mut app, &ctx, "Color Burn");
     click_ui(&mut app, &ctx, burn);
     assert_eq!(app.current().document.active().blend, BlendMode::ColorBurn);
@@ -3301,6 +3326,7 @@ fn processing_document() -> Document {
     }
     doc
 }
+#[track_caller]
 fn wait_for_processing(app: &mut PaletteApp, ctx: &Context) {
     let deadline = std::time::Instant::now() + Duration::from_secs(8);
     loop {
@@ -3328,7 +3354,7 @@ fn gaussian_dialog_previews_real_parameter_input_cancels_and_applies_one_native_
     wait_for_processing(&mut app, &ctx);
     assert!(app.processing_dialog.as_ref().unwrap().image.is_some());
     let radius = label_bounds(&mut app, &ctx, "Radius (px)");
-    let slider = pos2(radius.left() - 80., radius.center().y);
+    let slider = pos2(radius.right() + 90., radius.center().y);
     frame(
         &mut app,
         &ctx,
@@ -3487,4 +3513,185 @@ fn painting_with_spatial_filters_and_live_styles_uses_background_updates_and_pre
     frame(&mut app, &ctx, vec![pointer(end, false)]);
     app.undo_current();
     assert!(app.current().document == before);
+}
+
+/// Check the actual canvas mesh, rather than only the preview handle existing.
+fn canvas_uses_texture(app: &mut PaletteApp, ctx: &Context, texture: egui::TextureId) -> bool {
+    fn contains(shape: &egui::epaint::Shape, texture: egui::TextureId, bounds: Rect) -> bool {
+        match shape {
+            egui::epaint::Shape::Mesh(mesh) => {
+                mesh.texture_id == texture && mesh.calc_bounds() == bounds
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().any(|s| contains(s, texture, bounds)),
+            _ => false,
+        }
+    }
+    let mut output = ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    let found = output
+        .shapes
+        .iter()
+        .any(|s| contains(&s.shape, texture, app.image_rect));
+    output.textures_delta.clear();
+    found
+}
+
+#[test]
+fn layer_icon_row_opens_canvas_processing_and_live_preview_never_mutates_source() {
+    use super::processing::Section;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    app.interface.layer_properties = true;
+    wait_for_render(&mut app, &ctx);
+    let before = app.current().document.clone();
+    let buttons = app.layer_processing_buttons;
+    assert!(buttons.iter().all(|r| r.is_positive()));
+    assert!(
+        buttons
+            .windows(2)
+            .all(|r| r[0].right() <= r[1].left() && r[0].top() == r[1].top())
+    );
+    let opacity = label_bounds(&mut app, &ctx, "Opacity");
+    assert!(buttons[0].top() > opacity.bottom());
+    click_ui(&mut app, &ctx, buttons[0].center());
+    assert!(app.processing_section_is(Section::Filters));
+    let add = label_position(&mut app, &ctx, "Add");
+    click_ui(&mut app, &ctx, add);
+    let blur = label_position(&mut app, &ctx, "Gaussian Blur");
+    click_ui(&mut app, &ctx, blur);
+    wait_for_processing(&mut app, &ctx);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+    let preview_toggle = label_position(&mut app, &ctx, "Preview");
+    click_ui(&mut app, &ctx, preview_toggle);
+    assert!(app.processing_preview().is_none());
+    let committed = app.current().texture.as_ref().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, committed));
+    let preview_toggle = label_position(&mut app, &ctx, "Preview");
+    click_ui(&mut app, &ctx, preview_toggle);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    assert_eq!(app.current().document.active().filters.len(), 1);
+    assert!(app.current().document.active().source == before.active().source);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.current().document.active().filters.is_empty());
+    assert!(app.current().document.layers == before.layers);
+    app.undo_current();
+    assert_eq!(app.current().document.active().filters.len(), 1);
+    let effects = app.layer_processing_buttons[1].center();
+    click_ui(&mut app, &ctx, effects);
+    assert!(app.processing_section_is(Section::Effects));
+}
+
+#[test]
+fn effects_are_editable_and_removable_from_the_canvas_toolbar_with_undo_and_native_preservation() {
+    use palette_core::processing::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let source = app.current().document.active().source.clone();
+    app.open_processing(Kind::DropShadow, None);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    let saved = app.current().document.clone();
+    let edit = scoped_label_bounds(&mut app, &ctx, "Edit", true).center();
+    click_ui(&mut app, &ctx, edit);
+    wait_for_processing(&mut app, &ctx);
+    let color = label_position(&mut app, &ctx, "Color");
+    click_ui(&mut app, &ctx, color);
+    assert!(egui::Popup::is_any_open(&ctx));
+    frame(&mut app, &ctx, vec![escape_event()]);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert!(
+        app.processing_dialog.is_some(),
+        "Escape closes the parameter menu first"
+    );
+    let color = label_position(&mut app, &ctx, "Color");
+    click_ui(&mut app, &ctx, color);
+    let size = label_position(&mut app, &ctx, "Size (px)");
+    click_ui(&mut app, &ctx, size);
+    let size = label_bounds(&mut app, &ctx, "Size (px)");
+    let slider = pos2(size.right() + 100., size.center().y);
+    click_ui(&mut app, &ctx, slider);
+    wait_for_processing(&mut app, &ctx);
+    assert!(app.current().document == saved);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.current().document == saved && app.processing_preview().is_none());
+    let edit = scoped_label_bounds(&mut app, &ctx, "Edit", true).center();
+    click_ui(&mut app, &ctx, edit);
+    wait_for_processing(&mut app, &ctx);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.processing_dialog.is_none());
+    assert!(app.current().document.active().effects.is_empty());
+    assert!(app.current().document.active().source == source);
+    app.undo_current();
+    assert!(app.current().document == saved);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("live-styles.palette");
+    io::save_project(&path, &app.current().document).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+}
+
+#[test]
+fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer_changes() {
+    use palette_core::processing::{Kind, REGISTRY};
+    for dpi in [1., 1.5, 2.] {
+        let ctx = Context::default();
+        ctx.set_pixels_per_point(dpi);
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.interface.layer_properties = true;
+        for entry in REGISTRY {
+            app.cancel_processing();
+            app.open_processing(entry.kind, None);
+            for _ in 0..4 {
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(780., 520.))),
+                        ..Default::default()
+                    },
+                    |ui| app.draw(ui),
+                );
+                output.textures_delta.clear();
+            }
+            assert!(
+                app.canvas_rect.contains_rect(app.processing_toolbar_rect),
+                "{:?}: {:?} outside {:?}",
+                entry.kind,
+                app.processing_toolbar_rect,
+                app.canvas_rect
+            );
+            assert!((app.processing_toolbar_rect.height() - 46.).abs() < 1.);
+            assert!(app.selection_toolbar_rect == Rect::NOTHING);
+        }
+        app.choose_tool(Tool::Wand);
+        assert!(app.processing_dialog.is_none() && app.processing_toolbar.is_none());
+        app.open_processing(Kind::GaussianBlur, None);
+        let original = app.current().document.clone();
+        app.current_mut()
+            .command("Add another layer", Document::add_layer);
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.processing_dialog.is_none() && app.processing_toolbar.is_none());
+        assert!(app.current().document.layers[0].source == original.active().source);
+        assert!(app.current().document.layers[0].filters.is_empty());
+    }
 }

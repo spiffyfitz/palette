@@ -6,7 +6,7 @@ pub(crate) mod editing;
 mod feather;
 mod files;
 mod panels;
-mod processing;
+pub(crate) mod processing;
 mod selection_brush;
 mod selection_toolbar;
 mod text;
@@ -119,7 +119,9 @@ pub struct PaletteApp {
     pub stroke_background: bool,
     pub error: Option<String>,
     pub(crate) message: String,
-    pub show_filters: bool,
+    pub(crate) processing_toolbar: Option<processing::Toolbar>,
+    pub processing_toolbar_rect: egui::Rect,
+    pub layer_processing_buttons: [egui::Rect; 3],
     close_pending: Option<u64>,
     close_after_save: Option<u64>,
     quitting: bool,
@@ -286,7 +288,9 @@ impl PaletteApp {
             stroke_background: false,
             error: None,
             message: "Ready".into(),
-            show_filters: false,
+            processing_toolbar: None,
+            processing_toolbar_rect: egui::Rect::NOTHING,
+            layer_processing_buttons: [egui::Rect::NOTHING; 3],
             close_pending: None,
             close_after_save: None,
             quitting: false,
@@ -903,6 +907,7 @@ impl PaletteApp {
         self.poll_feather();
         self.poll_selection_brush(&ctx);
         self.poll_processing(&ctx);
+        self.layer_processing_buttons = [egui::Rect::NOTHING; 3];
         self.poll_text(&ctx);
         self.finish_requested_text();
         self.resume_text_action(&ctx);

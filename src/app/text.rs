@@ -114,7 +114,7 @@ impl PaletteApp {
         }
         self.current_mut().end_gesture();
         self.stroke = None;
-        self.show_filters = false;
+        self.processing_toolbar = None;
         self.text_editor = Some(TextEditor {
             session: self.current().id,
             generation: self.current().generation,
@@ -280,6 +280,8 @@ impl PaletteApp {
         }
     }
     pub(crate) fn choose_tool(&mut self, tool: crate::session::Tool) {
+        self.cancel_processing();
+        self.processing_toolbar = None;
         if tool != crate::session::Tool::Text && !self.finish_inline_text() {
             self.after_text = Some(AfterText::Tool(tool));
             return;

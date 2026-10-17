@@ -245,7 +245,7 @@ impl PaletteApp {
                     }
                     ui.separator();
                     if menu_item(ui, "Edit live filter stack…", "", None, true).clicked() {
-                        self.show_filters = true;
+                        self.open_processing_toolbar(super::processing::Section::Filters);
                         ui.close();
                     }
                 });
@@ -705,31 +705,74 @@ impl PaletteApp {
             self.current_mut()
                 .command("Layer opacity", |doc| doc.active_mut().opacity = opacity);
         }
-        let mut blend = self.current().document.active().blend;
-        egui::ComboBox::from_id_salt("blend")
-            .selected_text(blend.label())
-            .width(130.0)
-            .truncate()
-            .show_ui(ui, |ui| {
-                for mode in BlendMode::ALL {
-                    ui.selectable_value(&mut blend, mode, mode.label());
+        ui.horizontal(|ui| {
+            let size = vec2(((ui.available_width() - 12.) / 3.).clamp(28., 50.), 30.);
+            for (index, section, icon, name) in [
+                (
+                    0,
+                    super::processing::Section::Filters,
+                    Icon::Filters,
+                    "Filters",
+                ),
+                (
+                    1,
+                    super::processing::Section::Effects,
+                    Icon::Effects,
+                    "Effects",
+                ),
+            ] {
+                let response = icons::button(
+                    ui,
+                    icon,
+                    name,
+                    self.processing_section_is(section),
+                    true,
+                    size,
+                );
+                self.layer_processing_buttons[index] = response.rect;
+                if response.clicked() {
+                    self.toggle_processing_toolbar(section);
                 }
-            })
-            .response
-            .on_hover_text(blend.label());
-        if blend != self.current().document.active().blend {
-            self.current_mut()
-                .command("Blend mode", |doc| doc.active_mut().blend = blend);
-        }
-        if ui.button("Filters / effects…").clicked() {
-            self.show_filters = true;
-        }
+            }
+            let mut blend = self.current().document.active().blend;
+            let response = icons::button(
+                ui,
+                Icon::Blend,
+                &format!("Blending mode: {}", blend.label()),
+                blend != BlendMode::Normal,
+                true,
+                size,
+            );
+            self.layer_processing_buttons[2] = response.rect;
+            self.capture_popup("layer-blending", &response);
+            egui::Popup::menu(&response)
+                .style(crate::interface::menu_style)
+                .show(|ui| {
+                    ui.label("Blending mode");
+                    egui::ScrollArea::vertical()
+                        .max_height(360.)
+                        .show(ui, |ui| {
+                            for mode in BlendMode::ALL {
+                                if ui
+                                    .selectable_value(&mut blend, mode, mode.label())
+                                    .clicked()
+                                {
+                                    ui.close();
+                                }
+                            }
+                        });
+                });
+            if blend != self.current().document.active().blend {
+                self.cancel_processing();
+                self.current_mut()
+                    .command("Blend mode", |doc| doc.active_mut().blend = blend);
+            }
+        });
         self.mask_properties(ui);
     }
 
     pub(super) fn dialogs(&mut self, ctx: &Context) {
         self.feather_window(ctx);
-        self.processing_window(ctx);
         if let Some(id) = self.close_pending
             && self.error.is_none()
         {
@@ -744,9 +787,6 @@ impl PaletteApp {
                     self.error = None;
                 }
             });
-        }
-        if self.show_filters {
-            self.processing_stack_window(ctx);
         }
     }
 
