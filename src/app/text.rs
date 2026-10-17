@@ -287,6 +287,12 @@ impl PaletteApp {
         if tool != self.tool {
             self.current_mut().end_gesture();
             self.stroke = None;
+            if tool == Tool::SelectBrush
+                && self.current().document.selection.is_some()
+                && self.current().selection_mode == palette_core::selection::Combine::Replace
+            {
+                self.current_mut().selection_mode = palette_core::selection::Combine::Add;
+            }
         }
         self.tool = tool;
     }

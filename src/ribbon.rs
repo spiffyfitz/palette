@@ -98,7 +98,10 @@ impl PaletteApp {
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let tool = if matches!(self.tool, Tool::MoveLayer | Tool::Wand | Tool::Lasso) {
+            let tool = if matches!(
+                self.tool,
+                Tool::MoveLayer | Tool::Wand | Tool::Lasso | Tool::SelectBrush
+            ) {
                 self.tool
             } else {
                 Tool::Select
@@ -112,6 +115,8 @@ impl PaletteApp {
                     Icon::Wand
                 } else if tool == Tool::Lasso {
                     Icon::Lasso
+                } else if tool == Tool::SelectBrush {
+                    Icon::SelectBrush
                 } else {
                     Icon::Select
                 },
@@ -149,6 +154,18 @@ impl PaletteApp {
                     if interface::menu_item(ui, "Magic Wand", "", Some(Icon::Wand), true).clicked()
                     {
                         self.choose_tool(Tool::Wand);
+                        ui.close();
+                    }
+                    if interface::menu_item(
+                        ui,
+                        "Selection brush",
+                        "",
+                        Some(Icon::SelectBrush),
+                        true,
+                    )
+                    .clicked()
+                    {
+                        self.choose_tool(Tool::SelectBrush);
                         ui.close();
                     }
                     self.selection_options(ui);

@@ -323,11 +323,14 @@ impl PaletteApp {
                     .collect();
                 visible |= overlays::ants(painter, &points, phase);
             }
-            if let Some(mask) = self.current().document.selection_base.as_ref().or(self
+            if let Some(mask) = self
                 .current()
-                .document
-                .selection
-                .as_ref())
+                .selection_brush_draft
+                .as_ref()
+                .and_then(|d| d.frame.as_ref())
+                .map(|f| f.base.as_ref().unwrap_or(&f.coverage))
+                .or(self.current().document.selection_base.as_ref())
+                .or(self.current().document.selection.as_ref())
             {
                 visible |= overlays::viewport_ants(painter, mask, canvas, zoom, phase);
             }

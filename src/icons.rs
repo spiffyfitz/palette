@@ -19,6 +19,7 @@ pub enum Icon {
     Picker,
     Zoom,
     Select,
+    SelectBrush,
     Wand,
     Lasso,
     Combine(palette_core::selection::Combine),
@@ -116,6 +117,10 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::SelectBrush => {
+            draw(ui, rect, Icon::Select, color);
+            draw(ui, rect.shrink(rect.width() * 0.18), Icon::Pencil, color);
+        }
         Icon::Lasso => {
             p.add(egui::Shape::closed_line(
                 vec![

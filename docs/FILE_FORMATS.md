@@ -9,15 +9,15 @@
 | JPEG | Yes | Export | Lossy RGB; transparency composited over white |
 | BMP | Yes | Export | Raster; alpha behavior depends on BMP variant |
 | GIF | First frame | Still export | Indexed colors; limited transparency; no animation preservation |
-| TIFF | Raster | Export | RGBA round-trip tested; multipage/metadata preservation not supported |
-| WebP | Raster | Export lossless | RGBA round-trip tested; no animation preservation |
+| TIFF | First page, with notice | Export | RGBA round-trip tested; multipage editing/metadata preservation not supported |
+| WebP | First frame if animated, with notice | Export lossless | RGBA round-trip tested; no animation preservation |
 | AVIF | Still image | Export with quality/speed | Real 8-bit RGBA/RGB, 10-bit decode, dimensions/alpha/quality tested on Windows |
 | Microsoft `.paint` | Verified subset | Experimental layered export | Two editable specimen layers locally; user confirms generated output opens/looks correct in Paint |
 | HEIF/HEIC | No | No | No libheif dependency linked yet |
 
 Raster imports create a single editable source layer. They do not recreate layers absent from a flat format. Raster export writes the rendered composite; the project path and dirty state remain unchanged. Save creates a `.palette` project, even when the tab originated from PNG/JPEG. Unsupported output extensions fail before touching the target.
 
-The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved.
+The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
 
 ## `.palette` version 4 — current writer (versions 1–3 migration)
 
@@ -88,3 +88,7 @@ Stable committed changes are captured about every 30 seconds, one job at a time.
 ## Phase 4 preservation
 
 All 19 blend modes serialize as named enum variants in the layer descriptors. Older builds reject unfamiliar variants explicitly. Wand/rectangle results, fractional selection coverage and local layer masks are stored as ordinary coverage assets; no flattening is required. Version 4 also preserves original feather contours; pre-v4 files migrate without this optional field. Selection-tool options are per-tab UI state, not file data. Filters/styles and source RGB/alpha stay intact when masks are created or edited. Export to `.paint` continues to require native preservation before baking unsupported blending/masks.
+
+## Phase 5 processing preservation
+
+Native v4 descriptors now support `GaussianBlur { radius }`, `DropShadow { color, opacity, angle, distance, spread, size }` and `OuterGlow { color, opacity, spread, size }` in the existing ordered filter/effect arrays. Radius/size/distance are source-image pixels; the blur radius is Gaussian sigma. Opacity/spread are normalized 0–1 and light angle is degrees. Stable IDs, enabled states, filter coverage masks and original source assets survive reopening. No container-layout change is required; old builds reject unknown enum variants explicitly. Values are validated before writing or rendering. New tests round-trip native sources/settings and compare exported baked Paint appearance including spatial extents. Paint cannot preserve these live operations: the existing complete native-save guard remains mandatory before compatible export. No new Microsoft Paint save-back test is claimed.

@@ -5,6 +5,7 @@ pub mod document;
 pub mod editing;
 pub mod history;
 pub mod io;
+pub mod processing;
 pub mod raster;
 pub mod selection;
 pub mod shapes;

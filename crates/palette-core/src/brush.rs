@@ -65,7 +65,7 @@ impl Brush {
         });
     }
 
-    fn visit(
+    pub(crate) fn visit(
         &self,
         dimensions: [u32; 2],
         from: [f32; 2],

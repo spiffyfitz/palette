@@ -85,6 +85,15 @@ impl PaletteApp {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
+        if self.tool == Tool::SelectBrush && self.current().selection_brush_draft.is_none() {
+            let change = ctx.input(|i| {
+                i.key_pressed(Key::CloseBracket) as i32 - i.key_pressed(Key::OpenBracket) as i32
+            });
+            if change != 0 {
+                let size = &mut self.current_mut().selection_brush.diameter;
+                *size = (*size + change as f32 * if *size < 20. { 1. } else { 5. }).clamp(1., 256.);
+            }
+        }
         for event in events {
             match event {
                 egui::Event::Copy => self.copy_selection(false, ctx),
@@ -145,6 +154,10 @@ impl PaletteApp {
             self.edit(Edit::Clear, ctx);
         }
         if escape && !self.interface.popup_was_open {
+            if self.current_mut().cancel_brush_selection() {
+                ctx.stop_dragging();
+                return;
+            }
             if self.current_mut().cancel_selection_feather() {
                 ctx.stop_dragging();
                 return;

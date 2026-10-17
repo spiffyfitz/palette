@@ -16,6 +16,92 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some(
+                "processing-blur" | "processing-shadow" | "processing-glow" | "processing-stack",
+            ) => {
+                use palette_core::processing::{Kind, Operation};
+                self.current_mut().document =
+                    Document::from_raster(Raster::new(819, 594, [0; 4]).expect("capture canvas"));
+                self.current_mut().document.background =
+                    if self.capture.scene.as_deref() == Some("processing-glow") {
+                        [35, 35, 42, 255]
+                    } else {
+                        [255; 4]
+                    };
+                for y in 200..390 {
+                    for x in 280..540 {
+                        self.current_mut().document.active_mut().source.set(
+                            x,
+                            y,
+                            [225, 70, 55, 255],
+                        );
+                    }
+                }
+                self.current_mut().zoom = 1.;
+                if self.capture.scene.as_deref() == Some("processing-stack") {
+                    let doc = &mut self.current_mut().document;
+                    for kind in [Kind::GaussianBlur, Kind::DropShadow, Kind::OuterGlow] {
+                        let id = doc.allocate_id();
+                        match kind.default_operation() {
+                            Operation::Filter(filter) => doc.active_mut().filters.push(
+                                palette_core::document::FilterInstance {
+                                    id,
+                                    enabled: true,
+                                    filter,
+                                    mask: None,
+                                },
+                            ),
+                            Operation::Effect(effect) => doc.active_mut().effects.push(
+                                palette_core::document::EffectInstance {
+                                    id,
+                                    enabled: true,
+                                    effect,
+                                },
+                            ),
+                        }
+                    }
+                    self.show_filters = true;
+                } else {
+                    let kind = match self.capture.scene.as_deref() {
+                        Some("processing-shadow") => Kind::DropShadow,
+                        Some("processing-glow") => Kind::OuterGlow,
+                        _ => Kind::GaussianBlur,
+                    };
+                    self.open_processing(kind, None);
+                }
+            }
+            Some("brush-selection" | "brush-selection-options") => {
+                self.current_mut().document = Document::new(819, 594).expect("capture canvas");
+                let raster = &mut self.current_mut().document.active_mut().source;
+                for y in 110..470 {
+                    for x in 140..680 {
+                        raster.set(
+                            x,
+                            y,
+                            if x < 510 {
+                                [50, 105, 170, 255]
+                            } else {
+                                [225, 110, 60, 255]
+                            },
+                        );
+                    }
+                }
+                self.current_mut().zoom = 1.;
+                self.tool = Tool::SelectBrush;
+                self.current_mut().selection_brush.diameter = 160.;
+                self.current_mut().selection_brush.hardness = 0.8;
+                self.current_mut().selection_feather = 4.;
+                self.begin_brush_selection([290., 280.], palette_core::selection::Combine::Replace);
+                self.current_mut()
+                    .selection_brush_draft
+                    .as_mut()
+                    .expect("capture brush")
+                    .points
+                    .extend([[440., 260.], [540., 340.]]);
+                if self.capture.scene.as_deref() == Some("brush-selection-options") {
+                    self.current_mut().finish_brush_selection();
+                }
+            }
             Some("feather-outline") => {
                 self.current_mut().document = Document::new(819, 594).expect("capture canvas");
                 let doc = &mut self.current_mut().document;
@@ -408,6 +494,18 @@ impl PaletteApp {
             return false;
         }
         if self.current().texture.is_none()
+            || self.current().rendered_generation != Some(self.current().generation)
+            || self.processing_worker.busy
+            || self
+                .processing_dialog
+                .as_ref()
+                .is_some_and(|d| d.ready != Some(d.ticket))
+            || self.selection_brush_worker.busy
+            || self
+                .current()
+                .selection_brush_draft
+                .as_ref()
+                .is_some_and(|d| d.frame.as_ref().is_none_or(|f| f.samples != d.points.len()))
             || self.feather_worker.busy
             || self
                 .current()

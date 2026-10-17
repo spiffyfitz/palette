@@ -197,21 +197,38 @@ impl PaletteApp {
                     ui.checkbox(&mut self.checkerboard, "Transparency checkerboard");
                     ui.checkbox(&mut self.show_layers, "Layers");
                 });
-                ui.menu_button("Filter", |ui| {
+                let filter_menu = ui.menu_button("Filter", |ui| {
                     ui.menu_button("Adjustments", |ui| {
-                        if menu_item(ui, "Invert", "", None, true).clicked() {
+                        if menu_item(ui, "Invert", "", None, self.close_pending_none()).clicked() {
                             self.add_filter(Filter::Invert);
                             ui.close();
                         }
-                        if menu_item(ui, "Brightness…", "", None, true).clicked() {
-                            self.add_filter(Filter::Brightness { amount: 0.1 });
-                            self.show_filters = true;
+                        if menu_item(ui, "Brightness…", "", None, self.close_pending_none())
+                            .clicked()
+                        {
+                            self.open_processing(palette_core::processing::Kind::Brightness, None);
+                            ui.close();
+                        }
+                    });
+                    if menu_item(ui, "Gaussian Blur…", "", None, self.close_pending_none())
+                        .clicked()
+                    {
+                        self.open_processing(palette_core::processing::Kind::GaussianBlur, None);
+                        ui.close();
+                    }
+                    ui.menu_button("Blur", |ui| {
+                        if menu_item(ui, "Gaussian Blur…", "", None, self.close_pending_none())
+                            .clicked()
+                        {
+                            self.open_processing(
+                                palette_core::processing::Kind::GaussianBlur,
+                                None,
+                            );
                             ui.close();
                         }
                     });
                     for category in [
                         "Artistic",
-                        "Blur",
                         "Brush Strokes",
                         "Distort",
                         "Noise",
@@ -232,6 +249,7 @@ impl PaletteApp {
                         ui.close();
                     }
                 });
+                self.capture_popup("filter-menu", &filter_menu.response);
                 ui.separator();
                 if icons::button(
                     ui,
@@ -361,15 +379,23 @@ impl PaletteApp {
             self.after_text = Some(text::AfterText::Filter(filter));
             return;
         }
-        self.current_mut().command("Add live filter", |doc| {
-            let id = doc.allocate_id();
-            doc.active_mut().filters.push(FilterInstance {
-                id,
-                enabled: true,
-                filter,
-                mask: None,
-            });
+        self.current_mut().end_gesture();
+        let mut doc = self.current().document.clone();
+        if doc.active().locked {
+            self.error = Some("Unlock the layer before editing filters".into());
+            return;
+        }
+        let id = doc.allocate_id();
+        doc.active_mut().filters.push(FilterInstance {
+            id,
+            enabled: true,
+            filter,
+            mask: None,
         });
+        match doc.validate() {
+            Ok(()) => self.current_mut().command("Add live filter", |d| *d = doc),
+            Err(error) => self.error = Some(error),
+        }
     }
 
     pub fn layers(&mut self, ui: &mut Ui) {
@@ -413,11 +439,17 @@ impl PaletteApp {
             let selected = active == id;
             let key = (self.current().id, id);
             let generation = self.current().generation;
-            if self
-                .thumbnails
-                .get(&key)
-                .is_none_or(|(g, _)| *g != generation)
-            {
+            if self.thumbnails.get(&key).is_none_or(|(g, _)| {
+                *g != generation
+                    && !palette_core::processing::has_neighborhood(
+                        self.current()
+                            .document
+                            .layers
+                            .iter()
+                            .find(|l| l.id == id)
+                            .expect("layer"),
+                    )
+            }) {
                 let layer = self
                     .current()
                     .document
@@ -425,14 +457,24 @@ impl PaletteApp {
                     .iter()
                     .find(|l| l.id == id)
                     .expect("layer");
+                // Spatial thumbnails arrive with the background canvas render.
+                // Until then (or for a hidden layer), show the original source.
+                let spatial = palette_core::processing::has_neighborhood(layer);
                 let mut pixels = vec![];
                 for y in 0..36 {
                     for x in 0..48 {
-                        let p = composite::layer_pixel(
-                            layer,
-                            x * layer.source.width() / 48,
-                            y * layer.source.height() / 36,
-                        );
+                        let p = if spatial {
+                            layer.source.get(
+                                x * layer.source.width() / 48,
+                                y * layer.source.height() / 36,
+                            )
+                        } else {
+                            composite::layer_pixel(
+                                layer,
+                                x * layer.source.width() / 48,
+                                y * layer.source.height() / 36,
+                            )
+                        };
                         let gray = if (x / 6 + y / 6) % 2 == 0 { 185 } else { 225 };
                         pixels.extend_from_slice(&composite::over(
                             [gray, gray, gray, 255],
@@ -585,7 +627,7 @@ impl PaletteApp {
                     }
                 }
             });
-            response.on_hover_text(name);
+            response.on_hover_text(if palette_core::processing::has_neighborhood(self.current().document.layers.iter().find(|l|l.id==id).expect("layer")) {format!("{name} · Spatial preview updates with the canvas; hidden layers show source content")} else {name});
             if selected && self.interface.layer_properties {
                 ui.push_id((self.current().id, id), |ui| {
                     egui::Frame::new()
@@ -679,92 +721,15 @@ impl PaletteApp {
             self.current_mut()
                 .command("Blend mode", |doc| doc.active_mut().blend = blend);
         }
-        if ui.button("Live filters…").clicked() {
+        if ui.button("Filters / effects…").clicked() {
             self.show_filters = true;
         }
         self.mask_properties(ui);
     }
 
-    fn filter_window(&mut self, ctx: &Context) {
-        let mut open = self.show_filters;
-        egui::Window::new("Live filters — active layer")
-            .open(&mut open)
-            .default_width(340.0)
-            .show(ctx, |ui| {
-                ui.label("Source pixels are preserved. Changes can be undone.");
-                ui.horizontal(|ui| {
-                    if ui.button("+ Invert").clicked() {
-                        self.add_filter(Filter::Invert);
-                    }
-                    if ui.button("+ Brightness").clicked() {
-                        self.add_filter(Filter::Brightness { amount: 0.0 });
-                    }
-                });
-                ui.separator();
-                let mut filters = self.current().document.active().filters.clone();
-                let mut changed = false;
-                let mut remove = None;
-                let mut swap = None;
-                let mut duplicate = None;
-                for (index, filter) in filters.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        changed |= ui.checkbox(&mut filter.enabled, "").changed();
-                        ui.label(match filter.filter {
-                            Filter::Invert => "Invert",
-                            Filter::Brightness { .. } => "Brightness",
-                        });
-                        if ui.add_enabled(index > 0, egui::Button::new("↑")).clicked() {
-                            swap = Some(index);
-                        }
-                        if ui
-                            .small_button("Copy")
-                            .on_hover_text("Duplicate filter")
-                            .clicked()
-                        {
-                            duplicate = Some(index);
-                        }
-                        if ui
-                            .small_button("×")
-                            .on_hover_text("Remove filter")
-                            .clicked()
-                        {
-                            remove = Some(index);
-                        }
-                    });
-                    if let Filter::Brightness { amount } = &mut filter.filter {
-                        changed |= ui
-                            .add(egui::Slider::new(amount, -1.0..=1.0).text("Amount"))
-                            .changed();
-                    }
-                }
-                if let Some(index) = swap {
-                    filters.swap(index, index - 1);
-                    changed = true;
-                }
-                if let Some(index) = remove {
-                    filters.remove(index);
-                    changed = true;
-                }
-                if let Some(index) = duplicate {
-                    let mut filter = filters[index].clone();
-                    filter.id = self.current_mut().document.allocate_id();
-                    filters.insert(index + 1, filter);
-                    changed = true;
-                }
-                if changed {
-                    self.current_mut().command("Edit live filter stack", |doc| {
-                        doc.active_mut().filters = filters
-                    });
-                }
-                if filters_empty(self) {
-                    ui.label("No filters on this layer.");
-                }
-            });
-        self.show_filters = open;
-    }
-
     pub(super) fn dialogs(&mut self, ctx: &Context) {
         self.feather_window(ctx);
+        self.processing_window(ctx);
         if let Some(id) = self.close_pending
             && self.error.is_none()
         {
@@ -781,7 +746,7 @@ impl PaletteApp {
             });
         }
         if self.show_filters {
-            self.filter_window(ctx);
+            self.processing_stack_window(ctx);
         }
     }
 
@@ -867,10 +832,6 @@ impl PaletteApp {
             });
         });
     }
-}
-
-fn filters_empty(app: &PaletteApp) -> bool {
-    app.current().document.active().filters.is_empty()
 }
 
 /// Keep a permanent close-button slot inside each tab so hover never shifts

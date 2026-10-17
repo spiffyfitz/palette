@@ -246,6 +246,7 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     let send = |epoch, generation| {
         let pixels = composite::render(&snapshot);
         tx.send(RenderResult {
+            thumbnails: vec![],
             selection: None,
             id: app.sessions[0].id,
             epoch,
@@ -268,6 +269,7 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     // Even a result stamped with a newer generation cannot cross an edit epoch.
     let pixels = composite::render(&snapshot);
     tx.send(RenderResult {
+        thumbnails: vec![],
         selection: None,
         id: app.current().id,
         epoch,
@@ -366,6 +368,11 @@ fn text_box_at_fractional_zoom_previews_cancels_and_commits_one_layer_command() 
 fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while app.edit_pending
+        || app
+            .current()
+            .selection_brush_draft
+            .as_ref()
+            .is_some_and(|d| d.released)
         || app
             .current()
             .feather_preview
@@ -1320,6 +1327,7 @@ fn resize_handles_map_fractional_zoom_and_high_dpi_then_cancel_stale_previews() 
         let actual_receiver = std::mem::replace(&mut app.render_rx, rx);
         let pixels = composite::render(&stale_document);
         tx.send(RenderResult {
+            thumbnails: vec![],
             id: app.current().id,
             generation: app.current().generation + 100,
             epoch: stale_epoch,
@@ -1539,7 +1547,10 @@ fn stale_import_cannot_overwrite_a_document_changed_while_decoding() {
             session: app.current().id,
             generation,
             path: PathBuf::from("stale.png"),
-            result: Ok(Document::new(4, 4).unwrap()),
+            result: Ok(io::ImportReport {
+                document: Document::new(4, 4).unwrap(),
+                notice: None,
+            }),
         },
         &ctx,
     );
@@ -2457,7 +2468,7 @@ fn compact_selection_toolbars_fit_above_canvas_with_layer_properties_and_high_dp
         app.interface.layer_properties = properties;
         for dpi in [1., 1.5, 2.] {
             ctx.set_pixels_per_point(dpi);
-            for tool in [Tool::Select, Tool::Wand, Tool::Lasso] {
+            for tool in [Tool::Select, Tool::Wand, Tool::Lasso, Tool::SelectBrush] {
                 app.choose_tool(tool);
                 for _ in 0..4 {
                     let mut output = ctx.run_ui(
@@ -2928,4 +2939,552 @@ fn feather_worker_coalesces_radii_fences_cancelled_jobs_and_finishes_before_tab_
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
     assert!(app.current().document.selection.is_none());
+}
+
+fn wait_for_brush_frame(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        frame(app, ctx, vec![]);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        let draft = app
+            .current()
+            .selection_brush_draft
+            .as_ref()
+            .expect("brush draft");
+        if draft
+            .frame
+            .as_ref()
+            .is_some_and(|f| f.samples == draft.points.len())
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "brush preview timed out"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn selection_brush_previews_while_held_at_fractional_zoom_and_commits_one_undo() {
+    let ctx = Context::default();
+    ctx.set_pixels_per_point(1.5);
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(240, 180).unwrap();
+    app.current_mut().document.active_mut().locked = true;
+    app.current_mut().zoom = 1.25;
+    app.choose_tool(Tool::SelectBrush);
+    app.current_mut().selection_brush.diameter = 24.;
+    app.current_mut().selection_brush.hardness = 0.5;
+    app.current_mut().selection_brush.strength = 0.6;
+    app.current_mut().selection_feather = 2.5;
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let before = app.current().document.clone();
+    let start = image_position(&app, [30.5, 90.5]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    wait_for_brush_frame(&mut app, &ctx);
+    let first = app
+        .current()
+        .selection_brush_draft
+        .as_ref()
+        .unwrap()
+        .frame
+        .as_ref()
+        .unwrap()
+        .bounds
+        .unwrap();
+    let end = image_position(&app, [170.5, 90.5]);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    wait_for_brush_frame(&mut app, &ctx);
+    let draft = app.current().selection_brush_draft.as_ref().unwrap();
+    let f = draft.frame.as_ref().unwrap();
+    assert!(f.bounds.unwrap().width > first.width + 100);
+    assert!(!f.contours.is_empty() && !f.feather.is_empty());
+    assert!(draft.overlay.is_some());
+    assert!(!draft.released);
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert!(app.current().selection_brush_draft.is_none());
+    assert!(app.current().document.layers == before.layers);
+    assert_eq!(
+        app.current().selection_mode,
+        palette_core::selection::Combine::Add
+    );
+    let committed = app.current().document.clone();
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == committed);
+}
+
+#[test]
+fn selection_brush_cancel_stale_results_and_tab_switches_preserve_the_complete_target() {
+    use palette_core::selection;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(160, 120).unwrap();
+    app.choose_tool(Tool::SelectBrush);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.current().document.clone();
+    let start = image_position(&app, [30., 60.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    let old = app.current().selection_brush_draft.as_ref().unwrap().token;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert!(app.current().selection_brush_draft.is_none());
+    assert!(app.current().document == before);
+    frame(&mut app, &ctx, vec![pointer(start, false)]);
+    let start = image_position(&app, [40.5, 60.5]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    let end = image_position(&app, [130.5, 70.5]);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    let draft = app.current().selection_brush_draft.as_ref().unwrap();
+    assert_ne!(draft.token, old);
+    let expected = selection::brush::from_points(&before, &draft.points, draft.settings).unwrap();
+    app.new_document(); // finishes exact pending target, including samples not yet processed
+    assert_eq!(app.sessions[0].document.selection.as_ref(), Some(&expected));
+    assert_eq!(app.sessions[0].history.revision, 1);
+    assert!(app.current().document.selection.is_none());
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while app.selection_brush_worker.busy {
+        frame(&mut app, &ctx, vec![]);
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(app.sessions[0].document.selection.as_ref(), Some(&expected));
+    assert!(app.current().document.selection.is_none());
+    app.active = 0;
+    app.undo_current();
+    assert!(app.current().document == before);
+}
+
+#[test]
+fn selection_brush_options_are_reachable_precise_and_independent_of_paint_and_other_tabs() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    click_ui(&mut app, &ctx, pos2(39., 117.));
+    let tool = label_position(&mut app, &ctx, "      Selection brush");
+    click_ui(&mut app, &ctx, tool);
+    assert_eq!(app.tool, Tool::SelectBrush);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let paint_size = app.brush.diameter;
+    let before = app.current().selection_brush.diameter;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::CloseBracket,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert!(app.current().selection_brush.diameter > before);
+    assert_eq!(app.brush.diameter, paint_size);
+    let field = ctx
+        .read_response(egui::Id::unique((
+            "selection-number",
+            app.current().id,
+            "Tolerance",
+        )))
+        .unwrap()
+        .rect
+        .center();
+    click_ui(&mut app, &ctx, field);
+    assert!(
+        ctx.memory(|m| m.has_focus(egui::Id::unique((
+            "selection-number",
+            app.current().id,
+            "Tolerance"
+        )))),
+        "tolerance field must receive keyboard focus"
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Key {
+            key: Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        }],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::Text("6.5".into()), enter_event()],
+    );
+    assert_eq!(app.current().selection_brush.tolerance, 6.5);
+    let options = label_position(&mut app, &ctx, "...");
+    click_ui(&mut app, &ctx, options);
+    let matching = label_position(&mut app, &ctx, "Color matching / edge aware");
+    click_ui(&mut app, &ctx, matching);
+    assert!(!app.current().selection_brush.edge_aware);
+    let options = label_position(&mut app, &ctx, "...");
+    click_ui(&mut app, &ctx, options);
+    let merged = label_position(&mut app, &ctx, "Sample all visible layers");
+    assert!(merged.is_finite()); // disabled while matching is off
+    let overlay = label_position(&mut app, &ctx, "Selection overlay");
+    click_ui(&mut app, &ctx, overlay);
+    assert!(!app.current().brush_overlay_enabled);
+    app.new_document();
+    assert_eq!(app.current().selection_brush.tolerance, 12.);
+    assert!(app.current().selection_brush.edge_aware && app.current().brush_overlay_enabled);
+}
+
+#[test]
+fn brush_selection_combines_modes_and_modifier_subtraction_without_touching_image_pixels() {
+    use palette_core::selection::{self, Combine};
+    for (mode, mods) in [
+        (Combine::Replace, Modifiers::NONE),
+        (Combine::Add, Modifiers::NONE),
+        (Combine::Subtract, Modifiers::NONE),
+        (Combine::Intersect, Modifiers::NONE),
+        (Combine::Subtract, Modifiers::ALT),
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = Document::new(128, 96).unwrap();
+        app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+            128,
+            96,
+            palette_core::editing::PixelRect {
+                x: 20,
+                y: 20,
+                width: 60,
+                height: 55,
+            },
+        ));
+        app.choose_tool(Tool::SelectBrush);
+        app.current_mut().selection_mode = if mods.alt { Combine::Add } else { mode };
+        app.current_mut().selection_brush.edge_aware = false;
+        app.current_mut().selection_brush.strength = 0.5;
+        app.current_mut().selection_feather = 1.5;
+        frame(&mut app, &ctx, vec![]);
+        let before = app.current().document.clone();
+        let start = image_position(&app, [55.5, 45.5]);
+        let mut press = pointer(start, true);
+        if let Event::PointerButton { modifiers, .. } = &mut press {
+            *modifiers = mods;
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                Event::ModifiersChanged(mods),
+                Event::PointerMoved(start),
+                press,
+            ],
+        );
+        let draft = app.current().selection_brush_draft.as_ref().unwrap();
+        assert_eq!(draft.mode, mode);
+        let raw = selection::brush::from_points(&before, &draft.points, draft.settings).unwrap();
+        let mut expected = before.clone();
+        selection::apply_region(&mut expected, &raw, mode, 1.5).unwrap();
+        frame(&mut app, &ctx, vec![pointer(start, false)]);
+        wait_for_edit(&mut app, &ctx);
+        assert!(app.current().document == expected);
+        app.undo_current();
+        assert!(app.current().document == before);
+    }
+}
+
+#[test]
+fn animated_and_multipage_import_notices_reach_open_tabs_and_imported_layers() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    for (filename, notice) in [
+        ("two-frame.webp", "first WebP frame"),
+        ("default-image-apng.png", "PNG default image"),
+        ("two-page.tiff", "first TIFF page"),
+    ] {
+        let path = PathBuf::from("crates/palette-core/tests/fixtures").join(filename);
+        app.open_path(path.clone(), &ctx);
+        wait_for_files(&mut app, &ctx);
+        assert!(app.message.contains(notice), "{}", app.message);
+        assert_eq!(
+            app.current().document.active().source.get(0, 0),
+            [255, 0, 0, 255]
+        );
+        app.import_image(Some(path), &ctx);
+        wait_for_files(&mut app, &ctx);
+        assert!(
+            app.message.contains(notice) && app.message.contains("layer"),
+            "{}",
+            app.message
+        );
+        assert_eq!(app.current().document.layers.len(), 2);
+    }
+}
+
+#[test]
+fn empty_brush_coverage_finishes_and_remains_undoable_without_panicking_the_worker() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(80, 60).unwrap();
+    app.choose_tool(Tool::SelectBrush);
+    app.current_mut().selection_brush.strength = 0.;
+    let before = app.current().document.clone();
+    for mode in [
+        palette_core::selection::Combine::Subtract,
+        palette_core::selection::Combine::Intersect,
+    ] {
+        app.begin_brush_selection([30., 30.], mode);
+        assert!(app.current().selection_brush_draft.is_none());
+        assert!(app.current().document == before);
+        assert_eq!(app.current().history.revision, 0);
+    }
+    app.begin_brush_selection([30., 30.], palette_core::selection::Combine::Replace);
+    app.current_mut()
+        .selection_brush_draft
+        .as_mut()
+        .unwrap()
+        .released = true;
+    wait_for_edit(&mut app, &ctx);
+    assert!(app.current_mut().selection_bounds().is_none());
+    assert!(app.current_mut().selection_contours().is_empty());
+    assert!(
+        app.current()
+            .document
+            .selection
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .all(|v| *v == 0)
+    );
+    assert!(app.current().document.layers == before.layers);
+    app.undo_current();
+    assert!(app.current().document == before);
+}
+
+fn processing_document() -> Document {
+    let mut doc = Document::from_raster(Raster::new(180, 120, [0; 4]).unwrap());
+    for y in 35..85 {
+        for x in 45..120 {
+            doc.active_mut().source.set(x, y, [220, 70, 30, 255]);
+        }
+    }
+    doc
+}
+fn wait_for_processing(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(8);
+    loop {
+        frame(app, ctx, vec![]);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        let d = app.processing_dialog.as_ref().expect("processing dialog");
+        if d.ready == Some(d.ticket) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "processing preview timed out"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+#[test]
+fn gaussian_dialog_previews_real_parameter_input_cancels_and_applies_one_native_undoable_filter() {
+    use palette_core::processing::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    app.open_processing(Kind::GaussianBlur, None);
+    wait_for_processing(&mut app, &ctx);
+    assert!(app.processing_dialog.as_ref().unwrap().image.is_some());
+    let radius = label_bounds(&mut app, &ctx, "Radius (px)");
+    let slider = pos2(radius.left() - 80., radius.center().y);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(slider), pointer(slider, true)],
+    );
+    frame(&mut app, &ctx, vec![pointer(slider, false)]);
+    wait_for_processing(&mut app, &ctx);
+    assert!(
+        app.processing_dialog.as_ref().unwrap().operation != Kind::GaussianBlur.default_operation()
+    );
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.processing_dialog.is_none());
+    assert!(app.current().document == before);
+    app.open_processing(Kind::GaussianBlur, None);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    assert!(app.processing_dialog.is_none());
+    assert_eq!(app.current().document.active().filters.len(), 1);
+    assert_eq!(
+        app.current().document.active().source,
+        before.active().source
+    );
+    wait_for_render(&mut app, &ctx);
+    assert!(app.current().rendered.as_ref().unwrap().get(44, 55)[3] > 0);
+    let saved = app.current().document.clone();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("blur.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+}
+#[test]
+fn processing_stacks_support_masking_reordering_duplicate_toggle_and_effect_editing() {
+    use super::processing::{Action, MaskAction};
+    use palette_core::processing::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let source = app.current().document.active().source.clone();
+    app.open_processing(Kind::GaussianBlur, None);
+    app.apply_processing();
+    let blur = app.current().document.active().filters[0].id;
+    app.add_filter(Filter::Brightness { amount: 0.5 });
+    app.processing_action(false, Action::Move(blur, 1));
+    assert_eq!(app.current().document.active().filters[1].id, blur);
+    app.processing_action(false, Action::Duplicate(blur));
+    assert_eq!(app.current().document.active().filters.len(), 3);
+    let duplicate = app.current().document.active().filters[2].id;
+    assert_ne!(blur, duplicate);
+    app.processing_action(false, Action::Toggle(blur, false));
+    assert!(!app.current().document.active().filters[1].enabled);
+    app.select_all();
+    app.processing_action(false, Action::Mask(blur, MaskAction::FromSelection));
+    assert!(app.current().document.active().filters[1].mask.is_some());
+    assert!(
+        app.current().document.active().mask.is_none(),
+        "filter-mask creation cannot replace the layer mask"
+    );
+    app.processing_action(false, Action::Mask(blur, MaskAction::Toggle));
+    assert!(
+        !app.current().document.active().filters[1]
+            .mask
+            .as_ref()
+            .unwrap()
+            .enabled
+    );
+    app.processing_action(false, Action::Mask(blur, MaskAction::Remove));
+    assert!(app.current().document.active().filters[1].mask.is_none());
+    app.processing_action(false, Action::Delete(duplicate));
+    assert_eq!(app.current().document.active().filters.len(), 2);
+    for kind in [Kind::DropShadow, Kind::OuterGlow] {
+        app.open_processing(kind, None);
+        app.apply_processing();
+    }
+    let shadow = app.current().document.active().effects[0].id;
+    app.open_processing(Kind::DropShadow, Some(shadow));
+    wait_for_processing(&mut app, &ctx);
+    app.cancel_processing();
+    assert_eq!(app.current().document.active().effects[0].id, shadow);
+    app.processing_action(true, Action::Duplicate(shadow));
+    assert_eq!(app.current().document.active().effects.len(), 3);
+    app.processing_action(true, Action::Move(shadow, 1));
+    assert_eq!(app.current().document.active().effects[1].id, shadow);
+    app.processing_action(true, Action::Toggle(shadow, false));
+    assert!(!app.current().document.active().effects[1].enabled);
+    assert_eq!(app.current().document.active().source, source);
+    app.current().document.validate().unwrap();
+}
+#[test]
+fn processing_previews_fence_cancelled_jobs_and_tab_changes_without_mutating_documents() {
+    use palette_core::processing::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    app.open_processing(Kind::DropShadow, None);
+    frame(&mut app, &ctx, vec![]);
+    let old = app.processing_dialog.as_ref().unwrap().ticket;
+    app.cancel_processing();
+    app.open_processing(Kind::OuterGlow, None);
+    wait_for_processing(&mut app, &ctx);
+    assert!(app.processing_dialog.as_ref().unwrap().ticket > old);
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+    app.new_document();
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.processing_dialog.is_none());
+    assert!(app.sessions[0].document == before);
+    assert!(app.current().document.active().effects.is_empty());
+}
+#[test]
+fn painting_with_spatial_filters_and_live_styles_uses_background_updates_and_preserves_source() {
+    use palette_core::processing::Kind;
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    app.current_mut().zoom = 1.25;
+    for kind in [Kind::GaussianBlur, Kind::DropShadow, Kind::OuterGlow] {
+        app.open_processing(kind, None);
+        app.apply_processing();
+    }
+    wait_for_render(&mut app, &ctx);
+    let before = app.current().document.clone();
+    app.choose_tool(Tool::Brush);
+    app.brush.diameter = 12.;
+    app.brush.color = [30, 80, 200, 255];
+    let start = image_position(&app, [60., 20.]);
+    let end = image_position(&app, [100., 20.]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    wait_for_render(&mut app, &ctx);
+    assert!(app.current().document.active().source.get(80, 20)[3] > 0);
+    assert!(
+        app.current().rendered.as_ref().unwrap().get(80, 15)[3] > 0,
+        "blur/glow updates before mouse release"
+    );
+    assert_eq!(
+        app.current().document.active().filters,
+        before.active().filters
+    );
+    assert_eq!(
+        app.current().document.active().effects,
+        before.active().effects
+    );
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    app.undo_current();
+    assert!(app.current().document == before);
 }

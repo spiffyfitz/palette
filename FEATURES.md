@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -24,7 +24,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/n
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
 - [x] Layer thumbnails and add/select/reorder/delete/duplicate/rename/visibility/lock/opacity; properties beneath the selected layer.
-- [x] Reviewed Windows screenshots and native regression capture/comparison for thirty-two UI states, including Wand settings, selection options, masks and feathering.
+- [x] Reviewed Windows screenshots and native regression capture/comparison for thirty-nine UI states, including Wand settings, selection options, masks and feathering.
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
@@ -44,7 +44,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/n
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
 - [x] Rectangular selection interface with clear, inversion and selected pixel movement.
 - [x] Magic Wand, selection combination/feathering and basic live layer-mask property controls.
-- [ ] Polygon/brush selections, mask painting and advanced style editing interfaces.
+- [ ] Polygon selection, mask painting and remaining advanced style editing interfaces.
 
 ## Phase 2
 
@@ -87,6 +87,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/n
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
+- [x] Detected GIF/WebP/APNG/TIFF import limitations reach both open tabs and image-as-layer imports; real first-frame/page fixtures verify the pixels.
 
 ## Phase 4
 
@@ -100,19 +101,27 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/n
 - [ ] Merge selected/visible layers and confirmed flattening.
 - [x] Freeform/lasso selection with live closed ants, antialiased coverage, combine modes and undo.
 - [x] Canvas selection toolbar matching text-bar height; dynamic width, precise feather input and Wand tolerance.
-- [ ] Polygon and edge-aware brush selection with configurable tolerance.
+- [x] Edge-aware brush selection with configurable tolerance, feather, strength/hardness/size, continuous live coverage preview, sampling options and plain coverage mode.
+- [ ] Polygon selection.
 - [x] Live selection feather previews in the toolbar and dialog; release/Apply commits one undo step, Escape/Cancel discards.
 - [ ] Selection expand/contract.
 - [ ] Brush/eraser mask editing, direct mask view, link/unlink and explicit permanent application.
 
 - [x] Feathering below 5 px displays one decimal, supports real subpixel coverage changes, and shares mild shifted-log fine-adjustment sliders with Wand tolerance. Outer feather ants use 40% opacity.
 
-## Phases 5–6
+## Phase 5 — first vertical slice
 
-- [ ] Gaussian Blur and neighborhood filter stages; registry and common parameters.
-- [ ] Apply/Cancel preview dialogs, individual filter mask UI and filter gallery.
-- [ ] Drop/inner shadows, glows, bevel, stroke, satin and gradient/pattern overlays.
+- [x] Gaussian Blur with alpha-safe tile/halo processing (0–64 px); registry and common numeric/color parameters.
+- [x] Background reduced-resolution Apply/Cancel previews; obsolete preview jobs cancel and cannot affect other tabs.
+- [x] Filter/effect stack edit/toggle/reorder/duplicate/delete, plus selection-derived individual filter-mask controls.
+- [x] Live Drop Shadow, Outer Glow and editable Color Overlay; padded extents, source/mask updates and layer opacity/blending.
+- [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
+- [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
+- [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
+- [ ] Filter Gallery and remaining filter/style catalog, including inner shadows/glows, bevel, stroke, satin and gradient/pattern overlays.
 - [ ] Broader independently implemented filter catalog and research inventory.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
-- [ ] General dirty regions, neighborhood stages/caches, running-job cancellation and GPU compositor.
+- [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
+
+## Phase 6
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.

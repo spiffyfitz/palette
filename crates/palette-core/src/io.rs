@@ -41,10 +41,32 @@ pub fn extension(path: &Path) -> String {
 
 /// Import a native project or supported raster with bounded decoding.
 pub fn open(path: &Path) -> Result<Document, FileError> {
+    open_with_report(path).map(|report| report.document)
+}
+
+/// A decoded document plus a precise, transient import limitation. Notices are
+/// not project metadata and must remain visible when importing as a new layer.
+pub struct ImportReport {
+    pub document: Document,
+    pub notice: Option<&'static str>,
+}
+
+/// Import with user-facing first-frame/page notices based on the detected format
+/// (rather than its filename). Still WebP/PNG files do not receive animation warnings.
+pub fn open_with_report(path: &Path) -> Result<ImportReport, FileError> {
     match extension(path).as_str() {
-        "palette" => read_project(path),
-        "paint" => paint::read(path),
-        "avif" => avif::read(path),
+        "palette" => read_project(path).map(|document| ImportReport {
+            document,
+            notice: None,
+        }),
+        "paint" => paint::read(path).map(|document| ImportReport {
+            document,
+            notice: None,
+        }),
+        "avif" => avif::read(path).map(|document| ImportReport {
+            document,
+            notice: None,
+        }),
         "heif" | "heic" => Err(FileError::Invalid("HEIF/HEIC is not enabled.".into())),
         _ => {
             let mut reader = ImageReader::open(path)?.with_guessed_format()?;
@@ -52,8 +74,39 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
             limits.max_image_width = Some(16384);
             limits.max_image_height = Some(16384);
             limits.max_alloc = Some(MAX_PROJECT_BYTES);
-            reader.limits(limits);
-            let mut decoder = reader.into_decoder()?;
+            reader.limits(limits.clone());
+            let mut notice = None;
+            let mut decoder: Box<dyn ImageDecoder> = match reader.format() {
+                Some(ImageFormat::WebP) => {
+                    let mut decoder = image::codecs::webp::WebPDecoder::new(reader.into_inner())?;
+                    decoder.set_limits(limits)?;
+                    if decoder.has_animation() {
+                        notice = Some("Imported first WebP frame; animation is not preserved");
+                    }
+                    Box::new(decoder)
+                }
+                Some(ImageFormat::Png) => {
+                    let decoder =
+                        image::codecs::png::PngDecoder::with_limits(reader.into_inner(), limits)?;
+                    if decoder.is_apng()? {
+                        notice =
+                            Some("Imported the PNG default image; APNG animation is not preserved");
+                    }
+                    Box::new(decoder)
+                }
+                format => {
+                    notice = match format {
+                        Some(ImageFormat::Gif) => {
+                            Some("Imported first GIF frame; animation is not preserved")
+                        }
+                        Some(ImageFormat::Tiff) => {
+                            Some("Imported first TIFF page; additional pages are not preserved")
+                        }
+                        _ => None,
+                    };
+                    Box::new(reader.into_decoder()?)
+                }
+            };
             let metadata = crate::document::DocumentMetadata {
                 icc_profile: std::sync::Arc::new(decoder.icc_profile()?.unwrap_or_default()),
                 exif: std::sync::Arc::new(decoder.exif_metadata()?.unwrap_or_default()),
@@ -72,7 +125,7 @@ pub fn open(path: &Path) -> Result<Document, FileError> {
             );
             document.metadata = metadata;
             document.validate().map_err(FileError::Invalid)?;
-            Ok(document)
+            Ok(ImportReport { document, notice })
         }
     }
 }

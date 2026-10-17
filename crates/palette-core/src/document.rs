@@ -82,7 +82,13 @@ impl BlendMode {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
     Invert,
-    Brightness { amount: f32 },
+    Brightness {
+        amount: f32,
+    },
+    /// Gaussian sigma in image pixels; evaluation preserves source pixels.
+    GaussianBlur {
+        radius: f32,
+    },
 }
 
 /// Stable, individually maskable instance in a layer's ordered filter pipeline.
@@ -99,6 +105,20 @@ pub struct FilterInstance {
 pub enum Effect {
     /// Blend constant RGB through the layer's alpha silhouette.
     ColorOverlay { color: [u8; 3], opacity: f32 },
+    DropShadow {
+        color: [u8; 3],
+        opacity: f32,
+        angle: f32,
+        distance: f32,
+        spread: f32,
+        size: f32,
+    },
+    OuterGlow {
+        color: [u8; 3],
+        opacity: f32,
+        spread: f32,
+        size: f32,
+    },
 }
 
 /// An independently enabled, nondestructive layer-style operation.
@@ -343,11 +363,7 @@ impl Document {
                 if filter.id == 0 || filter.id >= self.next_id || !ids.insert(filter.id) {
                     return Err("Invalid filter ID".into());
                 }
-                if let Filter::Brightness { amount } = filter.filter
-                    && (!amount.is_finite() || !(-1.0..=1.0).contains(&amount))
-                {
-                    return Err("Invalid brightness".into());
-                }
+                crate::processing::Operation::Filter(filter.filter.clone()).validate()?;
                 if let Some(mask) = &filter.mask {
                     mask.validate()?;
                 }
@@ -357,9 +373,26 @@ impl Document {
             if effect.id == 0 || effect.id >= self.next_id || !ids.insert(effect.id) {
                 return Err("Invalid effect ID".into());
             }
-            let Effect::ColorOverlay { opacity, .. } = effect.effect;
-            if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
-                return Err("Invalid effect opacity".into());
+            crate::processing::Operation::Effect(effect.effect.clone()).validate()?;
+        }
+        for layer in &self.layers {
+            let mut prepared = layer.source.byte_len() as u64;
+            for effect in layer.effects.iter().filter(|e| e.enabled) {
+                if let Some(pad) = crate::processing::effect_padding(&effect.effect) {
+                    Raster::new(
+                        layer.source.width() + 2 * pad,
+                        layer.source.height() + 2 * pad,
+                        [0; 4],
+                    )?;
+                    let w = u64::from(layer.source.width() + 2 * pad)
+                        .div_ceil(u64::from(crate::raster::TILE));
+                    let h = u64::from(layer.source.height() + 2 * pad)
+                        .div_ceil(u64::from(crate::raster::TILE));
+                    prepared += w * h * u64::from(crate::raster::TILE).pow(2) * 4;
+                }
+            }
+            if prepared > 512 * 1024 * 1024 {
+                return Err("Layer processing exceeds the 512 MiB prepared-image budget".into());
             }
         }
         if !self.layers.iter().any(|l| l.id == self.active_layer) {

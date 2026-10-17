@@ -3,6 +3,9 @@ use palette_core::editing::PixelRect;
 use palette_core::{document::Document, history::History, raster::Raster};
 use std::path::PathBuf;
 
+mod selection_brush;
+pub use selection_brush::{BrushFrame, BrushSelection};
+
 /// Per-tab editing and viewport state; document data itself stays in palette-core.
 pub struct Session {
     pub id: u64,
@@ -40,6 +43,11 @@ pub struct Session {
     pub selection_feather_text: String,
     pub wand_tolerance_text: String,
     pub feather_preview: Option<SelectionFeather>,
+    pub selection_brush: palette_core::selection::brush::Settings,
+    pub selection_brush_text: String,
+    pub brush_overlay_enabled: bool,
+    pub selection_brush_draft: Option<BrushSelection>,
+    pub selection_brush_overlay: Option<(u64, TextureHandle)>,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -77,13 +85,20 @@ impl Session {
             selection_feather_text: "0".into(),
             wand_tolerance_text: "12".into(),
             feather_preview: None,
+            selection_brush: Default::default(),
+            selection_brush_text: "12".into(),
+            brush_overlay_enabled: true,
+            selection_brush_draft: None,
+            selection_brush_overlay: None,
             selection_cache: None,
         }
     }
     pub fn modified(&self) -> bool {
-        self.feather_preview
-            .as_ref()
-            .is_some_and(|p| !p.dialog && p.radius != p.setting_before)
+        self.selection_brush_draft.is_some()
+            || self
+                .feather_preview
+                .as_ref()
+                .is_some_and(|p| !p.dialog && p.radius != p.setting_before)
             || self.selection_transform.as_ref().is_some_and(|g| {
                 g.desired != palette_core::transform::SelectionTransform::Move([0, 0])
             })
@@ -94,6 +109,7 @@ impl Session {
                 .is_some_and(|drag| self.document.active().offset != drag.original)
     }
     pub fn invalidate(&mut self) {
+        self.cancel_brush_selection();
         self.cancel_selection_feather();
         self.generation += 1;
         self.render_epoch += 1;
@@ -129,6 +145,7 @@ impl Session {
         self.invalidate();
     }
     pub fn end_gesture(&mut self) {
+        self.finish_brush_selection();
         self.finish_selection_feather();
         self.construction = None;
         self.finish_selection_transform();
@@ -162,6 +179,13 @@ impl Session {
         self.invalidate();
     }
     pub fn selection_bounds(&mut self) -> Option<PixelRect> {
+        if let Some(frame) = self
+            .selection_brush_draft
+            .as_ref()
+            .and_then(|d| d.frame.as_ref())
+        {
+            return frame.bounds;
+        }
         self.cache_selection();
         self.selection_cache.as_ref().and_then(|cache| cache.bounds)
     }
@@ -200,12 +224,40 @@ impl Session {
         });
     }
     pub fn selection_contours(&mut self) -> &[Vec<[f32; 2]>] {
+        if self
+            .selection_brush_draft
+            .as_ref()
+            .is_some_and(|d| d.frame.is_some())
+        {
+            return &self
+                .selection_brush_draft
+                .as_ref()
+                .unwrap()
+                .frame
+                .as_ref()
+                .unwrap()
+                .contours;
+        }
         self.cache_selection();
         self.selection_cache
             .as_ref()
             .map_or(&[], |cache| &cache.contours)
     }
     pub fn feather_contours(&mut self) -> &[Vec<[f32; 2]>] {
+        if self
+            .selection_brush_draft
+            .as_ref()
+            .is_some_and(|d| d.frame.is_some())
+        {
+            return &self
+                .selection_brush_draft
+                .as_ref()
+                .unwrap()
+                .frame
+                .as_ref()
+                .unwrap()
+                .feather;
+        }
         if self
             .feather_preview
             .as_ref()
@@ -255,7 +307,7 @@ pub struct FeatherFrame {
 }
 impl FeatherFrame {
     pub fn compute(source: &palette_core::raster::Coverage, radius: f32) -> Result<Self, String> {
-        let coverage = palette_core::selection::feather(source, radius)?;
+        let coverage = palette_core::selection::feather_region(source, radius)?;
         let contours = if coverage == *source {
             vec![]
         } else {
@@ -390,6 +442,7 @@ impl LassoDrag {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Select,
+    SelectBrush,
     Wand,
     Lasso,
     Polygon,
@@ -416,6 +469,7 @@ impl Tool {
             Self::Polygon => "Polygon",
             Self::Curve => "Curve",
             Self::Select => "Rectangular selection",
+            Self::SelectBrush => "Selection brush",
             Self::Wand => "Magic Wand",
             Self::Lasso => "Freeform selection",
             Self::Fill => "Fill bucket",

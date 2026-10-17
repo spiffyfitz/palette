@@ -6,6 +6,8 @@ pub(crate) mod editing;
 mod feather;
 mod files;
 mod panels;
+mod processing;
+mod selection_brush;
 mod selection_toolbar;
 mod text;
 
@@ -64,6 +66,7 @@ struct RenderResult {
     epoch: u64,
     pixels: Raster,
     image: ColorImage,
+    thumbnails: Vec<(u64, ColorImage)>,
     selection: Option<(
         palette_core::transform::SelectionTransform,
         Result<Document, String>,
@@ -74,7 +77,7 @@ enum FileResult {
         session: u64,
         generation: u64,
         path: PathBuf,
-        result: Result<Document, String>,
+        result: Result<io::ImportReport, String>,
     },
     Autosaved {
         session: u64,
@@ -82,7 +85,7 @@ enum FileResult {
         result: Result<(), String>,
     },
     Recovered(crate::persistence::Recovery, Result<Document, String>),
-    Opened(PathBuf, Result<Document, String>),
+    Opened(PathBuf, Result<io::ImportReport, String>),
     Saved {
         id: u64,
         revision: u64,
@@ -157,6 +160,9 @@ pub struct PaletteApp {
     paint_export: Option<files::PaintExport>,
     feather_dialog: Option<advanced::FeatherDialog>,
     feather_worker: feather::Worker,
+    selection_brush_worker: selection_brush::Worker,
+    processing_dialog: Option<processing::Dialog>,
+    processing_worker: processing::Worker,
     text_editor: Option<text::TextEditor>,
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
@@ -217,6 +223,7 @@ impl PaletteApp {
         let (results, render_rx) = mpsc::channel();
         let repaint = ctx.clone();
         std::thread::spawn(move || {
+            let mut renderer = composite::Renderer::default();
             while let Ok(request) = requests.recv() {
                 let mut document = request.document;
                 let selection = request.selection.map(|operation| {
@@ -226,7 +233,15 @@ impl PaletteApp {
                         .map(|_| document.clone());
                     (operation, result)
                 });
-                let pixels = composite::render(&document);
+                let frame = renderer
+                    .render_frame(&document)
+                    .expect("validated render request");
+                let pixels = frame.pixels;
+                let thumbnails = frame
+                    .thumbnails
+                    .into_iter()
+                    .map(|(id, pixels)| (id, texture_image(&pixels, 48)))
+                    .collect();
                 let image = texture_image(&pixels, request.max_texture_side);
                 if results
                     .send(RenderResult {
@@ -235,6 +250,7 @@ impl PaletteApp {
                         epoch: request.epoch,
                         pixels,
                         image,
+                        thumbnails,
                         selection,
                     })
                     .is_err()
@@ -317,6 +333,9 @@ impl PaletteApp {
             paint_export: None,
             feather_dialog: None,
             feather_worker: feather::Worker::new(ctx.clone()),
+            selection_brush_worker: selection_brush::Worker::new(ctx.clone()),
+            processing_dialog: None,
+            processing_worker: processing::Worker::new(ctx.clone()),
         };
         app.new_document();
         app
@@ -333,6 +352,7 @@ impl PaletteApp {
             && self.avif_export.is_none()
             && self.paint_export.is_none()
             && self.feather_dialog.is_none()
+            && self.processing_dialog.is_none()
             && self.close_pending.is_none()
             && self.error.is_none()
             && self.resize_dialog.is_none()
@@ -401,7 +421,7 @@ impl PaletteApp {
         let tx = self.file_tx.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let result = io::open(&path).map_err(|e| e.to_string());
+            let result = io::open_with_report(&path).map_err(|e| e.to_string());
             let _ = tx.send(FileResult::Opened(path, result));
             ctx.request_repaint();
         });
@@ -561,6 +581,19 @@ impl PaletteApp {
                 session.rendered = Some(result.pixels);
                 session.rendered_generation = Some(generation);
                 session.rendered_epoch = Some(epoch);
+                for (id, image) in result.thumbnails {
+                    self.thumbnails.insert(
+                        (result.id, id),
+                        (
+                            generation,
+                            ctx.load_texture(
+                                format!("thumb-{}-{id}", result.id),
+                                image,
+                                TextureOptions::NEAREST,
+                            ),
+                        ),
+                    );
+                }
             }
         }
         while let Ok(result) = self.file_rx.try_recv() {
@@ -576,7 +609,7 @@ impl PaletteApp {
                 }
                 FileResult::Autosaved { .. } => unreachable!("handled above"),
                 FileResult::Opened(path, result) => match result {
-                    Ok(document) => {
+                    Ok(report) => {
                         self.remember(&path);
                         self.current_mut().end_gesture();
                         let is_project = io::extension(&path) == "palette";
@@ -585,18 +618,18 @@ impl PaletteApp {
                             .unwrap_or_default()
                             .to_string_lossy()
                             .into_owned();
-                        let mut session = Session::new(self.next_id, name, document);
+                        let mut session = Session::new(self.next_id, name, report.document);
                         if is_project {
                             session.path = Some(path.clone());
                         }
                         self.next_id += 1;
                         self.sessions.push(session);
                         self.active = self.sessions.len() - 1;
-                        if io::extension(&path) == "gif" {
-                            self.message =
-                                "Imported first GIF frame; animation is not preserved".into();
+                        if let Some(notice) = report.notice {
+                            self.message = notice.into();
                         } else if io::extension(&path) == "paint" {
-                            self.message = "Opened editable Paint layers; exported copies still require Microsoft Paint validation".into();
+                            self.message =
+                                "Opened editable Paint layers (supported HEIF subset)".into();
                         } else {
                             self.message = format!("Opened {}", path.display());
                         }
@@ -695,6 +728,14 @@ impl PaletteApp {
         let Some(region) = session.paint_dirty else {
             return;
         };
+        if session
+            .document
+            .layers
+            .iter()
+            .any(palette_core::processing::has_neighborhood)
+        {
+            return;
+        }
         if session.rendered_epoch != Some(session.render_epoch) {
             return;
         }
@@ -787,6 +828,7 @@ impl PaletteApp {
             || self.avif_export.is_some()
             || self.paint_export.is_some()
             || self.feather_dialog.is_some()
+            || self.processing_dialog.is_some()
             || ctx.egui_wants_keyboard_input()
             || self.close_pending.is_some()
             || self.resize_dialog.is_some()
@@ -859,6 +901,8 @@ impl PaletteApp {
         self.poll_workers(&ctx);
         self.poll_edits();
         self.poll_feather();
+        self.poll_selection_brush(&ctx);
+        self.poll_processing(&ctx);
         self.poll_text(&ctx);
         self.finish_requested_text();
         self.resume_text_action(&ctx);
@@ -867,6 +911,7 @@ impl PaletteApp {
             self.deferred_close = true;
         }
         if ctx.input(|i| i.viewport().close_requested()) {
+            self.cancel_processing();
             self.current_mut().end_gesture();
         }
         if ctx.input(|i| i.viewport().close_requested())
@@ -947,6 +992,8 @@ impl PaletteApp {
         self.appearance_windows(&ctx);
         self.request_text(&ctx);
         self.request_feather();
+        self.request_selection_brush(&ctx);
+        self.request_processing(&ctx);
         if self.after_text.is_some() {
             ctx.request_repaint();
         }

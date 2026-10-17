@@ -1,6 +1,6 @@
 //! Coverage-aware edits in canvas coordinates. No window-system or clipboard API.
 use crate::{
-    composite::{layer_pixel, over},
+    composite::over,
     document::{BlendMode, Document},
     raster::{Coverage, Raster},
 };
@@ -75,7 +75,7 @@ pub fn bounds(mask: &Coverage) -> Option<PixelRect> {
             bottom = bottom.max(y + 1);
         }
     }
-    (right > left && bottom > top).then_some(PixelRect {
+    (right > left && bottom > top).then(|| PixelRect {
         x: left,
         y: top,
         width: right - left,
@@ -89,6 +89,9 @@ pub fn outline(mask: &Coverage) -> Vec<[[f32; 2]; 2]> {
     outline_at(mask, 128)
 }
 fn outline_at(mask: &Coverage, threshold: u8) -> Vec<[[f32; 2]; 2]> {
+    let Some(region) = bounds(mask) else {
+        return vec![];
+    };
     let inside = |x: i64, y: i64| {
         x >= 0
             && y >= 0
@@ -98,14 +101,26 @@ fn outline_at(mask: &Coverage, threshold: u8) -> Vec<[[f32; 2]; 2]> {
     };
     let mut edges = Vec::new();
     for vertical in [false, true] {
-        let (outer, inner) = if vertical {
-            (mask.width, mask.height)
+        // Empty space cannot contain a boundary. Scanning the nonzero bounds
+        // preserves the same directed run order without visiting the full canvas.
+        let (outer_start, outer, inner_start, inner) = if vertical {
+            (
+                region.x,
+                region.x + region.width,
+                region.y,
+                region.y + region.height,
+            )
         } else {
-            (mask.height, mask.width)
+            (
+                region.y,
+                region.y + region.height,
+                region.x,
+                region.x + region.width,
+            )
         };
-        for fixed in 0..=outer {
+        for fixed in outer_start..=outer {
             let mut run: Option<(u32, i32)> = None;
-            for along in 0..=inner {
+            for along in inner_start..=inner {
                 let direction = if along == inner {
                     0
                 } else {
@@ -278,20 +293,14 @@ pub fn copy(document: &Document) -> Result<Raster, String> {
     };
     let mut output = Raster::new(rect.width, rect.height, [0; 4])?;
     let layer = document.active();
+    let prepared = crate::processing::prepare_layer(layer)?;
     for y in 0..rect.height {
         for x in 0..rect.width {
             let cx = x + rect.x;
             let cy = y + rect.y;
             let lx = i64::from(cx) - i64::from(layer.offset[0]);
             let ly = i64::from(cy) - i64::from(layer.offset[1]);
-            if lx < 0
-                || ly < 0
-                || lx >= i64::from(layer.source.width())
-                || ly >= i64::from(layer.source.height())
-            {
-                continue;
-            }
-            let mut pixel = layer_pixel(layer, lx as u32, ly as u32);
+            let mut pixel = prepared.pixel(lx, ly);
             pixel[3] = (f32::from(pixel[3])
                 * layer.opacity
                 * coverage(

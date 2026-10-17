@@ -47,6 +47,13 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "feather-outline",
         "inverted-selection",
         "canvas-scrollbars",
+        "brush-selection",
+        "brush-selection-options",
+        "processing-blur",
+        "processing-shadow",
+        "processing-glow",
+        "processing-stack",
+        "filter-menu",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

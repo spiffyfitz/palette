@@ -2,6 +2,7 @@ mod construction;
 pub(crate) mod navigation;
 mod overlays;
 mod selection;
+mod selection_brush;
 use crate::{
     app::{ACCENT, PaletteApp},
     icons::{self, Icon},
@@ -25,7 +26,9 @@ fn image_point(point: Pos2, canvas: Rect, zoom: f32) -> [f32; 2] {
 impl PaletteApp {
     pub fn canvas(&mut self, ui: &mut Ui) {
         let bounds = ui.max_rect();
-        let contextual = self.tool.paints() || self.tool.shape() || self.tool == Tool::Fill;
+        let contextual = self.tool.paints()
+            || self.tool.shape()
+            || matches!(self.tool, Tool::Fill | Tool::SelectBrush);
         let left_width = 62.0;
         let tray_visibility = ui.ctx().animate_bool_with_time(
             egui::Id::unique("layers-visible"),
@@ -195,6 +198,7 @@ impl PaletteApp {
             });
         let drawing_allowed = self.close_pending_none()
             && self.current().feather_preview.is_none()
+            && self.current().selection_brush_draft.is_none()
             && (!self.current().document.active().locked
                 || (!self.tool.paints()
                     && !self.tool.shape()
@@ -258,6 +262,10 @@ impl PaletteApp {
                         ),
                         &ctx,
                     );
+                }
+                Tool::SelectBrush => {
+                    let mode = self.selection_mode(&ctx);
+                    self.begin_brush_selection(point, mode);
                 }
                 Tool::Fill => {
                     let color = if self.stroke_background {
@@ -362,19 +370,44 @@ impl PaletteApp {
             ],
         );
         self.layer_move_interaction(&ctx, &painter, canvas, pointer, down, released);
+        self.brush_selection_interaction(
+            &painter,
+            canvas,
+            pointer.filter(|_| !space && !middle),
+            [down, released],
+        );
         self.selection_interaction(ui, &painter, canvas, pointer, [down, released]);
         self.text_interaction(&painter, canvas, pointer, down, released);
-        if self.cursor.is_some() && self.tool.paints() && !space {
+        if self.cursor.is_some() && (self.tool.paints() || self.tool == Tool::SelectBrush) && !space
+        {
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             if let Some(point) = pointer {
                 let radius = (if self.tool == Tool::Pencil {
                     1.0
                 } else {
-                    self.brush.diameter
+                    if self.tool == Tool::SelectBrush {
+                        self.current().selection_brush.diameter
+                    } else {
+                        self.brush.diameter
+                    }
                 }) * zoom
                     * 0.5;
                 painter.circle_stroke(point, radius.max(1.0), Stroke::new(2.0, Color32::BLACK));
                 painter.circle_stroke(point, radius.max(1.0), Stroke::new(1.0, Color32::WHITE));
+                if self.tool == Tool::SelectBrush {
+                    let subtract =
+                        self.selection_mode(&ctx) == palette_core::selection::Combine::Subtract;
+                    painter.line_segment(
+                        [point - vec2(3., 0.), point + vec2(3., 0.)],
+                        Stroke::new(1., Color32::BLACK),
+                    );
+                    if !subtract {
+                        painter.line_segment(
+                            [point - vec2(0., 3.), point + vec2(0., 3.)],
+                            Stroke::new(1., Color32::BLACK),
+                        );
+                    }
+                }
             }
         }
         // The bottom-right handle performs a reversible canvas-bounds resize.
@@ -382,6 +415,7 @@ impl PaletteApp {
         if view.contains(handle.center())
             && self.close_pending_none()
             && self.current().feather_preview.is_none()
+            && self.current().selection_brush_draft.is_none()
             && !selection_handled
             && self.current().selection_transform.is_none()
             && !(matches!(self.tool, Tool::Select | Tool::Lasso)
@@ -469,6 +503,8 @@ impl PaletteApp {
             "Drag selected pixels or handles · Shift adds · Alt subtracts · Shift+Alt intersects · Choose Replace for transforms · Escape cancels"
         } else if self.tool==Tool::Wand {
             "Click matching colors · Shift adds · Alt subtracts · Shift+Alt intersects · Options above canvas"
+        } else if self.tool==Tool::SelectBrush {
+            "Paint selection · Alt subtracts · Shift adds · [ / ] changes size · Escape cancels · Options above canvas"
         } else {
             "Ctrl + wheel to zoom · Middle mouse or Space + drag to pan"
         });
@@ -590,7 +626,14 @@ impl PaletteApp {
         let height = ((ui.available_height() - 24.0) / 3.0).max(60.0);
         for (index, (icon, label)) in [
             (Icon::Brush, "Brush size"),
-            (Icon::Opacity, "Brush opacity"),
+            (
+                Icon::Opacity,
+                if self.tool == Tool::SelectBrush {
+                    "Selection strength"
+                } else {
+                    "Brush opacity"
+                },
+            ),
             (Icon::Hardness, "Brush hardness"),
         ]
         .into_iter()
@@ -607,6 +650,7 @@ impl PaletteApp {
                     response.on_hover_text(label);
                     ui.add_enabled_ui(
                         self.tool.paints()
+                            || self.tool == Tool::SelectBrush
                             || (self.tool.shape() && index != 2)
                             || (self.tool == Tool::Fill && index == 1),
                         |ui| {
@@ -620,10 +664,18 @@ impl PaletteApp {
                             ui.visuals_mut().widgets.inactive.fg_stroke = Stroke::new(3.0, ACCENT);
                             ui.visuals_mut().widgets.hovered.fg_stroke = Stroke::new(3.0, ACCENT);
                             ui.visuals_mut().widgets.active.fg_stroke = Stroke::new(3.0, ACCENT);
-                            let value = match index {
-                                0 => &mut self.brush.diameter,
-                                1 => &mut self.brush.opacity,
-                                _ => &mut self.brush.hardness,
+                            let value = if self.tool == Tool::SelectBrush {
+                                match index {
+                                    0 => &mut self.sessions[self.active].selection_brush.diameter,
+                                    1 => &mut self.sessions[self.active].selection_brush.strength,
+                                    _ => &mut self.sessions[self.active].selection_brush.hardness,
+                                }
+                            } else {
+                                match index {
+                                    0 => &mut self.brush.diameter,
+                                    1 => &mut self.brush.opacity,
+                                    _ => &mut self.brush.hardness,
+                                }
                             };
                             let range = if index == 0 { 1.0..=256.0 } else { 0.0..=1.0 };
                             ui.add(
