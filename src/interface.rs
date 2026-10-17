@@ -17,6 +17,109 @@ pub fn context_toolbar_frame(style: &egui::Style) -> egui::Frame {
     egui::Frame::popup(style).inner_margin(8)
 }
 
+/// Give small selection parameters more slider travel while retaining an exact
+/// zero endpoint and ordinary image-pixel/tolerance values in the model.
+pub fn selection_slider(value: &mut f32, max: f32) -> egui::Slider<'_> {
+    // Shift before taking the logarithm: midpoint is about 23–27 units instead
+    // of <5. The offset preserves exact decimal steps and a natural zero end.
+    const OFFSET: f64 = 10.;
+    let max = f64::from(max);
+    egui::Slider::from_get_set(OFFSET..=max + OFFSET, move |next| {
+        if let Some(next) = next {
+            *value = (next - OFFSET).clamp(0., max) as f32;
+        }
+        f64::from(*value) + OFFSET
+    })
+    .logarithmic(true)
+    .smart_aim(false)
+    .step_by(0.1)
+    .max_decimals(1)
+    .custom_formatter(|shifted, decimals| {
+        let actual = shifted - OFFSET;
+        let precision = if (actual - actual.round()).abs() > 0.001 {
+            1
+        } else {
+            *decimals.start()
+        };
+        format!("{actual:.precision$}")
+    })
+    .custom_parser(move |text| {
+        text.trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && (0. ..=max).contains(v))
+            .map(|v| v + OFFSET)
+    })
+}
+
+#[cfg(test)]
+mod precision_tests {
+    use super::*;
+    #[test]
+    fn selection_sliders_balance_low_precision_with_high_range_and_keep_endpoints() {
+        fn frame(ctx: &Context, value: &mut f32, max: f32, events: Vec<egui::Event>) -> egui::Rect {
+            let mut rect = egui::Rect::NOTHING;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        vec2(400., 140.),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    rect = ui.add(selection_slider(value, max).show_value(false)).rect;
+                },
+            );
+            output.textures_delta.clear();
+            rect
+        }
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: egui::Modifiers::NONE,
+        };
+        for max in [100., 128.] {
+            let ctx = Context::default();
+            let mut value = 0.;
+            let rect = frame(&ctx, &mut value, max, vec![]);
+            let center = rect.center();
+            frame(
+                &ctx,
+                &mut value,
+                max,
+                vec![egui::Event::PointerMoved(center), button(center, true)],
+            );
+            frame(&ctx, &mut value, max, vec![button(center, false)]);
+            assert!(
+                (max * 0.15..max * 0.35).contains(&value),
+                "midpoint {value} for {max}"
+            );
+            for (target, expected) in [
+                (rect.left_center() - vec2(20., 0.), 0.),
+                (rect.right_center() + vec2(20., 0.), max),
+            ] {
+                frame(
+                    &ctx,
+                    &mut value,
+                    max,
+                    vec![egui::Event::PointerMoved(center), button(center, true)],
+                );
+                frame(
+                    &ctx,
+                    &mut value,
+                    max,
+                    vec![egui::Event::PointerMoved(target)],
+                );
+                frame(&ctx, &mut value, max, vec![button(target, false)]);
+                assert_eq!(value, expected);
+            }
+        }
+    }
+}
+
 /// Transient presentation state never enters the serialized document.
 pub struct InterfaceState {
     pub layer_properties: bool,

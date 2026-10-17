@@ -95,14 +95,17 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [selection/n
 - [x] Coverage-based Replace/Add/Subtract/Intersect for rectangle, freeform and Wand tools, including modifier shortcuts.
 - [x] Selection and mask feathering; background Apply/Cancel transaction, source preservation and native saving.
 - [x] Reveal-all or selection-derived layer masks, grayscale thumbnail, enable/disable, invert and delete.
-- [x] Original selection ants plus separate 50%-opacity feather-extent ants; inverted selection continues around visible canvas edges.
+- [x] Original selection ants plus separate 40%-opacity feather-extent ants; inverted selection continues around visible canvas edges.
 - [x] Horizontal/vertical canvas scrollbars outside image hit testing and clear of the layers tray; bounded pan, keyboard controls and Fit handling.
 - [ ] Merge selected/visible layers and confirmed flattening.
 - [x] Freeform/lasso selection with live closed ants, antialiased coverage, combine modes and undo.
 - [x] Canvas selection toolbar matching text-bar height; dynamic width, precise feather input and Wand tolerance.
 - [ ] Polygon and edge-aware brush selection with configurable tolerance.
-- [ ] Selection expand/contract and live feather previews.
+- [x] Live selection feather previews in the toolbar and dialog; release/Apply commits one undo step, Escape/Cancel discards.
+- [ ] Selection expand/contract.
 - [ ] Brush/eraser mask editing, direct mask view, link/unlink and explicit permanent application.
+
+- [x] Feathering below 5 px displays one decimal, supports real subpixel coverage changes, and shares mild shifted-log fine-adjustment sliders with Wand tolerance. Outer feather ants use 40% opacity.
 
 ## Phases 5–6
 

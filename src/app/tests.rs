@@ -368,6 +368,11 @@ fn wait_for_edit(app: &mut PaletteApp, ctx: &Context) {
     while app.edit_pending
         || app
             .current()
+            .feather_preview
+            .as_ref()
+            .is_some_and(|p| p.commit_requested)
+        || app
+            .current()
             .selection_transform
             .as_ref()
             .is_some_and(|g| g.released)
@@ -2230,6 +2235,10 @@ fn selection_toolbar_numeric_fields_are_precise_validated_and_tab_local() {
     let before = app.current().document.clone();
     for (name, input, expected) in [
         ("Tolerance", "35.5", 35.5),
+        ("Feather", "0", 0.),
+        ("Feather", "2", 2.),
+        ("Feather", "4.26", 4.3),
+        ("Feather", "5", 5.),
         ("Feather", "8.5", 8.5),
         ("Feather", "NaN", 8.5),
     ] {
@@ -2260,6 +2269,12 @@ fn selection_toolbar_numeric_fields_are_precise_validated_and_tab_local() {
             },
             expected
         );
+        if name == "Feather" && expected < 5. {
+            assert_eq!(
+                app.current().selection_feather_text,
+                format!("{expected:.1}")
+            );
+        }
     }
     assert!(app.current().document == before);
     assert!(!app.edit_pending);
@@ -2678,7 +2693,7 @@ fn inverted_selection_draws_animated_ants_on_every_visible_canvas_edge() {
 }
 
 #[test]
-fn feather_draws_original_opaque_ants_and_separate_half_opacity_extent() {
+fn feather_draws_original_opaque_ants_and_separate_forty_percent_extent() {
     let ctx = Context::default();
     let mut app = test_app(&ctx);
     app.current_mut().document = Document::new(819, 594).unwrap();
@@ -2714,10 +2729,203 @@ fn feather_draws_original_opaque_ants_and_separate_half_opacity_extent() {
         {
             original |= stroke.color == Color32::BLACK && (points[0].x - original_left).abs() < 0.1;
             feather |=
-                stroke.color == Color32::from_black_alpha(128) && points[0].x < original_left - 5.;
+                stroke.color == Color32::from_black_alpha(102) && points[0].x < original_left - 5.;
         }
     }
     output.textures_delta.clear();
     assert!(original && feather);
     assert_eq!(app.current().document.selection_base.as_ref(), Some(&raw));
+}
+
+fn wait_for_feather_frame(app: &mut PaletteApp, ctx: &Context) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        frame(app, ctx, vec![]);
+        let preview = app
+            .current()
+            .feather_preview
+            .as_ref()
+            .expect("live feather transaction");
+        if preview
+            .frame
+            .as_ref()
+            .is_some_and(|f| f.radius == preview.radius)
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "feather preview timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn feather_toolbar_outline_grows_while_held_and_release_commits_one_undo() {
+    use palette_core::{
+        editing::{PixelRect, rectangle},
+        selection,
+    };
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(819, 594).unwrap();
+    let original = rectangle(
+        819,
+        594,
+        PixelRect {
+            x: 240,
+            y: 180,
+            width: 300,
+            height: 210,
+        },
+    );
+    app.current_mut().document.selection = Some(original.clone());
+    app.choose_tool(Tool::Select);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let before = app.current().document.clone();
+    let revision = app.current().history.revision;
+    let field = ctx
+        .read_response(egui::Id::unique((
+            "selection-number",
+            app.current().id,
+            "Feather",
+        )))
+        .unwrap()
+        .rect;
+    let start = pos2(field.left() - 63., field.center().y);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(start)]);
+    frame(&mut app, &ctx, vec![pointer(start, true)]);
+    wait_for_feather_frame(&mut app, &ctx);
+    let preview = app.current().feather_preview.as_ref().unwrap();
+    let first = preview.frame.as_ref().unwrap().bounds.unwrap();
+    let first_radius = preview.radius;
+    assert!(!preview.commit_requested);
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, revision);
+    let end = pos2(field.left() - 36., field.center().y);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    wait_for_feather_frame(&mut app, &ctx);
+    let preview = app.current().feather_preview.as_ref().unwrap();
+    let last = preview.frame.as_ref().unwrap().bounds.unwrap();
+    let radius = preview.radius;
+    assert!(radius > first_radius);
+    assert!(last.width > first.width || last.height > first.height);
+    assert!(app.current().document == before);
+    assert_eq!(
+        app.current_mut().selection_contours(),
+        palette_core::editing::contours(&original)
+    );
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_edit(&mut app, &ctx);
+    assert!(app.current().feather_preview.is_none());
+    assert_eq!(
+        app.current().document.selection.as_ref(),
+        Some(&selection::feather(&original, radius).unwrap())
+    );
+    let committed = app.current().document.clone();
+    app.undo_current();
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, revision);
+    app.redo_current();
+    assert!(app.current().document == committed);
+}
+
+#[test]
+fn feather_dialog_previews_live_without_mutating_document_and_cancel_discards_it() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(80, 60).unwrap();
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        80,
+        60,
+        palette_core::editing::PixelRect {
+            x: 20,
+            y: 15,
+            width: 30,
+            height: 24,
+        },
+    ));
+    let before = app.current().document.clone();
+    app.show_feather(false);
+    wait_for_feather_frame(&mut app, &ctx);
+    // The shifted logarithm must display actual units, not the +10 offset.
+    let value = label_position(&mut app, &ctx, "4.0");
+    assert!(value.is_finite());
+    let label = label_bounds(&mut app, &ctx, "Radius (px)");
+    let slider = pos2(label.left() - 100., label.center().y);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(slider), pointer(slider, true)],
+    );
+    wait_for_feather_frame(&mut app, &ctx);
+    let preview = app.current().feather_preview.as_ref().unwrap();
+    assert!(preview.dialog && preview.radius > 4.);
+    assert!(!preview.frame.as_ref().unwrap().contours.is_empty());
+    assert!(app.current().document == before);
+    frame(&mut app, &ctx, vec![pointer(slider, false)]);
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.feather_dialog.is_none());
+    assert!(app.current().feather_preview.is_none());
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+}
+
+#[test]
+fn feather_worker_coalesces_radii_fences_cancelled_jobs_and_finishes_before_tab_changes() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = Document::new(64, 48).unwrap();
+    app.current_mut().document.selection = Some(palette_core::editing::rectangle(
+        64,
+        48,
+        palette_core::editing::PixelRect {
+            x: 20,
+            y: 15,
+            width: 16,
+            height: 12,
+        },
+    ));
+    let before = app.current().document.clone();
+    let raw = before.selection.as_ref().unwrap().clone();
+    app.preview_selection_feather(2., false, 0.);
+    app.request_feather();
+    app.preview_selection_feather(12., false, 0.);
+    app.commit_selection_feather();
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.selection.as_ref(),
+        Some(&palette_core::selection::feather(&raw, 12.).unwrap())
+    );
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.preview_selection_feather(18., false, 0.);
+    app.request_feather();
+    app.current_mut().cancel_selection_feather();
+    app.preview_selection_feather(3., false, 0.);
+    app.commit_selection_feather();
+    wait_for_edit(&mut app, &ctx);
+    assert_eq!(
+        app.current().document.selection.as_ref(),
+        Some(&palette_core::selection::feather(&raw, 3.).unwrap())
+    );
+    app.preview_selection_feather(9., false, 0.);
+    app.request_feather();
+    app.new_document();
+    assert!(app.current().document.selection.is_none());
+    assert_eq!(
+        app.sessions[0].document.selection.as_ref(),
+        Some(&palette_core::selection::feather(&raw, 9.).unwrap())
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.feather_worker.busy {
+        frame(&mut app, &ctx, vec![]);
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(app.current().document.selection.is_none());
 }

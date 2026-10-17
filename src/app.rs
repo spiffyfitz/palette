@@ -3,6 +3,7 @@ pub(crate) mod appearance;
 mod capture;
 mod close;
 pub(crate) mod editing;
+mod feather;
 mod files;
 mod panels;
 mod selection_toolbar;
@@ -155,6 +156,7 @@ pub struct PaletteApp {
     avif_export: Option<files::AvifExport>,
     paint_export: Option<files::PaintExport>,
     feather_dialog: Option<advanced::FeatherDialog>,
+    feather_worker: feather::Worker,
     text_editor: Option<text::TextEditor>,
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
@@ -314,6 +316,7 @@ impl PaletteApp {
             avif_export: None,
             paint_export: None,
             feather_dialog: None,
+            feather_worker: feather::Worker::new(ctx.clone()),
         };
         app.new_document();
         app
@@ -855,6 +858,7 @@ impl PaletteApp {
         let ctx = ui.ctx().clone();
         self.poll_workers(&ctx);
         self.poll_edits();
+        self.poll_feather();
         self.poll_text(&ctx);
         self.finish_requested_text();
         self.resume_text_action(&ctx);
@@ -942,6 +946,7 @@ impl PaletteApp {
         self.text_window(&ctx);
         self.appearance_windows(&ctx);
         self.request_text(&ctx);
+        self.request_feather();
         if self.after_text.is_some() {
             ctx.request_repaint();
         }

@@ -39,6 +39,7 @@ pub struct Session {
     pub selection_feather: f32,
     pub selection_feather_text: String,
     pub wand_tolerance_text: String,
+    pub feather_preview: Option<SelectionFeather>,
     selection_cache: Option<SelectionCache>,
 }
 
@@ -75,13 +76,17 @@ impl Session {
             selection_feather: 0.,
             selection_feather_text: "0".into(),
             wand_tolerance_text: "12".into(),
+            feather_preview: None,
             selection_cache: None,
         }
     }
     pub fn modified(&self) -> bool {
-        self.selection_transform
+        self.feather_preview
             .as_ref()
-            .is_some_and(|g| g.desired != palette_core::transform::SelectionTransform::Move([0, 0]))
+            .is_some_and(|p| !p.dialog && p.radius != p.setting_before)
+            || self.selection_transform.as_ref().is_some_and(|g| {
+                g.desired != palette_core::transform::SelectionTransform::Move([0, 0])
+            })
             || self.history.revision != self.saved_revision
             || self
                 .layer_drag
@@ -89,6 +94,7 @@ impl Session {
                 .is_some_and(|drag| self.document.active().offset != drag.original)
     }
     pub fn invalidate(&mut self) {
+        self.cancel_selection_feather();
         self.generation += 1;
         self.render_epoch += 1;
         self.paint_dirty = None;
@@ -123,6 +129,7 @@ impl Session {
         self.invalidate();
     }
     pub fn end_gesture(&mut self) {
+        self.finish_selection_feather();
         self.construction = None;
         self.finish_selection_transform();
         if let Some(drag) = self.layer_drag.take() {
@@ -182,14 +189,14 @@ impl Session {
             geometry: (mask.width, mask.height, mask.enabled),
             base: self.document.selection_base.clone(),
             bounds: palette_core::editing::bounds(mask),
-            contours: palette_core::editing::contours(
+            contours: std::sync::Arc::new(palette_core::editing::contours(
                 self.document.selection_base.as_ref().unwrap_or(mask),
-            ),
-            feather: if self.document.selection_base.is_some() {
+            )),
+            feather: std::sync::Arc::new(if self.document.selection_base.is_some() {
                 palette_core::editing::contours_at(mask, 1)
             } else {
                 vec![]
-            },
+            }),
         });
     }
     pub fn selection_contours(&mut self) -> &[Vec<[f32; 2]>] {
@@ -199,10 +206,124 @@ impl Session {
             .map_or(&[], |cache| &cache.contours)
     }
     pub fn feather_contours(&mut self) -> &[Vec<[f32; 2]>] {
+        if self
+            .feather_preview
+            .as_ref()
+            .is_some_and(|p| p.frame.is_some())
+        {
+            return &self
+                .feather_preview
+                .as_ref()
+                .unwrap()
+                .frame
+                .as_ref()
+                .unwrap()
+                .contours;
+        }
         self.cache_selection();
         self.selection_cache
             .as_ref()
             .map_or(&[], |cache| &cache.feather)
+    }
+    pub fn selection_outline(&mut self) -> std::sync::Arc<Vec<Vec<[f32; 2]>>> {
+        self.cache_selection();
+        self.selection_cache
+            .as_ref()
+            .map(|c| c.contours.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Presentation transaction: source/committed coverage stays immutable while
+/// a bounded worker evaluates progressively newer radii. One release = one undo.
+pub struct SelectionFeather {
+    pub token: u64,
+    pub generation: u64,
+    pub source: palette_core::raster::Coverage,
+    pub outline: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
+    pub radius: f32,
+    pub setting_before: f32,
+    pub dialog: bool,
+    pub commit_requested: bool,
+    pub frame: Option<FeatherFrame>,
+}
+pub struct FeatherFrame {
+    pub radius: f32,
+    pub coverage: palette_core::raster::Coverage,
+    pub contours: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
+    pub bounds: Option<PixelRect>,
+}
+impl FeatherFrame {
+    pub fn compute(source: &palette_core::raster::Coverage, radius: f32) -> Result<Self, String> {
+        let coverage = palette_core::selection::feather(source, radius)?;
+        let contours = if coverage == *source {
+            vec![]
+        } else {
+            palette_core::editing::contours_at(&coverage, 1)
+        };
+        let bounds = palette_core::editing::bounds(&coverage);
+        Ok(Self {
+            radius,
+            coverage,
+            contours: std::sync::Arc::new(contours),
+            bounds,
+        })
+    }
+}
+impl Session {
+    /// Explicit document commands finish a toolbar gesture before proceeding.
+    /// A pending dialog is discarded until Apply; the normal release path calls
+    /// this only after the worker has the exact final result. The synchronous
+    /// fallback is reserved for tool/tab/save/undo changes during a pending job.
+    pub fn finish_selection_feather(&mut self) {
+        let Some(preview) = self.feather_preview.take() else {
+            return;
+        };
+        if preview.generation != self.generation || (preview.dialog && !preview.commit_requested) {
+            return;
+        }
+        let frame = match preview.frame.filter(|f| f.radius == preview.radius) {
+            Some(frame) => frame,
+            None => match FeatherFrame::compute(&preview.source, preview.radius) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    self.gesture_error = Some(error);
+                    return;
+                }
+            },
+        };
+        let base = (frame.coverage != preview.source).then_some(preview.source);
+        if self.document.selection.as_ref() != Some(&frame.coverage)
+            || self.document.selection_base != base
+        {
+            self.history.begin("Feather selection", &self.document);
+            let cache = SelectionCache {
+                values: frame.coverage.values.clone(),
+                geometry: (
+                    frame.coverage.width,
+                    frame.coverage.height,
+                    frame.coverage.enabled,
+                ),
+                base: base.clone(),
+                bounds: frame.bounds,
+                contours: preview.outline,
+                feather: frame.contours,
+            };
+            self.document.selection = Some(frame.coverage);
+            self.document.selection_base = base;
+            self.history.finish(&self.document);
+            self.invalidate();
+            self.selection_cache = Some(cache);
+        }
+    }
+    pub fn cancel_selection_feather(&mut self) -> bool {
+        let Some(preview) = self.feather_preview.take() else {
+            return false;
+        };
+        if !preview.dialog {
+            self.selection_feather = preview.setting_before;
+        }
+        true
     }
 }
 
@@ -229,8 +350,8 @@ struct SelectionCache {
     geometry: (u32, u32, bool),
     base: Option<palette_core::raster::Coverage>,
     bounds: Option<PixelRect>,
-    contours: Vec<Vec<[f32; 2]>>,
-    feather: Vec<Vec<[f32; 2]>>,
+    contours: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
+    feather: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
 }
 
 pub struct SelectionDrag {

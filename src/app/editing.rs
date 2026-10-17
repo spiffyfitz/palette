@@ -145,6 +145,10 @@ impl PaletteApp {
             self.edit(Edit::Clear, ctx);
         }
         if escape && !self.interface.popup_was_open {
+            if self.current_mut().cancel_selection_feather() {
+                ctx.stop_dragging();
+                return;
+            }
             if self.current_mut().lasso_drag.take().is_some() {
                 return;
             }
@@ -446,6 +450,7 @@ impl PaletteApp {
         Ok(self.clipboard.as_mut().expect("initialized clipboard"))
     }
     pub fn copy_selection(&mut self, cut: bool, ctx: &Context) {
+        self.current_mut().end_gesture();
         if cut && self.current().document.active().locked {
             return;
         }

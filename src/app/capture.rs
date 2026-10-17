@@ -408,6 +408,12 @@ impl PaletteApp {
             return false;
         }
         if self.current().texture.is_none()
+            || self.feather_worker.busy
+            || self
+                .current()
+                .feather_preview
+                .as_ref()
+                .is_some_and(|p| p.frame.as_ref().is_none_or(|f| f.radius != p.radius))
             || self.busy
             || self.edit_pending
             || self

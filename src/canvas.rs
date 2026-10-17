@@ -194,6 +194,7 @@ impl PaletteApp {
                 [point[0].floor() as u32, point[1].floor() as u32]
             });
         let drawing_allowed = self.close_pending_none()
+            && self.current().feather_preview.is_none()
             && (!self.current().document.active().locked
                 || (!self.tool.paints()
                     && !self.tool.shape()
@@ -209,6 +210,7 @@ impl PaletteApp {
         if hovered
             && !selection_handled
             && self.current().selection_transform.is_none()
+            && self.current().feather_preview.is_none()
             && pressed
             && !space
             && !middle
@@ -379,6 +381,7 @@ impl PaletteApp {
         let handle = Rect::from_center_size(canvas.right_bottom() + vec2(3.0, 3.0), vec2(9.0, 9.0));
         if view.contains(handle.center())
             && self.close_pending_none()
+            && self.current().feather_preview.is_none()
             && !selection_handled
             && self.current().selection_transform.is_none()
             && !(matches!(self.tool, Tool::Select | Tool::Lasso)

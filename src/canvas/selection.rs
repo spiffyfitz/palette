@@ -123,6 +123,7 @@ impl PaletteApp {
             || self.current().document.active().locked
             || self.current().selection_drag.is_some()
             || self.current().lasso_drag.is_some()
+            || self.current().feather_preview.is_some()
             || self.current().selection_transform.is_some()
             || ctx.input(|i| i.modifiers.alt)
             || self.current().selection_mode != palette_core::selection::Combine::Replace
@@ -313,7 +314,7 @@ impl PaletteApp {
                     .iter()
                     .map(|[x, y]| canvas.min + vec2(*x, *y) * zoom)
                     .collect();
-                visible |= overlays::ants_alpha(painter, &points, phase, 128);
+                visible |= overlays::ants_alpha(painter, &points, phase, 102);
             }
             for contour in self.current_mut().selection_contours() {
                 let points: Vec<_> = contour
@@ -340,6 +341,7 @@ impl PaletteApp {
             && self.current().selection_mode == palette_core::selection::Combine::Replace
             && self.current().selection_drag.is_none()
             && self.current().lasso_drag.is_none()
+            && self.current().feather_preview.is_none()
             && !self.current().document.active().locked
             && let Some(rect) = self.current_mut().selection_bounds()
         {
