@@ -197,6 +197,7 @@ impl PaletteApp {
         } else {
             kind.default_operation()
         };
+        let kind = operation.kind();
         let ticket = self
             .processing_worker
             .ticket
@@ -226,7 +227,20 @@ impl PaletteApp {
             requested: None,
             ready: None,
             image: None,
-            parameter: 0,
+            parameter: kind
+                .descriptor()
+                .parameters
+                .iter()
+                .position(|p| {
+                    p.key
+                        == match kind {
+                            Kind::OuterGlow | Kind::InnerGlow => "radius",
+                            Kind::DropShadow | Kind::InnerShadow => "angle",
+                            Kind::Stroke => "width",
+                            _ => "",
+                        }
+                })
+                .unwrap_or(0),
         });
     }
     pub(super) fn cancel_processing(&mut self) {

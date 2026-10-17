@@ -1,11 +1,14 @@
 //! Implemented processing catalog and shared, UI-independent parameter metadata.
 //! The renderer never knows widget types; adding an operation extends this
 //! registry and its evaluator rather than introducing a second UI parameter model.
+mod extended;
 mod gaussian;
 mod layer;
 mod neighborhood;
 mod point;
-use crate::document::{Effect, Filter, StrokePosition};
+mod round;
+use crate::document::{Effect, Filter, NoiseDistribution, StrokePosition};
+pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
 pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_cancel};
 pub use neighborhood::{box_blur_cancel, median_cancel};
@@ -32,12 +35,19 @@ pub enum Kind {
     InnerShadow,
     InnerGlow,
     Stroke,
+    Levels,
+    Curves,
+    MotionBlur,
+    HighPass,
+    Mosaic,
+    AddNoise,
 }
 #[derive(Clone, Copy, Debug)]
 /// UI-independent input constraints, shared by model validation and controls.
 pub enum ParameterType {
     Number { min: f32, max: f32, step: f32 },
     Color,
+    Boolean,
     Choice(&'static [&'static str]),
 }
 #[derive(Clone, Copy, Debug)]
@@ -119,7 +129,12 @@ pub const REGISTRY: &[Descriptor] = &[
         kind: Kind::OuterGlow,
         label: "Outer Glow",
         category: "Layer styles",
-        parameters: &[COLOR, OPACITY, SPREAD, SIZE],
+        parameters: &[
+            COLOR,
+            OPACITY,
+            SPREAD,
+            number("radius", "Radius (px)", 0., 64., 0.1),
+        ],
     },
     Descriptor {
         kind: Kind::BrightnessContrast,
@@ -203,7 +218,7 @@ pub const REGISTRY: &[Descriptor] = &[
             COLOR,
             number("opacity", "Opacity", 0., 1., 0.01),
             number("spread", "Spread", 0., 1., 0.01),
-            number("size", "Size (px)", 0., 64., 0.1),
+            number("radius", "Radius (px)", 0., 64., 0.1),
         ],
     },
     Descriptor {
@@ -218,6 +233,75 @@ pub const REGISTRY: &[Descriptor] = &[
                 key: "position",
                 label: "Position",
                 kind: ParameterType::Choice(&["Outside", "Inside", "Center"]),
+            },
+            Parameter {
+                key: "rounded",
+                label: "Rounded corners",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Levels,
+        label: "Levels",
+        category: "Adjustments",
+        parameters: &[
+            number("black", "Input black", 0., 254., 1.),
+            number("white", "Input white", 1., 255., 1.),
+            number("gamma", "Gamma", 0.1, 9.99, 0.01),
+            number("output_black", "Output black", 0., 255., 1.),
+            number("output_white", "Output white", 0., 255., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Curves,
+        label: "Curves",
+        category: "Adjustments",
+        parameters: &[
+            number("point0", "Black", 0., 255., 1.),
+            number("point1", "Shadows", 0., 255., 1.),
+            number("point2", "Midtones", 0., 255., 1.),
+            number("point3", "Highlights", 0., 255., 1.),
+            number("point4", "White", 0., 255., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::MotionBlur,
+        label: "Motion Blur",
+        category: "Blur",
+        parameters: &[
+            number("distance", "Distance (px)", 0., 64., 0.1),
+            number("angle", "Angle (°)", -180., 180., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::HighPass,
+        label: "High Pass",
+        category: "Other",
+        parameters: &[number("radius", "Radius (px)", 0., 64., 0.1)],
+    },
+    Descriptor {
+        kind: Kind::Mosaic,
+        label: "Mosaic",
+        category: "Pixelate",
+        parameters: &[number("block_size", "Cell size (px)", 1., 128., 1.)],
+    },
+    Descriptor {
+        kind: Kind::AddNoise,
+        label: "Add Noise",
+        category: "Noise",
+        parameters: &[
+            number("strength", "Amount", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "monochrome",
+                label: "Monochrome",
+                kind: ParameterType::Boolean,
+            },
+            Parameter {
+                key: "distribution",
+                label: "Distribution",
+                kind: ParameterType::Choice(&["Uniform", "Gaussian"]),
             },
         ],
     },
@@ -268,6 +352,29 @@ impl Kind {
                 opacity: 1.,
                 width: 4.,
                 position: StrokePosition::Outside,
+                rounded: true,
+            }),
+            Self::Levels => Operation::Filter(Filter::Levels {
+                black: 0,
+                white: 255,
+                gamma: 1.,
+                output_black: 0,
+                output_white: 255,
+            }),
+            Self::Curves => Operation::Filter(Filter::Curves {
+                points: [0, 64, 128, 192, 255],
+            }),
+            Self::MotionBlur => Operation::Filter(Filter::MotionBlur {
+                distance: 12.,
+                angle: 0.,
+            }),
+            Self::HighPass => Operation::Filter(Filter::HighPass { radius: 4. }),
+            Self::Mosaic => Operation::Filter(Filter::Mosaic { block_size: 12 }),
+            Self::AddNoise => Operation::Filter(Filter::AddNoise {
+                amount: 0.1,
+                seed: 1,
+                monochrome: true,
+                distribution: NoiseDistribution::Uniform,
             }),
             Self::Invert => Operation::Filter(Filter::Invert),
             Self::Brightness => Operation::Filter(Filter::Brightness { amount: 0. }),
@@ -302,6 +409,7 @@ pub enum Operation {
 pub enum Value {
     Number(f32),
     Color([u8; 3]),
+    Boolean(bool),
     Choice(usize),
 }
 impl Operation {
@@ -320,6 +428,12 @@ impl Operation {
             Self::Effect(Effect::InnerShadow { .. }) => Kind::InnerShadow,
             Self::Effect(Effect::InnerGlow { .. }) => Kind::InnerGlow,
             Self::Effect(Effect::Stroke { .. }) => Kind::Stroke,
+            Self::Filter(Filter::Levels { .. }) => Kind::Levels,
+            Self::Filter(Filter::Curves { .. }) => Kind::Curves,
+            Self::Filter(Filter::MotionBlur { .. }) => Kind::MotionBlur,
+            Self::Filter(Filter::HighPass { .. }) => Kind::HighPass,
+            Self::Filter(Filter::Mosaic { .. }) => Kind::Mosaic,
+            Self::Filter(Filter::AddNoise { .. }) => Kind::AddNoise,
             Self::Filter(Filter::Invert) => Kind::Invert,
             Self::Filter(Filter::Brightness { .. }) => Kind::Brightness,
             Self::Filter(Filter::GaussianBlur { .. }) => Kind::GaussianBlur,
@@ -331,6 +445,70 @@ impl Operation {
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
         match (self, key) {
+            (Self::Filter(Filter::Levels { black: v, .. }), "black") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Levels { white: v, .. }), "white") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Levels { gamma: v, .. }), "gamma") => Some(Value::Number(*v)),
+            (
+                Self::Filter(Filter::Levels {
+                    output_black: v, ..
+                }),
+                "output_black",
+            ) => Some(Value::Number(*v as f32)),
+            (
+                Self::Filter(Filter::Levels {
+                    output_white: v, ..
+                }),
+                "output_white",
+            ) => Some(Value::Number(*v as f32)),
+            (Self::Filter(Filter::Curves { points: v, .. }), "point0") => {
+                Some(Value::Number(v[0] as f32))
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point1") => {
+                Some(Value::Number(v[1] as f32))
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point2") => {
+                Some(Value::Number(v[2] as f32))
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point3") => {
+                Some(Value::Number(v[3] as f32))
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point4") => {
+                Some(Value::Number(v[4] as f32))
+            }
+            (Self::Filter(Filter::MotionBlur { distance: v, .. }), "distance") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::MotionBlur { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::HighPass { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Mosaic { block_size: v, .. }), "block_size") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::AddNoise { amount: v, .. }), "strength") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AddNoise { seed: v, .. }), "seed") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::AddNoise { monochrome: v, .. }), "monochrome") => {
+                Some(Value::Boolean(*v))
+            }
+            (
+                Self::Filter(Filter::AddNoise {
+                    distribution: v, ..
+                }),
+                "distribution",
+            ) => Some(Value::Choice(*v as usize)),
+            (Self::Effect(Effect::Stroke { rounded, .. }), "rounded") => {
+                Some(Value::Boolean(*rounded))
+            }
+            (
+                Self::Effect(Effect::OuterGlow { size, .. } | Effect::InnerGlow { size, .. }),
+                "radius",
+            ) => Some(Value::Number(*size)),
             (Self::Filter(Filter::BrightnessContrast { brightness: v, .. }), "brightness") => {
                 Some(Value::Number(*v))
             }
@@ -428,6 +606,15 @@ impl Operation {
     }
     /// Validate before mutation; a rejected value leaves the operation unchanged.
     pub fn set_value(&mut self, key: &str, value: Value) -> Result<(), String> {
+        let key = if key == "size"
+            && matches!(
+                self,
+                Self::Effect(Effect::OuterGlow { .. } | Effect::InnerGlow { .. })
+            ) {
+            "radius"
+        } else {
+            key
+        };
         let parameter = self
             .kind()
             .descriptor()
@@ -437,12 +624,145 @@ impl Operation {
             .ok_or("Unknown processing parameter")?;
         match (parameter.kind, value) {
             (ParameterType::Color, Value::Color(_)) => {}
+            (ParameterType::Boolean, Value::Boolean(_)) => {}
             (ParameterType::Choice(options), Value::Choice(n)) if n < options.len() => {}
             (ParameterType::Number { min, max, .. }, Value::Number(n))
                 if n.is_finite() && (min..=max).contains(&n) => {}
             _ => return Err("Invalid processing parameter value".into()),
         }
+        if let (Self::Filter(Filter::Levels { black, white, .. }), Value::Number(n)) =
+            (&*self, value)
+            && ((key == "black" && n >= f32::from(*white))
+                || (key == "white" && n <= f32::from(*black)))
+        {
+            return Err("Input black must be below input white".into());
+        }
         match (self, key, value) {
+            (Self::Filter(Filter::Levels { black: v, .. }), "black", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Levels { white: v, .. }), "white", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Levels { gamma: v, .. }), "gamma", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Levels {
+                    output_black: v, ..
+                }),
+                "output_black",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::Levels {
+                    output_white: v, ..
+                }),
+                "output_white",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point0", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                v[0] = n as u8;
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point1", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                v[1] = n as u8;
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point2", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                v[2] = n as u8;
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point3", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                v[3] = n as u8;
+            }
+            (Self::Filter(Filter::Curves { points: v, .. }), "point4", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                v[4] = n as u8;
+            }
+            (
+                Self::Filter(Filter::MotionBlur { distance: v, .. }),
+                "distance",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::MotionBlur { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::HighPass { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Mosaic { block_size: v, .. }),
+                "block_size",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::AddNoise { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::AddNoise { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::AddNoise { monochrome: v, .. }),
+                "monochrome",
+                Value::Boolean(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::AddNoise {
+                    distribution: v, ..
+                }),
+                "distribution",
+                Value::Choice(n),
+            ) => {
+                *v = NoiseDistribution::ALL[n];
+            }
+            (Self::Effect(Effect::Stroke { rounded, .. }), "rounded", Value::Boolean(n)) => {
+                *rounded = n
+            }
+            (
+                Self::Effect(Effect::OuterGlow { size, .. } | Effect::InnerGlow { size, .. }),
+                "radius",
+                Value::Number(n),
+            ) => *size = n,
             (
                 Self::Filter(Filter::BrightnessContrast { brightness: v, .. }),
                 "brightness",
@@ -603,6 +923,11 @@ impl Operation {
     }
     /// Check every serialized parameter against the same domain as the controls.
     pub fn validate(&self) -> Result<(), String> {
+        if let Self::Filter(Filter::Levels { black, white, .. }) = self
+            && black >= white
+        {
+            return Err("Input black must be below input white".into());
+        }
         let mut copy = self.clone();
         for p in self.kind().descriptor().parameters {
             copy.set_value(p.key, self.value(p.key).expect("registered parameter"))?;
@@ -612,7 +937,7 @@ impl Operation {
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
-        for key in ["radius", "size", "distance", "width"] {
+        for key in ["radius", "size", "distance", "width", "block_size"] {
             if let Some(Value::Number(n)) = self.value(key) {
                 result
                     .set_value(
@@ -620,9 +945,15 @@ impl Operation {
                         Value::Number(
                             if matches!(
                                 self,
-                                Self::Filter(Filter::BoxBlur { .. } | Filter::Median { .. })
+                                Self::Filter(
+                                    Filter::BoxBlur { .. }
+                                        | Filter::Median { .. }
+                                        | Filter::Mosaic { .. }
+                                )
                             ) {
-                                (n * scale).round()
+                                (n * scale)
+                                    .round()
+                                    .max(if key == "block_size" { 1. } else { 0. })
                             } else {
                                 n * scale
                             },

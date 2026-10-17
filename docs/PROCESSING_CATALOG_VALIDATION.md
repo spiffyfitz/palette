@@ -1,5 +1,7 @@
 # Phase 5 — expanded filter and style catalog
 
+Historical batch: the current follow-up adds six filters, rounded strokes and native v5; see [current validation](STYLE_FILTER_CONTROLS_VALIDATION.md).
+
 Windows, 2026-10-17, Rust 1.99.1. Nine filters and three effects join the previous processing slice, for **12 implemented filters and six effects**. Phase 5 remains in progress. No dependency/native-library requirement changed; all implementations are independent Rust.
 
 ## New operations

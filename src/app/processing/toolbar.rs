@@ -76,7 +76,10 @@ impl PaletteApp {
             self.cancel_processing();
         }
         let mut draft = self.processing_dialog.take();
-        let compact = self.canvas_rect.width() < 700.;
+        let shadow = draft
+            .as_ref()
+            .is_some_and(|d| matches!(d.operation.kind(), Kind::DropShadow | Kind::InnerShadow));
+        let compact = self.canvas_rect.width() < if shadow { 1050. } else { 700. };
         let mut intent = None;
         let mut changed = false;
         let popup_was_open = egui::Popup::is_any_open(ctx);
@@ -192,6 +195,65 @@ fn editor_controls(
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
+        let selected_parameter = d
+            .operation
+            .kind()
+            .descriptor()
+            .parameters
+            .get(d.parameter)
+            .map(|p| p.key);
+        if selected_parameter != Some("rounded")
+            && let Operation::Effect(palette_core::document::Effect::Stroke { rounded, .. }) =
+                &mut d.operation
+        {
+            changed |= ui
+                .checkbox(rounded, if compact { "Round" } else { "Rounded corners" })
+                .changed();
+        }
+        if !compact
+            && matches!(
+                d.operation,
+                Operation::Effect(
+                    palette_core::document::Effect::DropShadow { .. }
+                        | palette_core::document::Effect::InnerShadow { .. }
+                )
+            )
+        {
+            let selected = d.operation.kind().descriptor().parameters[d.parameter].key;
+            for (key, label, max, scale) in [
+                ("angle", "Angle", 180., 1.),
+                ("distance", "Distance", 256., 1.),
+                ("spread", "Spread", 100., 100.),
+            ] {
+                if selected == key {
+                    continue;
+                }
+                changed |= ui
+                    .push_id(("shadow-quick", key), |ui| {
+                        let Some(Value::Number(n)) = d.operation.value(key) else {
+                            return false;
+                        };
+                        let mut value = n * scale;
+                        ui.label(label);
+                        let response = ui.add(
+                            egui::DragValue::new(&mut value)
+                                .range(if key == "angle" {
+                                    -max..=max
+                                } else {
+                                    0. ..=max
+                                })
+                                .speed(if key == "angle" { 1. } else { 0.1 })
+                                .max_decimals(if key == "angle" { 0 } else { 1 })
+                                .suffix(if key == "spread" { "%" } else { "" }),
+                        );
+                        response.changed()
+                            && d.operation
+                                .set_value(key, Value::Number(value / scale))
+                                .is_ok()
+                    })
+                    .inner;
+            }
+        }
         changed |= ui
             .push_id("processing-preview", |ui| {
                 ui.checkbox(&mut d.preview, if compact { "" } else { "Preview" })
@@ -260,6 +322,15 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             d.operation.value(p.key).expect("registered parameter"),
         ) {
             (ParameterType::Number { min, max, step }, Value::Number(mut value)) => {
+                let (mut min, mut max) = (min, max);
+                if let Operation::Filter(Filter::Levels { black, white, .. }) = d.operation {
+                    if p.key == "black" {
+                        max = max.min(f32::from(white) - 1.);
+                    }
+                    if p.key == "white" {
+                        min = min.max(f32::from(black) + 1.);
+                    }
+                }
                 let percent = matches!(
                     p.key,
                     "opacity"
@@ -288,6 +359,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     slider = slider.suffix("%");
                 }
                 let response = ui.add(slider).on_hover_text(p.label);
+                let mut accepted = false;
                 if response.changed() {
                     // Integer model fields cannot receive fractional typed input.
                     let number = if step >= 1. {
@@ -295,11 +367,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     } else {
                         value / scale
                     };
-                    d.operation
-                        .set_value(p.key, Value::Number(number))
-                        .expect("bounded slider");
+                    accepted = d.operation.set_value(p.key, Value::Number(number)).is_ok();
                 }
-                response.changed()
+                accepted
             }
             (ParameterType::Color, Value::Color(mut color)) => {
                 let changed = ui.color_edit_button_srgb(&mut color).changed();
@@ -326,6 +396,15 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         .expect("registered choice");
                 }
                 selected != before
+            }
+            (ParameterType::Boolean, Value::Boolean(mut value)) => {
+                let changed = ui.checkbox(&mut value, p.label).changed();
+                if changed {
+                    d.operation
+                        .set_value(p.key, Value::Boolean(value))
+                        .expect("boolean");
+                }
+                changed
             }
             _ => unreachable!("registered parameter type"),
         }

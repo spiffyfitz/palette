@@ -138,6 +138,9 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
             && match f.filter {
                 Filter::GaussianBlur { radius } => radius > 0.,
                 Filter::BoxBlur { radius } | Filter::Median { radius } => radius > 0,
+                Filter::MotionBlur { distance, .. } => distance > 0.,
+                Filter::HighPass { .. } => true,
+                Filter::Mosaic { block_size } => block_size > 1,
                 _ => false,
             }
     }) || layer
@@ -171,6 +174,11 @@ pub fn prepare_layer_cancel(
             Filter::GaussianBlur { radius } => {
                 pixels = gaussian_blur_cancel(&pixels, radius, cancel)?
             }
+            Filter::MotionBlur { distance, angle } => {
+                pixels = motion_blur_cancel(&pixels, distance, angle, cancel)?
+            }
+            Filter::HighPass { radius } => pixels = high_pass_cancel(&pixels, radius, cancel)?,
+            Filter::Mosaic { block_size } => pixels = mosaic_cancel(&pixels, block_size, cancel)?,
             Filter::BoxBlur { radius } => pixels = box_blur_cancel(&pixels, radius, cancel)?,
             Filter::Median { radius } => pixels = median_cancel(&pixels, radius, cancel)?,
             _ => {
@@ -179,7 +187,7 @@ pub fn prepare_layer_cancel(
                         return Err("Processing cancelled".into());
                     }
                     for x in 0..pixels.width() {
-                        pixels.set(x, y, point_filter(&filter.filter, pixels.get(x, y)));
+                        pixels.set(x, y, point_filter(&filter.filter, pixels.get(x, y), x, y));
                     }
                 }
             }
@@ -225,9 +233,17 @@ pub fn prepare_layer_cancel(
             opacity,
             width,
             position,
+            rounded,
         } = effect.effect
         {
-            styles.extend(stroke(&pixels, color, opacity, width, position, cancel)?);
+            styles.extend(stroke(
+                &pixels,
+                color,
+                opacity,
+                width,
+                (position, rounded),
+                cancel,
+            )?);
             continue;
         }
         let (color, opacity, spread, size, shift, outer, inner) = match effect.effect {
@@ -335,16 +351,17 @@ pub fn prepare_layer_cancel(
         styles,
     })
 }
-/// Fractional box morphology keeps strokes continuous below one pixel. Erosion
+/// Fractional box or coverage-distance morphology supports subpixel widths. Erosion
 /// uses the complement dual so internal holes and canvas edges behave equally.
 fn stroke(
     pixels: &Raster,
     color: [u8; 3],
     opacity: f32,
     width: f32,
-    position: StrokePosition,
+    placement: (StrokePosition, bool),
     cancel: &dyn Fn() -> bool,
 ) -> Result<Vec<Style>, String> {
+    let (position, rounded) = placement;
     if width == 0. || opacity == 0. {
         return Ok(vec![]);
     }
@@ -375,18 +392,28 @@ fn stroke(
             .iter()
             .map(|a| if inner { 255 - *a } else { *a })
             .collect();
-        let low = dilate(
-            &src,
-            w as usize,
-            h as usize,
-            radius.floor() as usize,
-            cancel,
-        )?;
-        let fraction = radius.fract();
-        let high = if fraction > 0. {
-            dilate(&src, w as usize, h as usize, radius.ceil() as usize, cancel)?
+        let coverage = if rounded {
+            super::round::grow(&src, w as usize, h as usize, radius, cancel)?
         } else {
-            vec![]
+            let low = dilate(
+                &src,
+                w as usize,
+                h as usize,
+                radius.floor() as usize,
+                cancel,
+            )?;
+            let fraction = radius.fract();
+            if fraction == 0. {
+                low
+            } else {
+                let high = dilate(&src, w as usize, h as usize, radius.ceil() as usize, cancel)?;
+                low.iter()
+                    .zip(high)
+                    .map(|(a, b)| {
+                        (f32::from(*a) * (1. - fraction) + f32::from(b) * fraction).round() as u8
+                    })
+                    .collect()
+            }
         };
         let mut result = Raster::new(w, h, [0; 4])?;
         for y in 0..h {
@@ -395,11 +422,7 @@ fn stroke(
             }
             for x in 0..w {
                 let i = (y * w + x) as usize;
-                let a = if fraction > 0. {
-                    f32::from(low[i]) * (1. - fraction) + f32::from(high[i]) * fraction
-                } else {
-                    f32::from(low[i])
-                };
+                let a = f32::from(coverage[i]);
                 if a > 0. {
                     result.set(x, y, [255, 255, 255, a.round() as u8]);
                 }

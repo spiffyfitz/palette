@@ -242,6 +242,7 @@ fn inner_styles_preserve_coverage_and_strokes_obey_position_subpixel_width_and_s
                     2.
                 },
                 position,
+                rounded: false,
             }),
         );
         let rendered = composite::render(&doc);
@@ -270,6 +271,7 @@ fn inner_styles_preserve_coverage_and_strokes_obey_position_subpixel_width_and_s
             opacity: 1.,
             width: 0.5,
             position: StrokePosition::Outside,
+            rounded: false,
         }),
     );
     assert_eq!(composite::render(&doc).get(5, 10), [255, 0, 0, 128]);
@@ -296,7 +298,8 @@ fn every_catalog_entry_roundtrips_sources_masks_settings_and_baked_paint_appeara
                     Value::Number(if step >= 1. { n.round() } else { n })
                 }
                 processing::ParameterType::Color => Value::Color([51, 117, 203]),
-                processing::ParameterType::Choice(_) => Value::Choice(2),
+                processing::ParameterType::Boolean => Value::Boolean(true),
+                processing::ParameterType::Choice(options) => Value::Choice(options.len() - 1),
             };
             op.set_value(parameter.key, value).unwrap();
         }
@@ -379,10 +382,251 @@ fn typed_catalog_parameters_reject_bad_integer_choice_and_nonfinite_values_befor
                 opacity: 1.,
                 width: 64.,
                 position: StrokePosition::Center,
+                rounded: false,
             }),
         );
     }
     assert!(large.validate().unwrap_err().contains("512 MiB"));
     large.active_mut().effects[0].enabled = false;
     large.validate().unwrap();
+}
+
+#[test]
+fn levels_and_curves_match_independent_analytic_values_and_reject_crossed_input_limits() {
+    for n in 0..=255 {
+        let p = [n, 255 - n, n / 2, 73];
+        assert_eq!(
+            point(
+                Filter::Curves {
+                    points: [0, 64, 128, 192, 255]
+                },
+                p
+            ),
+            p
+        );
+        assert_eq!(
+            point(
+                Filter::Levels {
+                    black: 0,
+                    white: 255,
+                    gamma: 1.,
+                    output_black: 0,
+                    output_white: 255
+                },
+                p
+            ),
+            p
+        );
+    }
+    assert_eq!(
+        point(
+            Filter::Levels {
+                black: 20,
+                white: 220,
+                gamma: 2.,
+                output_black: 10,
+                output_white: 210
+            },
+            [20, 70, 220, 81]
+        ),
+        [10, 110, 210, 81]
+    );
+    // A straight descending curve interpolates exactly, including the unequal last interval.
+    for n in 0..=255 {
+        assert_eq!(
+            point(
+                Filter::Curves {
+                    points: [255, 191, 127, 63, 0]
+                },
+                [n, n, n, 99]
+            ),
+            [255 - n, 255 - n, 255 - n, 99]
+        );
+    }
+    let mut op = Kind::Levels.default_operation();
+    op.set_value("black", Value::Number(200.)).unwrap();
+    let before = op.clone();
+    assert!(op.set_value("white", Value::Number(200.)).is_err());
+    assert!(op == before);
+    let mut doc = shape();
+    add(
+        &mut doc,
+        Operation::Filter(Filter::Levels {
+            black: 90,
+            white: 80,
+            gamma: 1.,
+            output_black: 0,
+            output_white: 255,
+        }),
+    );
+    assert!(doc.validate().is_err());
+}
+
+#[test]
+fn motion_mosaic_and_high_pass_obey_alpha_edges_reference_values_and_cancellation() {
+    let mut source = Raster::new(3, 1, [0; 4]).unwrap();
+    source.set(0, 0, [255, 0, 0, 255]);
+    source.set(1, 0, [0, 255, 0, 0]); // Hidden green must not bleed into either average.
+    source.set(2, 0, [0, 0, 255, 255]);
+    for angle in [0., 180.] {
+        let result = processing::motion_blur_cancel(&source, 2., angle, &|| false).unwrap();
+        assert_eq!(result.get(1, 0), [128, 0, 128, 170]);
+        assert_eq!(result.get(0, 0), [255, 0, 0, 170]);
+        assert_eq!(result.get(2, 0), [0, 0, 255, 170]);
+    }
+    assert!(processing::motion_blur_cancel(&source, 0., 0., &|| false).unwrap() == source);
+    let mosaic = processing::mosaic_cancel(&source, 2, &|| false).unwrap();
+    assert_eq!(mosaic.get(0, 0), [255, 0, 0, 128]);
+    assert_eq!(mosaic.get(1, 0), [255, 0, 0, 128]);
+    assert_eq!(mosaic.get(2, 0), [0, 0, 255, 255]); // Partial last cell has its actual area.
+    let constant = Raster::new(5, 4, [80, 120, 160, 77]).unwrap();
+    for radius in [0., 0.7, 4.] {
+        let high = processing::high_pass_cancel(&constant, radius, &|| false).unwrap();
+        assert!(
+            high.rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p == &[128, 128, 128, 77])
+        );
+    }
+    let high = processing::high_pass_cancel(&source, 0., &|| false).unwrap();
+    assert_eq!(high.get(1, 0), [0; 4]);
+    assert!(processing::motion_blur_cancel(&source, 3., 42., &|| true).is_err());
+    assert!(processing::mosaic_cancel(&source, 2, &|| true).is_err());
+    assert!(processing::high_pass_cancel(&source, 2., &|| true).is_err());
+}
+
+#[test]
+fn seeded_noise_is_coordinate_stable_across_point_spatial_and_region_paths() {
+    use palette_core::document::NoiseDistribution;
+    for distribution in NoiseDistribution::ALL {
+        for monochrome in [true, false] {
+            let mut doc = Document::from_raster(Raster::new(270, 9, [128, 128, 128, 255]).unwrap());
+            add(
+                &mut doc,
+                Operation::Filter(Filter::AddNoise {
+                    amount: 0.2,
+                    seed: 123,
+                    monochrome,
+                    distribution,
+                }),
+            );
+            let output = composite::render(&doc);
+            let sum: u64 = output
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|p| {
+                    assert_eq!(p[3], 255);
+                    if monochrome {
+                        assert!(p[0] == p[1] && p[1] == p[2]);
+                    }
+                    u64::from(p[0])
+                })
+                .sum();
+            assert!((sum as f64 / (270. * 9.) - 128.).abs() < 3.);
+            assert!(output.rgba().as_chunks::<4>().0.iter().any(|p| p[0] != 128));
+            if !monochrome {
+                assert!(
+                    output
+                        .rgba()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .any(|p| p[0] != p[1])
+                );
+            }
+            for x in [0, 1, 127, 128, 255, 256, 269] {
+                assert_eq!(composite::layer_pixel(doc.active(), x, 3), output.get(x, 3));
+            }
+            let id = doc.allocate_id();
+            doc.active_mut().filters.insert(
+                0,
+                FilterInstance {
+                    id,
+                    enabled: true,
+                    filter: Filter::BoxBlur { radius: 1 },
+                    mask: None,
+                },
+            );
+            assert!(composite::render(&doc).rgba() == output.rgba());
+            let region = composite::render_region(
+                &doc,
+                PixelRect {
+                    x: 125,
+                    y: 2,
+                    width: 135,
+                    height: 4,
+                },
+            )
+            .unwrap();
+            for y in 0..4 {
+                for x in 0..135 {
+                    assert_eq!(region.get(x, y), output.get(x + 125, y + 2));
+                }
+            }
+            if let Filter::AddNoise { seed, .. } = &mut doc.active_mut().filters[1].filter {
+                *seed = 124;
+            }
+            assert!(composite::render(&doc).rgba() != output.rgba());
+        }
+    }
+    assert_eq!(
+        point(
+            Filter::AddNoise {
+                amount: 0.,
+                seed: 0,
+                monochrome: false,
+                distribution: NoiseDistribution::Gaussian
+            },
+            [21, 83, 190, 17]
+        ),
+        [21, 83, 190, 17]
+    );
+}
+
+#[test]
+fn rounded_stroke_contours_differ_from_square_and_old_v4_projects_keep_square_corners() {
+    let mut doc = shape();
+    let mut op = Kind::Stroke.default_operation();
+    op.set_value("width", Value::Number(3.)).unwrap();
+    op.set_value("opacity", Value::Number(1.)).unwrap();
+    add(&mut doc, op);
+    let source = doc.active().source.clone();
+    let round = composite::render(&doc);
+    assert_eq!(round.get(3, 3)[3], 0); // Distance sqrt(18) is outside radius 3 plus its AA fringe.
+    assert_eq!(round.get(3, 6)[3], 255);
+    if let Effect::Stroke { rounded, .. } = &mut doc.active_mut().effects[0].effect {
+        *rounded = false;
+    }
+    let square = composite::render(&doc);
+    assert_eq!(square.get(3, 3)[3], 255);
+    assert!(doc.active().source == source);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("stroke.palette");
+    io::save_project(&path, &doc).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[8..12], &5u32.to_le_bytes());
+    let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let mut manifest: serde_json::Value = serde_json::from_slice(&bytes[16..16 + len]).unwrap();
+    manifest["layers"][0]["effects"][0]["effect"]["Stroke"]
+        .as_object_mut()
+        .unwrap()
+        .remove("rounded");
+    let json = serde_json::to_vec(&manifest).unwrap();
+    let mut legacy = bytes[..8].to_vec();
+    legacy.extend(4u32.to_le_bytes());
+    legacy.extend((json.len() as u32).to_le_bytes());
+    legacy.extend(json);
+    legacy.extend(&bytes[16 + len..]);
+    std::fs::write(&path, &legacy).unwrap();
+    let migrated = io::open(&path).unwrap();
+    assert!(matches!(
+        migrated.active().effects[0].effect,
+        Effect::Stroke { rounded: false, .. }
+    ));
+    assert!(composite::render(&migrated).rgba() == square.rgba());
+    assert_eq!(std::fs::read(&path).unwrap(), legacy);
 }

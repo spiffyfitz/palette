@@ -3610,7 +3610,7 @@ fn effects_are_editable_and_removable_from_the_canvas_toolbar_with_undo_and_nati
     let edit = scoped_label_bounds(&mut app, &ctx, "Edit", true).center();
     click_ui(&mut app, &ctx, edit);
     wait_for_processing(&mut app, &ctx);
-    let color = label_position(&mut app, &ctx, "Color");
+    let color = label_position(&mut app, &ctx, "Light angle (°)");
     click_ui(&mut app, &ctx, color);
     assert!(egui::Popup::is_any_open(&ctx));
     frame(&mut app, &ctx, vec![escape_event()]);
@@ -3619,7 +3619,7 @@ fn effects_are_editable_and_removable_from_the_canvas_toolbar_with_undo_and_nati
         app.processing_dialog.is_some(),
         "Escape closes the parameter menu first"
     );
-    let color = label_position(&mut app, &ctx, "Color");
+    let color = label_position(&mut app, &ctx, "Light angle (°)");
     click_ui(&mut app, &ctx, color);
     let size = label_position(&mut app, &ctx, "Size (px)");
     click_ui(&mut app, &ctx, size);
@@ -3654,7 +3654,13 @@ fn effects_are_editable_and_removable_from_the_canvas_toolbar_with_undo_and_nati
 #[test]
 fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer_changes() {
     use palette_core::processing::{Kind, REGISTRY};
-    for dpi in [1., 1.5, 2.] {
+    for (width, dpi) in [
+        (780., 1.),
+        (780., 1.5),
+        (780., 2.),
+        (1000., 1.),
+        (1386., 1.),
+    ] {
         let ctx = Context::default();
         ctx.set_pixels_per_point(dpi);
         let mut app = test_app(&ctx);
@@ -3666,7 +3672,7 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
             for _ in 0..4 {
                 let mut output = ctx.run_ui(
                     RawInput {
-                        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(780., 520.))),
+                        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 520.))),
                         ..Default::default()
                     },
                     |ui| app.draw(ui),
@@ -3762,7 +3768,7 @@ fn stroke_placement_choice_previews_on_canvas_and_commits_as_an_editable_undoabl
     let before = app.current().document.clone();
     app.open_processing(Kind::Stroke, None);
     wait_for_processing(&mut app, &ctx);
-    let color = label_position(&mut app, &ctx, "Color");
+    let color = label_position(&mut app, &ctx, "Width (px)");
     click_ui(&mut app, &ctx, color);
     let position = label_position(&mut app, &ctx, "Position");
     click_ui(&mut app, &ctx, position);
@@ -3788,4 +3794,135 @@ fn stroke_placement_choice_previews_on_canvas_and_commits_as_an_editable_undoabl
     app.redo_current();
     assert_eq!(app.current().document.active().effects.len(), 1);
     assert!(app.current().document.active().source == before.active().source);
+}
+
+#[test]
+fn requested_style_controls_preview_live_and_commit_without_touching_source() {
+    use palette_core::processing::{Kind, Value};
+    for kind in [
+        Kind::OuterGlow,
+        Kind::InnerGlow,
+        Kind::DropShadow,
+        Kind::InnerShadow,
+        Kind::Stroke,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        let before = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let label = match kind {
+            Kind::OuterGlow | Kind::InnerGlow => "Radius (px)",
+            Kind::DropShadow | Kind::InnerShadow => "Light angle (°)",
+            _ => "Width (px)",
+        };
+        let control = scoped_label_bounds(&mut app, &ctx, label, true);
+        let old = app.processing_dialog.as_ref().unwrap().operation.clone();
+        click_ui(
+            &mut app,
+            &ctx,
+            pos2(control.right() + 75., control.center().y),
+        );
+        wait_for_processing(&mut app, &ctx);
+        assert!(app.processing_dialog.as_ref().unwrap().operation != old);
+        if kind == Kind::Stroke {
+            let rounded = label_position(&mut app, &ctx, "Rounded corners");
+            click_ui(&mut app, &ctx, rounded);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("rounded"),
+                Some(Value::Boolean(false))
+            );
+        }
+        if matches!(kind, Kind::DropShadow | Kind::InnerShadow) {
+            for (key, label) in [("distance", "Distance"), ("spread", "Spread")] {
+                let label = scoped_label_bounds(&mut app, &ctx, label, true);
+                let start = pos2(label.right() + 15., label.center().y);
+                let end = start + vec2(30., 0.);
+                let old = app.processing_dialog.as_ref().unwrap().operation.value(key);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![Event::PointerMoved(start), pointer(start, true)],
+                );
+                frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+                frame(&mut app, &ctx, vec![pointer(end, false)]);
+                wait_for_processing(&mut app, &ctx);
+                assert_ne!(
+                    app.processing_dialog.as_ref().unwrap().operation.value(key),
+                    old
+                );
+            }
+        }
+        assert!(app.current().document == before);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        assert!(app.canvas_rect.contains_rect(app.processing_toolbar_rect));
+        let expected = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        assert!(
+            palette_core::processing::Operation::Effect(
+                app.current().document.active().effects[0].effect.clone()
+            ) == expected
+        );
+        assert!(app.current().document.active().source == before.active().source);
+        app.undo_current();
+        assert!(app.current().document == before);
+    }
+}
+
+#[test]
+fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    for kind in [
+        Kind::Levels,
+        Kind::Curves,
+        Kind::MotionBlur,
+        Kind::HighPass,
+        Kind::Mosaic,
+        Kind::AddNoise,
+    ] {
+        app.cancel_processing();
+        let filter = label_position(&mut app, &ctx, "Filter");
+        click_ui(&mut app, &ctx, filter);
+        let category = label_position(&mut app, &ctx, kind.descriptor().category);
+        click_ui(&mut app, &ctx, category);
+        let item = label_position(&mut app, &ctx, &format!("{}…", kind.descriptor().label));
+        click_ui(&mut app, &ctx, item);
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(
+            app.processing_dialog.as_ref().unwrap().operation.kind(),
+            kind
+        );
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        if kind == Kind::AddNoise {
+            let amount = label_position(&mut app, &ctx, "Amount");
+            click_ui(&mut app, &ctx, amount);
+            let monochrome = label_position(&mut app, &ctx, "Monochrome");
+            click_ui(&mut app, &ctx, monochrome);
+            let monochrome = scoped_label_bounds(&mut app, &ctx, "Monochrome", true).center();
+            // The parameter selector is the left occurrence; the checkbox is to its right.
+            click_ui(&mut app, &ctx, monochrome + vec2(148., 0.));
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("monochrome"),
+                Some(Value::Boolean(false))
+            );
+        }
+        assert!(app.current().document.active().filters.is_empty());
+    }
 }

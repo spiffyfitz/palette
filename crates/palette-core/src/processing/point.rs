@@ -1,6 +1,6 @@
 //! Shared point-filter mathematics for both fast point compositing and spatial
 //! pipelines. Alpha is coverage and is never changed by these adjustments.
-use crate::document::Filter;
+use crate::document::{Filter, NoiseDistribution};
 
 fn linear(v: f32) -> f32 {
     if v <= 0.04045 {
@@ -49,10 +49,46 @@ fn rgb([h, s, l]: [f32; 3]) -> [f32; 3] {
     base.map(|v| v + l - c * 0.5)
 }
 
-pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4]) -> [u8; 4] {
+pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [u8; 4] {
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
+        Filter::Levels {
+            black,
+            white,
+            gamma,
+            output_black,
+            output_white,
+        } => input.map(|v| {
+            let t = ((v * 255. - f32::from(black)) / f32::from(white - black))
+                .clamp(0., 1.)
+                .powf(1. / gamma);
+            (f32::from(output_black) + (f32::from(output_white) - f32::from(output_black)) * t)
+                / 255.
+        }),
+        Filter::Curves { points } => input.map(|v| curve(points, v * 255.) / 255.),
+        Filter::AddNoise {
+            amount,
+            seed,
+            monochrome,
+            distribution,
+        } => {
+            if amount == 0. {
+                return pixel;
+            }
+            std::array::from_fn(|c| {
+                input[c]
+                    + amount
+                        * noise(
+                            x,
+                            y,
+                            seed,
+                            if monochrome { 0 } else { c as u32 },
+                            distribution,
+                        )
+            })
+        }
+
         Filter::Invert => return [255 - pixel[0], 255 - pixel[1], 255 - pixel[2], pixel[3]],
         Filter::Brightness { amount } => {
             return [
@@ -118,7 +154,12 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4]) -> [u8; 4] {
             input.map(|v| (v * steps).round() / steps)
         }
         // Zero-radius neighborhood operations can use the point fast path.
-        Filter::GaussianBlur { .. } | Filter::BoxBlur { .. } | Filter::Median { .. } => {
+        Filter::GaussianBlur { .. }
+        | Filter::BoxBlur { .. }
+        | Filter::Median { .. }
+        | Filter::MotionBlur { .. }
+        | Filter::HighPass { .. }
+        | Filter::Mosaic { .. } => {
             return pixel;
         }
     };
@@ -128,4 +169,56 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4]) -> [u8; 4] {
         (result[2] * 255.).round().clamp(0., 255.) as u8,
         pixel[3],
     ]
+}
+
+// Cubic Hermite interpolation at five fixed input positions. Endpoint and
+// centered slopes preserve the exact identity curve; overshoots are clipped.
+fn curve(points: [u8; 5], value: f32) -> f32 {
+    let knots = [0., 64., 128., 192., 255.];
+    let i = if value < 64. {
+        0
+    } else if value < 128. {
+        1
+    } else if value < 192. {
+        2
+    } else {
+        3
+    };
+    let slope = |j: usize| {
+        let left = j.saturating_sub(1);
+        let right = (j + 1).min(4);
+        (f32::from(points[right]) - f32::from(points[left])) / (knots[right] - knots[left])
+    };
+    let width = knots[i + 1] - knots[i];
+    let t = (value - knots[i]) / width;
+    let t2 = t * t;
+    let t3 = t2 * t;
+    ((2. * t3 - 3. * t2 + 1.) * f32::from(points[i])
+        + (t3 - 2. * t2 + t) * width * slope(i)
+        + (-2. * t3 + 3. * t2) * f32::from(points[i + 1])
+        + (t3 - t2) * width * slope(i + 1))
+    .clamp(0., 255.)
+}
+// Coordinate hashing fixes the random field independently of evaluation order,
+// tiles or thread scheduling. Gaussian uses independently hashed Box–Muller inputs.
+fn noise(x: u32, y: u32, seed: u16, channel: u32, distribution: NoiseDistribution) -> f32 {
+    let mut n = 0xa511e9b3
+        ^ x.wrapping_mul(0x9e3779b9)
+        ^ y.wrapping_mul(0x85ebca6b)
+        ^ u32::from(seed).wrapping_mul(0xc2b2ae35)
+        ^ channel.wrapping_mul(0x27d4eb2d);
+    let mut uniform = || {
+        n ^= n >> 16;
+        n = n.wrapping_mul(0x7feb352d);
+        n ^= n >> 15;
+        n = n.wrapping_mul(0x846ca68b);
+        n ^= n >> 16;
+        (f64::from(n) + 0.5) / 4294967296.
+    };
+    match distribution {
+        NoiseDistribution::Uniform => (uniform() * 2. - 1.) as f32,
+        NoiseDistribution::Gaussian => {
+            ((-2. * uniform().ln()).sqrt() * (std::f64::consts::TAU * uniform()).cos()) as f32
+        }
+    }
 }

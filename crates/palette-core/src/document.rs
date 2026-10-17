@@ -120,6 +120,44 @@ pub enum Filter {
     Median {
         radius: u8,
     },
+    Levels {
+        black: u8,
+        white: u8,
+        gamma: f32,
+        output_black: u8,
+        output_white: u8,
+    },
+    /// Cubic curve outputs at fixed input knots 0, 64, 128, 192 and 255.
+    Curves {
+        points: [u8; 5],
+    },
+    MotionBlur {
+        distance: f32,
+        angle: f32,
+    },
+    HighPass {
+        radius: f32,
+    },
+    Mosaic {
+        block_size: u8,
+    },
+    AddNoise {
+        amount: f32,
+        seed: u16,
+        monochrome: bool,
+        distribution: NoiseDistribution,
+    },
+}
+
+/// Independently generated noise distributions, with stable serialized names.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NoiseDistribution {
+    Uniform,
+    Gaussian,
+}
+impl NoiseDistribution {
+    /// Stable order for choice controls.
+    pub const ALL: [Self; 2] = [Self::Uniform, Self::Gaussian];
 }
 
 /// Placement relative to the layer's alpha silhouette.
@@ -176,12 +214,15 @@ pub enum Effect {
         spread: f32,
         size: f32,
     },
-    /// Subpixel box-morphology contour, preserving the original source alpha.
+    /// Subpixel square or Euclidean round contour, preserving source pixels.
     Stroke {
         color: [u8; 3],
         opacity: f32,
         width: f32,
         position: StrokePosition,
+        /// Missing in v1–v4 projects: preserve their original square joins.
+        #[serde(default)]
+        rounded: bool,
     },
 }
 

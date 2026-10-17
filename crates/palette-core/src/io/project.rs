@@ -1,4 +1,4 @@
-//! Versions 2–4: bounded JSON descriptors followed by independently compressed
+//! Versions 2–5: bounded JSON descriptors followed by independently compressed
 //! binary assets. Shared COW tiles are stored once; no pixel-sized JSON buffer.
 use super::*;
 use crate::{

@@ -254,17 +254,17 @@ impl PaletteApp {
                                     }
                                 }
                             });
-                            self.capture_submenu(
-                                if category == "Adjustments" {
-                                    "adjustments-menu"
-                                } else if category == "Noise" {
-                                    "noise-menu"
-                                } else {
-                                    "blur-menu"
-                                },
-                                ui,
-                                &response.response,
-                            );
+                            let scene = match category {
+                                "Adjustments" => Some("adjustments-menu"),
+                                "Blur" => Some("blur-menu"),
+                                "Noise" => Some("noise-menu"),
+                                "Pixelate" => Some("pixelate-menu"),
+                                "Other" => Some("other-menu"),
+                                _ => None,
+                            };
+                            if let Some(scene) = scene {
+                                self.capture_submenu(scene, ui, &response.response);
+                            }
                         }
                     }
                     ui.separator();
@@ -273,7 +273,14 @@ impl PaletteApp {
                         ui.close();
                     }
                 });
-                for scene in ["filter-menu", "adjustments-menu", "noise-menu", "blur-menu"] {
+                for scene in [
+                    "filter-menu",
+                    "adjustments-menu",
+                    "noise-menu",
+                    "blur-menu",
+                    "pixelate-menu",
+                    "other-menu",
+                ] {
                     self.capture_popup(scene, &filter_menu.response);
                 }
                 ui.separator();

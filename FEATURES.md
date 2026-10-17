@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [style controls and six more filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md); [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -83,7 +83,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [expanded pr
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
-- [x] Native v4 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3 migration.
+- [x] Native v5 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
@@ -117,14 +117,16 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [expanded pr
 - [x] Filter/effect stack edit/toggle/reorder/duplicate/delete, plus selection-derived individual filter-mask controls.
 - [x] Live Drop/Inner Shadow, Outer/Inner Glow, Stroke (outside/inside/center) and Color Overlay; source/mask updates and layer opacity/blending.
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
-- [x] Registry-driven Filter categories, scrollable Add lists and common numeric/color/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 18 implemented operations.
+- [x] Registry-driven Filter categories, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 24 implemented operations.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
 - [ ] Filter Gallery and remaining filter/style catalog, including bevel, satin and gradient/pattern overlays.
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
-- [ ] Remaining conventional filter catalog, including Levels/Curves, Motion Blur, noise generation, distortions and textures.
+- [x] Levels, five-point Curves, Motion Blur, High Pass, Mosaic and seeded monochrome/color Uniform/Gaussian Add Noise.
+- [x] Glow Radius, shadow Angle/Distance/Spread and Stroke Width/Rounded corners controls; older native projects retain square strokes.
+- [ ] Remaining conventional filter catalog, including edge filters, radial/edge-preserving blurs, distortions and textures.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
 

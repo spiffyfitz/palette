@@ -59,10 +59,18 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "adjustments-menu",
         "blur-menu",
         "noise-menu",
+        "pixelate-menu",
+        "other-menu",
         "processing-hue",
         "processing-stroke",
         "processing-inner-shadow",
         "processing-inner-glow",
+        "processing-levels",
+        "processing-curves",
+        "processing-motion",
+        "processing-noise",
+        "processing-mosaic",
+        "processing-high-pass",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

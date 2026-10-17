@@ -25,7 +25,13 @@ impl PaletteApp {
                 | "processing-stroke"
                 | "processing-inner-shadow"
                 | "processing-inner-glow"
-                | "processing-hue",
+                | "processing-hue"
+                | "processing-levels"
+                | "processing-curves"
+                | "processing-motion"
+                | "processing-noise"
+                | "processing-mosaic"
+                | "processing-high-pass",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -87,6 +93,12 @@ impl PaletteApp {
                         Some("processing-inner-shadow") => Kind::InnerShadow,
                         Some("processing-inner-glow") => Kind::InnerGlow,
                         Some("processing-hue") => Kind::HueSaturation,
+                        Some("processing-levels") => Kind::Levels,
+                        Some("processing-curves") => Kind::Curves,
+                        Some("processing-motion") => Kind::MotionBlur,
+                        Some("processing-noise") => Kind::AddNoise,
+                        Some("processing-mosaic") => Kind::Mosaic,
+                        Some("processing-high-pass") => Kind::HighPass,
                         _ => Kind::GaussianBlur,
                     };
                     self.open_processing(kind, None);
@@ -95,7 +107,6 @@ impl PaletteApp {
                             d.operation
                                 .set_value("width", palette_core::processing::Value::Number(8.))
                                 .expect("capture width");
-                            d.parameter = 3;
                         } else if kind == Kind::HueSaturation {
                             d.operation
                                 .set_value("hue", palette_core::processing::Value::Number(120.))
