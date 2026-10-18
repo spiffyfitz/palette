@@ -4504,6 +4504,7 @@ fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_o
         let original = app.current().document.clone();
         for kind in [
             Kind::Twirl,
+            Kind::SuperZoom,
             Kind::FieldBlur,
             Kind::IrisBlur,
             Kind::TiltShift,
@@ -6223,3 +6224,4 @@ fn colorize_menu_strength_and_saturation_preview_cancel_apply_persist_and_remove
     assert!(app.current().document.layers == before.layers);
 }
 mod skin;
+mod zoom;

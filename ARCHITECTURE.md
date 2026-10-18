@@ -357,3 +357,15 @@ source geometry, high-frequency detail and alpha. A separate 128 MiB bounded
 source/geometry/patch cache accelerates parameter edits without storing
 partial jobs. `SkinModel::FaceMeshV1` pins model and pixel contracts in v6;
 no source raster is replaced. [Exact geometry, references and limits](docs/SKIN_SMOOTHING_VALIDATION.md).
+
+Super Zoom's first production profile deliberately retains source-sized
+evaluated bounds: a 224²→672² learned Y model supplies cropped magnification
+at 1–3× rather than larger document dimensions. Six-pixel halos around 212²
+interiors support seam-safe bilinear field sampling. Tile-major traversal
+retains one network output; a separate 128 MiB source/baseline/learned-crop
+cache accelerates Enhancement changes. Premultiplied resampling determines
+color/alpha, and the learned matted-Y residual modifies straight RGB. Native
+`ZoomModel::Espcn3xCropV1` pins this limited contract. Full enlargement still
+requires evaluated output geometry plus corresponding paint/selection/mask
+maps; the crop implementation is not a substitute for that architecture.
+[Independent references and limits](docs/SUPER_ZOOM_VALIDATION.md).

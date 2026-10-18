@@ -312,6 +312,22 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if d.operation.kind() == Kind::SuperZoom {
+                    ui.set_max_width(420.);
+                    ui.label("Local learned magnification · cropped output");
+                    ui.label("Keeps canvas dimensions; this does not enlarge the document");
+                    ui.label("Origin selects the source point placed at the canvas center");
+                    ui.label("Enhancement adjusts learned luminance; color and alpha are resampled");
+                    ui.small("Fixed 3× network; 1–3× magnification. Larger-document output, face-specific restoration and denoising controls remain unavailable.");
+                    ui.small(palette_core::processing::ZOOM_ID);
+                    ui.collapsing("Model license and attribution", |ui| {
+                        egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
+                            ui.add(egui::Label::new(palette_core::processing::ZOOM_NOTICE).wrap());
+                            ui.add(egui::Label::new(palette_core::processing::SKIN_LICENSE).wrap());
+                            ui.add(egui::Label::new(palette_core::processing::MOSAIC_LICENSE).wrap());
+                        });
+                    });
+                }
                 if d.operation.kind() == Kind::SkinSmoothing {
                     ui.set_max_width(420.);
                     ui.label("Face-guided Skin Smoothing · runs locally");
@@ -406,7 +422,16 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
     }
     d.parameter = d.parameter.min(parameters.len() - 1);
     let selector = egui::ComboBox::from_id_salt("processing-parameter")
-        .selected_text(parameters[d.parameter].label)
+        .selected_text(
+            if compact
+                && d.operation.kind() == Kind::SuperZoom
+                && parameters[d.parameter].key == "model"
+            {
+                "Model"
+            } else {
+                parameters[d.parameter].label
+            },
+        )
         .width(if compact { 102. } else { 124. })
         .show_ui(ui, |ui| {
             for (index, p) in parameters.iter().enumerate() {
@@ -487,7 +512,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::SkinSmoothing
+                        Kind::SuperZoom
+                            | Kind::SkinSmoothing
                             | Kind::Colorize
                             | Kind::JpegArtifactsRemoval
                             | Kind::StyleTransfer
@@ -605,6 +631,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         .max_decimals(decimals);
                     if percent {
                         slider = slider.suffix("%");
+                    } else if d.operation.kind() == Kind::SuperZoom && p.key == "zoom" {
+                        slider = slider.suffix("×");
                     }
                     let response = ui.add(slider).on_hover_text(p.label);
                     let mut accepted = false;
@@ -638,7 +666,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     egui::ComboBox::from_id_salt("processing-choice")
                         .width(88.)
                         .truncate()
-                        .selected_text(if compact && p.key == "to_polar" {
+                        .selected_text(if compact && d.operation.kind() == Kind::SuperZoom {
+                            "ESPCN 3×"
+                        } else if compact && p.key == "to_polar" {
                             if selected == 0 {
                                 "To Polar"
                             } else {

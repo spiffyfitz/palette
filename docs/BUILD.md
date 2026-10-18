@@ -36,7 +36,7 @@ Debug capture scenes select actual interface states for repeatable visual review
 .\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
 ```
 
-Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 183 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 184 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 If Windows reports that `palette.exe` is locked by a running session, leave that session open and build/test separately with `--target-dir target/transform-milestone`. This milestone used that fallback initially; the ordinary target build also succeeded after the lock cleared.
 
@@ -154,3 +154,19 @@ Windows commit/page-file limit during this milestone; the log reported LLVM
 out-of-memory and metadata mapping errors. Serial compilation avoids that
 concurrent linker/compiler peak without changing the application or system
 page-file settings. RustRover can pass `-j 1` in its Cargo run configuration.
+
+Cropped Super Zoom embeds the 240 KB ESPCN graph in the existing Rust inference
+runtime; it adds no native library or installation/download step. Debug scene
+`processing-super-zoom` shows the real cropped-output toolbar and credited NASA
+fixture. `tools/zoom-reference.py` is a local development-only ONNX Runtime /
+PyTorch / NumPy reference generator. Run
+`cargo run -p palette-core --example zoom_benchmark -j 1 --locked --offline`
+for representative cropped-filter CPU diagnostics. This does not benchmark
+larger-document output, which is unimplemented. [Exact scope](SUPER_ZOOM_VALIDATION.md).
+
+The local Super Zoom workspace validation used
+`cargo test --workspace -j 1 --locked --offline -- --test-threads=2`.
+The app has one bounded inference worker; limiting test concurrency keeps many
+independent UI fixtures from competing for it and exceeding the existing preview
+deadline. This setting changes the test harness, not production scheduling or
+timeout behavior. Native screenshot tests still run with `--test-threads=1`.

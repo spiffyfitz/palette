@@ -141,6 +141,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::SuperZoom { .. } => true,
                 Filter::SkinSmoothing { strength, .. }
                 | Filter::Colorize { strength, .. }
                 | Filter::StyleTransfer { strength, .. }
@@ -288,6 +289,14 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::SuperZoom {
+                model,
+                zoom,
+                enhancement,
+                center,
+            } => {
+                pixels = super::zoom::evaluate(&pixels, model, zoom, enhancement, center, cancel)?;
+            }
             Filter::SkinSmoothing {
                 model,
                 strength,

@@ -197,6 +197,7 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-jpeg-artifacts",
         "processing-colorize",
         "processing-skin-smoothing",
+        "processing-super-zoom",
         "neural-menu",
         "processing-shear-curve",
     ] {

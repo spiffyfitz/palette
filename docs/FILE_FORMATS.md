@@ -236,3 +236,11 @@ and filter order remain separate assets/metadata. Old variants and container
 framing are unchanged; older applications reject this new enum variant rather
 than silently losing it. Paint and flat-image exports bake supported appearance
 using the existing native-backup policy. [Exact scope](SKIN_SMOOTHING_VALIDATION.md).
+
+Native v6 also permits `SuperZoom { model: "Espcn3xCropV1", zoom: 1..3,
+enhancement: 0..1, center: [0..1, 0..1] }`, with finite numeric values. It is an
+explicit source-sized crop; canvas/source dimensions and filter-mask coordinates
+remain unchanged. Model weights are bundled in Palette; parameters are unchanged
+in reduced previews. No framing/asset migration occurs, and older builds reject
+the new enum variant. Sources remain lossless and the existing flat/Paint
+compatibility policy applies. [Exact contract](SUPER_ZOOM_VALIDATION.md).

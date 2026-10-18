@@ -33,12 +33,14 @@ mod skin;
 mod studio;
 mod stylize;
 mod video;
+mod zoom;
 use crate::document::{
     ApertureShape, BlurPin, ChannelSpace, ColorizeModel, DaubStyle, DepthSource, DiffuseMode,
     Effect, ExtrudeShape, FieldInterpolation, Filter, FilterEdges, FlareStyle, FrameStyle,
     GlassSurface, GrainStyle, HalftoneStyle, JpegModel, LightKind, MapFit, MezzotintStyle,
     NeuralStyle, NoiseDistribution, ShearInterpolation, SkinModel, SmartBlurMode, StrokeDirection,
     StrokePosition, SurfaceTexture, TileFill, TreeForm, VideoField, WindMethod, ZigZagStyle,
+    ZoomModel,
 };
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
@@ -46,13 +48,15 @@ pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_ca
 pub use neighborhood::{box_blur_cancel, median_cancel};
 pub use palette_neural::face::{ID as SKIN_ID, LICENSE as SKIN_LICENSE, NOTICE as SKIN_NOTICE};
 pub use palette_neural::{
-    COLORIZE_ID, COLORIZE_LICENSE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID, MOSAIC_LICENSE,
+    COLORIZE_ID, COLORIZE_LICENSE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID, MOSAIC_LICENSE, ZOOM_ID,
+    ZOOM_NOTICE,
 };
 pub(crate) use point::point_filter;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    SuperZoom,
     SkinSmoothing,
     Colorize,
     JpegArtifactsRemoval,
@@ -2329,6 +2333,22 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
+    Descriptor {
+        kind: Kind::SuperZoom,
+        label: "Super Zoom",
+        category: "Neural Filters",
+        parameters: &[
+            number("zoom", "Zoom (crop)", 1., 3., 0.01),
+            number("enhancement", "Enhancement", 0., 1., 0.01),
+            number("center_x", "Source center X", 0., 1., 0.001),
+            number("center_y", "Source center Y", 0., 1., 0.001),
+            Parameter {
+                key: "model",
+                label: "Bundled model",
+                kind: ParameterType::Choice(&["ESPCN 3x (local crop)"]),
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2341,6 +2361,12 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::SuperZoom => Operation::Filter(Filter::SuperZoom {
+                model: ZoomModel::Espcn3xCropV1,
+                zoom: 3.,
+                enhancement: 1.,
+                center: [0.5; 2],
+            }),
             Self::SkinSmoothing => Operation::Filter(Filter::SkinSmoothing {
                 model: SkinModel::FaceMeshV1,
                 strength: 0.7,
@@ -3122,6 +3148,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::SuperZoom { .. }) => Kind::SuperZoom,
             Self::Filter(Filter::SkinSmoothing { .. }) => Kind::SkinSmoothing,
             Self::Filter(Filter::Colorize { .. }) => Kind::Colorize,
             Self::Filter(Filter::JpegArtifactsRemoval { .. }) => Kind::JpegArtifactsRemoval,
@@ -3293,6 +3320,13 @@ impl Operation {
             return Some(v);
         }
         match (self, key) {
+            (Self::Filter(Filter::SuperZoom { model, .. }), "model") => Some(Value::Choice(
+                ZoomModel::ALL.iter().position(|v| v == model).unwrap(),
+            )),
+            (Self::Filter(Filter::SuperZoom { zoom, .. }), "zoom") => Some(Value::Number(*zoom)),
+            (Self::Filter(Filter::SuperZoom { enhancement, .. }), "enhancement") => {
+                Some(Value::Number(*enhancement))
+            }
             (Self::Filter(Filter::SkinSmoothing { strength, .. }), "strength") => {
                 Some(Value::Number(*strength))
             }
@@ -4603,6 +4637,15 @@ impl Operation {
             return Ok(());
         }
         match (self, key, value) {
+            (Self::Filter(Filter::SuperZoom { model, .. }), "model", Value::Choice(n)) => {
+                *model = ZoomModel::ALL[n]
+            }
+            (Self::Filter(Filter::SuperZoom { zoom, .. }), "zoom", Value::Number(n)) => *zoom = n,
+            (
+                Self::Filter(Filter::SuperZoom { enhancement, .. }),
+                "enhancement",
+                Value::Number(n),
+            ) => *enhancement = n,
             (
                 Self::Filter(Filter::SkinSmoothing { strength, .. }),
                 "strength",

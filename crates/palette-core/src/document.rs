@@ -379,9 +379,26 @@ impl SkinModel {
     pub const ALL: [Self; 1] = [Self::FaceMeshV1];
 }
 
+/// Immutable local super-resolution graph and cropped-output pixel contract.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ZoomModel {
+    Espcn3xCropV1,
+}
+impl ZoomModel {
+    /// Stable profile selector order; new output contracts need a new variant.
+    pub const ALL: [Self; 1] = [Self::Espcn3xCropV1];
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Learned magnification clipped to source dimensions, not viewport zoom.
+    SuperZoom {
+        model: ZoomModel,
+        zoom: f32,
+        enhancement: f32,
+        center: [f32; 2],
+    },
     /// Learned facial geometry guides conventional smoothing; source is intact.
     SkinSmoothing {
         model: SkinModel,
@@ -1252,7 +1269,8 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get(*pin as usize).map(|p| p.center),
             Self::PathBlur { path, point, .. } => path.get(*point as usize).copied(),
-            Self::IrisBlur { center, .. }
+            Self::SuperZoom { center, .. }
+            | Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }
             | Self::Flame { center, .. }
@@ -1280,7 +1298,8 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get_mut(*pin as usize).map(|p| &mut p.center),
             Self::PathBlur { path, point, .. } => path.get_mut(*point as usize),
-            Self::IrisBlur { center, .. }
+            Self::SuperZoom { center, .. }
+            | Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }
             | Self::Flame { center, .. }

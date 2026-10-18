@@ -148,6 +148,7 @@ impl PaletteApp {
                 | "processing-jpeg-artifacts"
                 | "processing-colorize"
                 | "processing-skin-smoothing"
+                | "processing-super-zoom"
                 | "processing-shear-curve",
             ) => {
                 use palette_core::processing::{Kind, Operation};
@@ -284,6 +285,7 @@ impl PaletteApp {
                             | "processing-jpeg-artifacts"
                             | "processing-colorize"
                             | "processing-skin-smoothing"
+                            | "processing-super-zoom"
                             | "processing-shear-curve"
                     )
                 );
@@ -488,6 +490,7 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
+                        Some("processing-super-zoom") => Kind::SuperZoom,
 
                         _ => Kind::GaussianBlur,
                     };
@@ -499,7 +502,7 @@ impl PaletteApp {
                                 .expect("colorize raster");
                         layer.offset = [280, 169];
                     }
-                    if kind == Kind::SkinSmoothing {
+                    if matches!(kind, Kind::SkinSmoothing | Kind::SuperZoom) {
                         let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).expect("public-domain portrait fixture").to_rgba8();
                         let layer = self.current_mut().document.active_mut();
                         layer.source =
@@ -509,6 +512,14 @@ impl PaletteApp {
                     }
                     self.open_processing(kind, None);
                     if let Some(d) = &mut self.processing_dialog {
+                        if kind == Kind::SuperZoom {
+                            d.operation
+                                .set_value(
+                                    "center_y",
+                                    palette_core::processing::Value::Number(0.25),
+                                )
+                                .expect("capture zoom center");
+                        }
                         let edit = match kind {
                             Kind::ColorBalance => Some(("midtone_red", 0.6)),
                             Kind::ChannelMixer => Some(("red_green", 0.6)),

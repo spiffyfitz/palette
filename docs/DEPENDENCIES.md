@@ -64,3 +64,10 @@ Google/port attribution, source revision, release URLs and exact hashes;
 the application's information popup. No runtime dependency or native-library
 requirement was added. The inference crate's SPDX expression includes Apache-2.0
 for these assets. [Model distribution and independent evidence](SKIN_SMOOTHING_VALIDATION.md).
+
+Cropped Super Zoom reuses Tract with a 240,078-byte unmodified ONNX Model Zoo
+ESPCN graph. `NOTICE-SuperZoom.txt` records exact pinned provenance, SHA-256,
+Apache-2.0 model-distribution terms and PyTorch BSD-3-Clause attribution. Full
+Apache/BSD notices are already retained with the assets and shown in the app.
+No Cargo dependency or system library was added. The existing inference-crate
+SPDX expression covers these assets. [Contract and references](SUPER_ZOOM_VALIDATION.md).
