@@ -136,6 +136,56 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::ColoredPencil { .. }
+                | Filter::DryBrush { .. }
+                | Filter::PaintDaubs { .. }
+                | Filter::SmudgeStick { .. }
+                | Filter::AngledStrokes { .. }
+                | Filter::Crosshatch { .. }
+                | Filter::DarkStrokes { .. }
+                | Filter::Spatter { .. } => true,
+                Filter::ShadowsHighlights {
+                    shadows,
+                    highlights,
+                    ..
+                } => shadows > 0. || highlights > 0.,
+                Filter::Blur | Filter::BlurMore => true,
+                Filter::ColorHalftone { .. }
+                | Filter::Crystallize { .. }
+                | Filter::Facet
+                | Filter::Pointillize { .. }
+                | Filter::StainedGlass { .. }
+                | Filter::MosaicTiles { .. }
+                | Filter::Diffuse { .. } => true,
+                Filter::Cutout { .. }
+                | Filter::AccentedEdges { .. }
+                | Filter::InkOutlines { .. }
+                | Filter::Photocopy { .. }
+                | Filter::HalftonePattern { .. }
+                | Filter::Patchwork { .. } => true,
+                Filter::PolarCoordinates { .. }
+                | Filter::ZigZag { .. }
+                | Filter::Fibers { .. }
+                | Filter::GlowingEdges { .. } => true,
+                Filter::Despeckle | Filter::Sharpen | Filter::SharpenMore => true,
+                Filter::DustScratches { radius, threshold } => radius > 0 && threshold < 255,
+                Filter::ReduceNoise {
+                    radius,
+                    strength,
+                    color_noise,
+                    sharpen,
+                    ..
+                } => radius > 0 && (strength > 0. || color_noise > 0. || sharpen > 0.),
+                Filter::Pinch { amount, radius, .. } | Filter::Spherize { amount, radius, .. } => {
+                    amount != 0. && radius > 0.
+                }
+                Filter::Ripple { amplitude, .. } => amplitude != 0.,
+                Filter::Clouds { .. }
+                | Filter::DifferenceClouds { .. }
+                | Filter::PosterEdges { .. } => true,
+                Filter::Fragment { distance } => distance > 0.,
+                Filter::SurfaceBlur { radius, threshold } => radius > 0 && threshold > 0,
+                Filter::RadialBlur { amount, .. } => amount > 0.,
                 Filter::GaussianBlur { radius } => radius > 0.,
                 Filter::BoxBlur { radius } | Filter::Median { radius } => radius > 0,
                 Filter::MotionBlur { distance, .. } => distance > 0.,
@@ -146,7 +196,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
                 Filter::Minimum { radius } | Filter::Maximum { radius } => radius > 0,
                 Filter::UnsharpMask { radius, amount, .. } => radius > 0. && amount > 0.,
                 Filter::Offset { x, y, .. } => x != 0 || y != 0,
-                Filter::Twirl { radius, angle } => radius > 0. && angle != 0.,
+                Filter::Twirl { radius, angle, .. } => radius > 0. && angle != 0.,
                 Filter::Wave { amplitude, .. } => amplitude != 0.,
                 Filter::Mosaic { block_size } => block_size > 1,
                 _ => false,
@@ -179,6 +229,67 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::ColoredPencil { .. }
+            | Filter::DryBrush { .. }
+            | Filter::PaintDaubs { .. }
+            | Filter::SmudgeStick { .. }
+            | Filter::AngledStrokes { .. }
+            | Filter::Crosshatch { .. }
+            | Filter::DarkStrokes { .. }
+            | Filter::Spatter { .. } => {
+                pixels = super::painting::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::ShadowsHighlights { .. } => {
+                pixels = super::adjustments::shadows_highlights(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Blur => pixels = box_blur_cancel(&pixels, 1, cancel)?,
+            Filter::BlurMore => pixels = box_blur_cancel(&pixels, 2, cancel)?,
+
+            Filter::Crystallize { .. }
+            | Filter::Pointillize { .. }
+            | Filter::StainedGlass { .. } => {
+                pixels = super::cellular::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::ColorHalftone { .. }
+            | Filter::Facet
+            | Filter::MosaicTiles { .. }
+            | Filter::Diffuse { .. } => {
+                pixels = super::pixelate::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Cutout { .. } => {
+                pixels = super::cutout::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::AccentedEdges { .. }
+            | Filter::InkOutlines { .. }
+            | Filter::Photocopy { .. }
+            | Filter::HalftonePattern { .. }
+            | Filter::Patchwork { .. } => {
+                pixels = super::artistic::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::PolarCoordinates { .. }
+            | Filter::ZigZag { .. }
+            | Filter::Fibers { .. }
+            | Filter::GlowingEdges { .. } => {
+                pixels = super::studio::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Despeckle
+            | Filter::DustScratches { .. }
+            | Filter::ReduceNoise { .. }
+            | Filter::Sharpen
+            | Filter::SharpenMore => {
+                pixels = super::retouch::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Pinch { .. } | Filter::Spherize { .. } | Filter::Ripple { .. } => {
+                pixels = super::distort::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Clouds { .. }
+            | Filter::DifferenceClouds { .. }
+            | Filter::SurfaceBlur { .. }
+            | Filter::RadialBlur { .. }
+            | Filter::PosterEdges { .. }
+            | Filter::Fragment { .. } => {
+                pixels = super::creative::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::Average
             | Filter::FindEdges
             | Filter::Emboss { .. }

@@ -78,9 +78,105 @@ impl BlendMode {
     }
 }
 
+/// Independent Paint Daubs kernel geometries; stable stored names.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DaubStyle {
+    Round,
+    Square,
+    Diagonal,
+}
+impl DaubStyle {
+    /// Presentation order used by the common parameter editor.
+    pub const ALL: [Self; 3] = [Self::Round, Self::Square, Self::Diagonal];
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    ColoredPencil {
+        width: f32,
+        pressure: f32,
+        brightness: f32,
+        paper: [u8; 3],
+        seed: u16,
+    },
+    DryBrush {
+        radius: f32,
+        detail: f32,
+        texture: f32,
+        seed: u16,
+    },
+    PaintDaubs {
+        radius: f32,
+        sharpness: f32,
+        style: DaubStyle,
+    },
+    SmudgeStick {
+        length: f32,
+        highlight: f32,
+        intensity: f32,
+    },
+    AngledStrokes {
+        balance: f32,
+        length: f32,
+        sharpness: f32,
+    },
+    Crosshatch {
+        length: f32,
+        sharpness: f32,
+        strength: f32,
+    },
+    DarkStrokes {
+        balance: f32,
+        black: f32,
+        white: f32,
+    },
+    Spatter {
+        radius: f32,
+        smoothness: f32,
+        seed: u16,
+    },
+
+    /// Tonal ranges (shadows/midtones/highlights), each with signed RGB balance.
+    ColorBalance {
+        balance: [[f32; 3]; 3],
+        preserve_luminosity: bool,
+    },
+    PhotoFilter {
+        color: [u8; 3],
+        density: f32,
+        preserve_luminosity: bool,
+    },
+    /// Rows are output RGB; columns are input RGB plus an additive constant.
+    /// Monochrome uses the first row, retaining the other rows for later editing.
+    ChannelMixer {
+        matrix: [[f32; 4]; 3],
+        monochrome: bool,
+    },
+    /// Two-stop encoded-sRGB gradient, with an editable 50% transition location.
+    GradientMap {
+        low: [u8; 3],
+        high: [u8; 3],
+        midpoint: f32,
+        reverse: bool,
+    },
+    /// Rows: reds/yellows/greens/cyans/blues/magentas/whites/neutrals/blacks.
+    /// Columns: cyan/magenta/yellow/black. All range edits coexist in one instance.
+    SelectiveColor {
+        adjustments: [[f32; 4]; 9],
+        relative: bool,
+    },
+    /// Separate alpha-weighted local guides for the two tonal corrections.
+    ShadowsHighlights {
+        shadows: f32,
+        shadow_width: f32,
+        shadow_radius: f32,
+        highlights: f32,
+        highlight_width: f32,
+        highlight_radius: f32,
+    },
+    Blur,
+    BlurMore,
     Invert,
     Brightness {
         amount: f32,
@@ -172,15 +268,338 @@ pub enum Filter {
         edges: FilterEdges,
     },
     Twirl {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default = "default_filter_center")]
+        center: [f32; 2],
         radius: f32,
         angle: f32,
     },
     Wave {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default)]
+        center: [f32; 2],
         amplitude: f32,
         wavelength: f32,
         vertical: bool,
         edges: FilterEdges,
     },
+    SurfaceBlur {
+        radius: u8,
+        threshold: u8,
+    },
+    RadialBlur {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default = "default_filter_center")]
+        center: [f32; 2],
+        amount: f32,
+        samples: u8,
+        zoom: bool,
+    },
+    Clouds {
+        seed: u16,
+        scale: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    DifferenceClouds {
+        seed: u16,
+        scale: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    PosterEdges {
+        thickness: u8,
+        intensity: f32,
+        levels: u8,
+    },
+    Grain {
+        amount: f32,
+        contrast: f32,
+        size: f32,
+        seed: u16,
+        monochrome: bool,
+        style: GrainStyle,
+    },
+    Fragment {
+        distance: f32,
+    },
+    Despeckle,
+    DustScratches {
+        radius: u8,
+        threshold: u8,
+    },
+    ReduceNoise {
+        radius: u8,
+        strength: f32,
+        preserve_details: f32,
+        color_noise: f32,
+        sharpen: f32,
+    },
+    Pinch {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default = "default_filter_center")]
+        center: [f32; 2],
+        amount: f32,
+        radius: f32,
+    },
+    Spherize {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default = "default_filter_center")]
+        center: [f32; 2],
+        amount: f32,
+        radius: f32,
+    },
+    Ripple {
+        /// Normalized source pixel-center coordinates, independent of preview size.
+        #[serde(default = "default_filter_center")]
+        center: [f32; 2],
+        amplitude: f32,
+        wavelength: f32,
+    },
+    Sharpen,
+    SharpenMore,
+    PolarCoordinates {
+        center: [f32; 2],
+        to_polar: bool,
+    },
+    ZigZag {
+        center: [f32; 2],
+        amount: f32,
+        radius: f32,
+        ridges: u8,
+        style: ZigZagStyle,
+    },
+    Fibers {
+        seed: u16,
+        variance: f32,
+        strength: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    GlowingEdges {
+        width: f32,
+        brightness: f32,
+        smoothness: f32,
+    },
+    Cutout {
+        levels: u8,
+        simplicity: f32,
+        fidelity: f32,
+    },
+    FilmGrain {
+        grain: f32,
+        highlight: f32,
+        intensity: f32,
+        seed: u16,
+    },
+    AccentedEdges {
+        width: f32,
+        brightness: f32,
+        smoothness: f32,
+    },
+    InkOutlines {
+        length: f32,
+        dark: f32,
+        light: f32,
+    },
+    Photocopy {
+        detail: f32,
+        darkness: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    HalftonePattern {
+        size: f32,
+        contrast: f32,
+        pattern: HalftoneStyle,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    Patchwork {
+        square: u8,
+        relief: f32,
+    },
+    Craquelure {
+        spacing: f32,
+        depth: f32,
+        brightness: f32,
+        seed: u16,
+    },
+    ColorHalftone {
+        radius: f32,
+        cyan: f32,
+        magenta: f32,
+        yellow: f32,
+        black: f32,
+    },
+    Crystallize {
+        size: u8,
+        seed: u16,
+    },
+    Facet,
+    Mezzotint {
+        pattern: MezzotintStyle,
+        scale: f32,
+        seed: u16,
+        monochrome: bool,
+    },
+    Pointillize {
+        size: u8,
+        dot: f32,
+        color: [u8; 3],
+        seed: u16,
+    },
+    StainedGlass {
+        size: u8,
+        width: f32,
+        light: f32,
+        color: [u8; 3],
+        seed: u16,
+    },
+    MosaicTiles {
+        size: u8,
+        grout: f32,
+        lighten: bool,
+    },
+    Diffuse {
+        radius: u8,
+        mode: DiffuseMode,
+        seed: u16,
+    },
+}
+
+/// Conventional monochrome screen patterns; names are stable project values.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum HalftoneStyle {
+    Dot,
+    Line,
+    Circle,
+}
+impl HalftoneStyle {
+    /// Stable UI choice order.
+    pub const ALL: [Self; 3] = [Self::Dot, Self::Line, Self::Circle];
+}
+
+/// Stable conventional mezzotint marks; dimensions are defined by the evaluator.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MezzotintStyle {
+    FineDots,
+    MediumDots,
+    GrainyDots,
+    CoarseDots,
+    ShortLines,
+    MediumLines,
+    LongLines,
+    ShortStrokes,
+    MediumStrokes,
+    LongStrokes,
+}
+impl MezzotintStyle {
+    /// Stable UI choice order.
+    pub const ALL: [Self; 10] = [
+        Self::FineDots,
+        Self::MediumDots,
+        Self::GrainyDots,
+        Self::CoarseDots,
+        Self::ShortLines,
+        Self::MediumLines,
+        Self::LongLines,
+        Self::ShortStrokes,
+        Self::MediumStrokes,
+        Self::LongStrokes,
+    ];
+}
+/// Stochastic displacement or one edge-preserving diffusion step.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DiffuseMode {
+    Normal,
+    DarkenOnly,
+    LightenOnly,
+    Anisotropic,
+}
+impl DiffuseMode {
+    /// Stable UI choice order.
+    pub const ALL: [Self; 4] = [
+        Self::Normal,
+        Self::DarkenOnly,
+        Self::LightenOnly,
+        Self::Anisotropic,
+    ];
+}
+
+/// Historical source center for projects saved before movable origins.
+fn default_filter_center() -> [f32; 2] {
+    [0.5; 2]
+}
+
+/// Independent radial wave directions, persisted by stable names.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ZigZagStyle {
+    AroundCenter,
+    OutFromCenter,
+    PondRipples,
+}
+impl ZigZagStyle {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 3] = [Self::AroundCenter, Self::OutFromCenter, Self::PondRipples];
+}
+impl Filter {
+    /// Optional normalized source-local origin. Pixel-center zero is the first
+    /// pixel; one is the last, including one-pixel axes (which map to zero).
+    pub fn center(&self) -> Option<[f32; 2]> {
+        match self {
+            Self::Twirl { center, .. }
+            | Self::Wave { center, .. }
+            | Self::RadialBlur { center, .. }
+            | Self::Pinch { center, .. }
+            | Self::Spherize { center, .. }
+            | Self::Ripple { center, .. }
+            | Self::PolarCoordinates { center, .. }
+            | Self::ZigZag { center, .. } => Some(*center),
+            _ => None,
+        }
+    }
+    pub(crate) fn center_mut(&mut self) -> Option<&mut [f32; 2]> {
+        match self {
+            Self::Twirl { center, .. }
+            | Self::Wave { center, .. }
+            | Self::RadialBlur { center, .. }
+            | Self::Pinch { center, .. }
+            | Self::Spherize { center, .. }
+            | Self::Ripple { center, .. }
+            | Self::PolarCoordinates { center, .. }
+            | Self::ZigZag { center, .. } => Some(center),
+            _ => None,
+        }
+    }
+    /// Resolve an origin to the sampling grid without depending on a UI.
+    pub fn source_center(&self, width: u32, height: u32) -> [f64; 2] {
+        let c = self.center().unwrap_or([0.5; 2]);
+        [
+            f64::from(c[0]) * f64::from(width.saturating_sub(1)),
+            f64::from(c[1]) * f64::from(height.saturating_sub(1)),
+        ]
+    }
+}
+
+/// Independently implemented grain patterns, serialized with stable names.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GrainStyle {
+    Regular,
+    Soft,
+    Speckle,
+    Horizontal,
+    Vertical,
+}
+impl GrainStyle {
+    /// Stable order for the implemented pattern selector.
+    pub const ALL: [Self; 5] = [
+        Self::Regular,
+        Self::Soft,
+        Self::Speckle,
+        Self::Horizontal,
+        Self::Vertical,
+    ];
 }
 
 /// Sampling outside source bounds; stable named values in native projects.

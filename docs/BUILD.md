@@ -36,7 +36,7 @@ Debug capture scenes select actual interface states for repeatable visual review
 .\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
 ```
 
-Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite covers the default window plus twenty-four scenes against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 121 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 If Windows reports that `palette.exe` is locked by a running session, leave that session open and build/test separately with `--target-dir target/transform-milestone`. This milestone used that fallback initially; the ordinary target build also succeeded after the lock cleared.
 
@@ -69,3 +69,17 @@ The CI matrix installs NASM and executes the same AVIF/native/recovery tests on 
 Current Phase 5 desktop suite covers 56 states, including the six additional processing editors and Pixelate/Other menus; see [style/filter validation](STYLE_FILTER_CONTROLS_VALIDATION.md). Cold CPU diagnostics for this batch: `cargo run -p palette-core --example processing_extended_benchmark --locked`.
 
 The conventional-menu follow-up expands Windows desktop regression to 66 states. See [menu/filter validation](FILTER_MENU_VALIDATION.md); the extended CPU benchmark also includes the ten new operations.
+
+The creative-filter batch expands desktop regression to 75 states. `processing_extended_benchmark` includes the new filters; expensive Radial Blur is measured at 1280 × 720 only. Exact scope is in [creative filter validation](CREATIVE_FILTERS_VALIDATION.md).
+
+Noise/distortion follow-up: Windows desktop regression covers 83 states. The extended processing benchmark includes the new operations at 1280 × 720 and 4K; see [retouch/distortion validation](RETOUCH_DISTORT_VALIDATION.md).
+
+Movable-origin follow-up: native Windows regression includes 88 states, plus compact-window visual review. The benchmark includes Polar Coordinates, ZigZag, Fibers and Glowing Edges. [Validation](ORIGIN_FILTERS_VALIDATION.md).
+
+Artistic/print/texture follow-up: Windows native regression covers 98 states, including the first Brush Strokes/Sketch menus, plus compact editor review. The extended benchmark measures the eight new filters at 1280×720 and 4K. [Evidence and algorithm limits](ARTISTIC_FILTERS_VALIDATION.md).
+
+Pixelate/cell follow-up: Windows native regression covers 106 states; eight new previews and three changed menus were reviewed, plus compact Color Halftone/Mezzotint. Benchmark and scope: [validation](PIXELATE_FILTERS_VALIDATION.md). Recount the catalog with `cargo run -p palette-core --example filter_inventory --locked`; its stdout generates [FILTER_INVENTORY.md](FILTER_INVENTORY.md).
+
+Adjustment follow-up: 114 native Windows states include eight new previews and updated Adjustments/Blur menus. Compact Channel Mixer/Selective Color controls were also reviewed. Run `cargo run -p palette-core --example processing_extended_benchmark --locked -- --adjustments` for this batch's cold CPU composites. See [validation](ADJUSTMENT_FILTERS_VALIDATION.md). Formatting, strict all-target Clippy, ordinary tests, executable build and native screenshot regression are checked on Windows; other platforms remain external gates.
+
+Traditional-media follow-up: native Windows regression covers 122 states, including eight new filter previews and changed Artistic/Brush Strokes menus. Colored Pencil/Angled Strokes were also reviewed at 780×520. Measure this batch with `cargo run -p palette-core --example processing_extended_benchmark --locked -- --painting`. [Validation](PAINTING_FILTERS_VALIDATION.md) records 259 ordinary tests and the current CPU/preview limits. No additional native dependencies were introduced.

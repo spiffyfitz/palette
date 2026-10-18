@@ -37,7 +37,59 @@ impl PaletteApp {
                 | "processing-unsharp"
                 | "processing-offset"
                 | "processing-twirl"
-                | "processing-wave",
+                | "processing-wave"
+                | "processing-surface"
+                | "processing-radial"
+                | "processing-clouds"
+                | "processing-difference-clouds"
+                | "processing-poster-edges"
+                | "processing-grain"
+                | "processing-fragment"
+                | "processing-despeckle"
+                | "processing-dust"
+                | "processing-reduce-noise"
+                | "processing-pinch"
+                | "processing-spherize"
+                | "processing-ripple"
+                | "processing-sharpen"
+                | "processing-sharpen-more"
+                | "processing-polar"
+                | "processing-zigzag"
+                | "processing-fibers"
+                | "processing-glowing-edges"
+                | "processing-origin"
+                | "processing-cutout"
+                | "processing-film-grain"
+                | "processing-accented-edges"
+                | "processing-ink-outlines"
+                | "processing-photocopy"
+                | "processing-halftone"
+                | "processing-patchwork"
+                | "processing-craquelure"
+                | "processing-color-halftone"
+                | "processing-crystallize"
+                | "processing-facet"
+                | "processing-mezzotint"
+                | "processing-pointillize"
+                | "processing-stained-glass"
+                | "processing-mosaic-tiles"
+                | "processing-diffuse"
+                | "processing-color-balance"
+                | "processing-photo-filter"
+                | "processing-channel-mixer"
+                | "processing-gradient-map"
+                | "processing-selective-color"
+                | "processing-shadows-highlights"
+                | "processing-fixed-blur"
+                | "processing-blur-more"
+                | "processing-colored-pencil"
+                | "processing-dry-brush"
+                | "processing-paint-daubs"
+                | "processing-smudge-stick"
+                | "processing-angled-strokes"
+                | "processing-crosshatch"
+                | "processing-dark-strokes"
+                | "processing-spatter",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -57,19 +109,101 @@ impl PaletteApp {
                             | "processing-offset"
                             | "processing-twirl"
                             | "processing-wave"
+                            | "processing-surface"
+                            | "processing-radial"
+                            | "processing-poster-edges"
+                            | "processing-grain"
+                            | "processing-fragment"
+                            | "processing-despeckle"
+                            | "processing-dust"
+                            | "processing-reduce-noise"
+                            | "processing-pinch"
+                            | "processing-spherize"
+                            | "processing-ripple"
+                            | "processing-sharpen"
+                            | "processing-sharpen-more"
+                            | "processing-polar"
+                            | "processing-zigzag"
+                            | "processing-glowing-edges"
+                            | "processing-origin"
+                    )
+                );
+                let cleanup_pattern = matches!(
+                    self.capture.scene.as_deref(),
+                    Some("processing-despeckle" | "processing-dust" | "processing-reduce-noise")
+                );
+                let artistic_pattern = matches!(
+                    self.capture.scene.as_deref(),
+                    Some(
+                        "processing-cutout"
+                            | "processing-film-grain"
+                            | "processing-accented-edges"
+                            | "processing-ink-outlines"
+                            | "processing-photocopy"
+                            | "processing-halftone"
+                            | "processing-patchwork"
+                            | "processing-craquelure"
+                            | "processing-color-halftone"
+                            | "processing-crystallize"
+                            | "processing-facet"
+                            | "processing-mezzotint"
+                            | "processing-pointillize"
+                            | "processing-stained-glass"
+                            | "processing-mosaic-tiles"
+                            | "processing-diffuse"
+                            | "processing-color-balance"
+                            | "processing-photo-filter"
+                            | "processing-channel-mixer"
+                            | "processing-gradient-map"
+                            | "processing-selective-color"
+                            | "processing-shadows-highlights"
+                            | "processing-fixed-blur"
+                            | "processing-blur-more"
+                            | "processing-colored-pencil"
+                            | "processing-dry-brush"
+                            | "processing-paint-daubs"
+                            | "processing-smudge-stick"
+                            | "processing-angled-strokes"
+                            | "processing-crosshatch"
+                            | "processing-dark-strokes"
+                            | "processing-spatter"
                     )
                 );
                 for y in 200..390 {
                     for x in 280..540 {
-                        self.current_mut().document.active_mut().source.set(
-                            x,
-                            y,
-                            if contrast_pattern && x > 400 && y > 240 && y < 350 {
-                                [35, 140, 210, 255]
-                            } else {
-                                [225, 70, 55, 255]
-                            },
-                        );
+                        let mut color = if contrast_pattern && x > 400 && y > 240 && y < 350 {
+                            [35u8, 140, 210, 255]
+                        } else {
+                            [225u8, 70, 55, 255]
+                        };
+                        if artistic_pattern {
+                            color = [
+                                (80 + (x - 280) * 145 / 260) as u8,
+                                (40 + (y - 200) * 150 / 190) as u8,
+                                55,
+                                255,
+                            ];
+                            if x > 400 && y > 240 && y < 350 {
+                                color = [35, 140, (80 + (y - 240) * 130 / 110) as u8, 255];
+                            }
+                            if x > 320 && x < 380 && y > 255 && y < 335 {
+                                color = [225, 185, 55, 255];
+                            }
+                        }
+                        if cleanup_pattern {
+                            let delta = ((x * 17 + y * 31) % 25) as i16 - 12;
+                            for c in &mut color[..3] {
+                                *c = (i16::from(*c) + delta).clamp(0, 255) as u8;
+                            }
+                            if x % 31 == 0 && y % 29 == 0 {
+                                color = [255; 4];
+                            }
+                        }
+                        self.current_mut()
+                            .document
+                            .active_mut()
+                            .source
+                            .set(x, y, color);
                     }
                 }
                 self.current_mut().zoom = 1.;
@@ -126,10 +260,101 @@ impl PaletteApp {
                         Some("processing-offset") => Kind::Offset,
                         Some("processing-twirl") => Kind::Twirl,
                         Some("processing-wave") => Kind::Wave,
+                        Some("processing-surface") => Kind::SurfaceBlur,
+                        Some("processing-radial") => Kind::RadialBlur,
+                        Some("processing-clouds") => Kind::Clouds,
+                        Some("processing-difference-clouds") => Kind::DifferenceClouds,
+                        Some("processing-poster-edges") => Kind::PosterEdges,
+                        Some("processing-grain") => Kind::Grain,
+                        Some("processing-fragment") => Kind::Fragment,
+                        Some("processing-despeckle") => Kind::Despeckle,
+                        Some("processing-dust") => Kind::DustScratches,
+                        Some("processing-reduce-noise") => Kind::ReduceNoise,
+                        Some("processing-pinch") => Kind::Pinch,
+                        Some("processing-spherize") => Kind::Spherize,
+                        Some("processing-ripple") => Kind::Ripple,
+                        Some("processing-sharpen") => Kind::Sharpen,
+                        Some("processing-sharpen-more") => Kind::SharpenMore,
+                        Some("processing-polar") => Kind::PolarCoordinates,
+                        Some("processing-zigzag") => Kind::ZigZag,
+                        Some("processing-fibers") => Kind::Fibers,
+                        Some("processing-glowing-edges") => Kind::GlowingEdges,
+                        Some("processing-origin") => Kind::Twirl,
+                        Some("processing-cutout") => Kind::Cutout,
+                        Some("processing-film-grain") => Kind::FilmGrain,
+                        Some("processing-accented-edges") => Kind::AccentedEdges,
+                        Some("processing-ink-outlines") => Kind::InkOutlines,
+                        Some("processing-photocopy") => Kind::Photocopy,
+                        Some("processing-halftone") => Kind::HalftonePattern,
+                        Some("processing-patchwork") => Kind::Patchwork,
+                        Some("processing-craquelure") => Kind::Craquelure,
+                        Some("processing-color-halftone") => Kind::ColorHalftone,
+                        Some("processing-crystallize") => Kind::Crystallize,
+                        Some("processing-facet") => Kind::Facet,
+                        Some("processing-mezzotint") => Kind::Mezzotint,
+                        Some("processing-pointillize") => Kind::Pointillize,
+                        Some("processing-stained-glass") => Kind::StainedGlass,
+                        Some("processing-mosaic-tiles") => Kind::MosaicTiles,
+                        Some("processing-diffuse") => Kind::Diffuse,
+                        Some("processing-color-balance") => Kind::ColorBalance,
+                        Some("processing-photo-filter") => Kind::PhotoFilter,
+                        Some("processing-channel-mixer") => Kind::ChannelMixer,
+                        Some("processing-gradient-map") => Kind::GradientMap,
+                        Some("processing-selective-color") => Kind::SelectiveColor,
+                        Some("processing-shadows-highlights") => Kind::ShadowsHighlights,
+                        Some("processing-fixed-blur") => Kind::Blur,
+                        Some("processing-blur-more") => Kind::BlurMore,
+                        Some("processing-colored-pencil") => Kind::ColoredPencil,
+                        Some("processing-dry-brush") => Kind::DryBrush,
+                        Some("processing-paint-daubs") => Kind::PaintDaubs,
+                        Some("processing-smudge-stick") => Kind::SmudgeStick,
+                        Some("processing-angled-strokes") => Kind::AngledStrokes,
+                        Some("processing-crosshatch") => Kind::Crosshatch,
+                        Some("processing-dark-strokes") => Kind::DarkStrokes,
+                        Some("processing-spatter") => Kind::Spatter,
+
                         _ => Kind::GaussianBlur,
                     };
                     self.open_processing(kind, None);
                     if let Some(d) = &mut self.processing_dialog {
+                        let edit = match kind {
+                            Kind::ColorBalance => Some(("midtone_red", 0.6)),
+                            Kind::ChannelMixer => Some(("red_green", 0.6)),
+                            Kind::SelectiveColor => Some(("yellows_magenta", 0.6)),
+                            _ => None,
+                        };
+                        if let Some((key, number)) = edit {
+                            d.operation
+                                .set_value(key, palette_core::processing::Value::Number(number))
+                                .expect("capture adjustment");
+                            d.parameter = kind
+                                .descriptor()
+                                .parameters
+                                .iter()
+                                .position(|p| p.key == key)
+                                .unwrap();
+                        }
+
+                        if self.capture.scene.as_deref() == Some("processing-origin") {
+                            d.operation
+                                .set_value(
+                                    "center_x",
+                                    palette_core::processing::Value::Number(0.38),
+                                )
+                                .expect("origin x");
+                            d.operation
+                                .set_value(
+                                    "center_y",
+                                    palette_core::processing::Value::Number(0.55),
+                                )
+                                .expect("origin y");
+                            d.parameter = kind
+                                .descriptor()
+                                .parameters
+                                .iter()
+                                .position(|p| p.key == "center_x")
+                                .expect("origin parameter");
+                        }
                         if kind == Kind::Stroke {
                             d.operation
                                 .set_value("width", palette_core::processing::Value::Number(8.))

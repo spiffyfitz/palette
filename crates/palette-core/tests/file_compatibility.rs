@@ -89,7 +89,7 @@ fn version_one_migrates_to_current_without_losing_editable_state() {
     assert!(migrated == doc);
     let current = dir.path().join("current.palette");
     io::save_project(&current, &migrated).unwrap();
-    assert_eq!(&fs::read(&current).unwrap()[8..12], &5u32.to_le_bytes());
+    assert_eq!(&fs::read(&current).unwrap()[8..12], &6u32.to_le_bytes());
     assert!(io::open(&current).unwrap() == doc);
     assert!(
         io::open(&legacy).unwrap() == doc,
@@ -171,7 +171,7 @@ fn version_two_defaults_missing_backing_to_transparent_then_saves_current_versio
     assert!(migrated == doc);
     assert_eq!(fs::read(&path).unwrap(), v2);
     io::save_project(&path, &migrated).unwrap();
-    assert_eq!(&fs::read(&path).unwrap()[8..12], &5u32.to_le_bytes());
+    assert_eq!(&fs::read(&path).unwrap()[8..12], &6u32.to_le_bytes());
 }
 
 #[test]

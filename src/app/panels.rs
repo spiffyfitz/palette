@@ -250,6 +250,10 @@ impl PaletteApp {
                             "Sharpen" => Some("sharpen-menu"),
                             "Stylize" => Some("stylize-menu"),
                             "Artistic" => Some("artistic-menu"),
+                            "Brush Strokes" => Some("brush-strokes-menu"),
+                            "Sketch" => Some("sketch-menu"),
+                            "Render" => Some("render-menu"),
+                            "Texture" => Some("texture-menu"),
                             _ => None,
                         };
                         if let Some(scene) = scene {
@@ -268,6 +272,10 @@ impl PaletteApp {
                     "sharpen-menu",
                     "stylize-menu",
                     "artistic-menu",
+                    "brush-strokes-menu",
+                    "sketch-menu",
+                    "render-menu",
+                    "texture-menu",
                 ] {
                     self.capture_popup(scene, &filter_menu.response);
                 }

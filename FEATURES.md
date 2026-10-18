@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [conventional menus and ten more filters](docs/FILTER_MENU_VALIDATION.md); [style controls and six more filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md); [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
+Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise cleanup, distortions and sharpening](docs/RETOUCH_DISTORT_VALIDATION.md); [blur/render/artistic/texture filters](docs/CREATIVE_FILTERS_VALIDATION.md); [conventional menus and ten more filters](docs/FILTER_MENU_VALIDATION.md); [style controls and six more filters](docs/STYLE_FILTER_CONTROLS_VALIDATION.md); [expanded processing catalog](docs/PROCESSING_CATALOG_VALIDATION.md); [layer controls and canvas previews](docs/LAYER_PROCESSING_UI_VALIDATION.md); [Phase 5 live processing](docs/PHASE5_VALIDATION.md); [brush selection](docs/BRUSH_SELECTION_VALIDATION.md); [selection/navigation](docs/SELECTION_NAVIGATION_VALIDATION.md); [Phase 4 slice](docs/PHASE4_VALIDATION.md); [Phase 3](docs/PHASE3_VALIDATION.md). Checked means implemented; historical validation details are in docs/VALIDATION.md, docs/PHASE2_VALIDATION.md, docs/LIVE_PAINT_TEXT_VALIDATION.md, docs/UI_BEHAVIOR_REFERENCE.md and docs/SHAPES_LAYERS_VALIDATION.md and docs/SELECTION_SHAPES_VALIDATION.md and docs/CONSTRUCTION_TRANSFORMS_VALIDATION.md. Model support alone is distinguished from end-user tools.
 
 ## Phase 0
 
@@ -83,7 +83,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [conventiona
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
-- [x] Native v5 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4 migration.
+- [x] Native v6 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4/v5 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
@@ -119,18 +119,30 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [conventiona
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 34 implemented operations.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 85 implemented operations.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
 - [ ] Filter Gallery and remaining filter/style catalog, including bevel, satin and gradient/pattern overlays.
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
 - [x] Levels, five-point Curves, Motion Blur, High Pass, Mosaic and seeded monochrome/color Uniform/Gaussian Add Noise.
+- [x] Despeckle, Dust & Scratches, Reduce Noise with separate luminance/chroma controls, Pinch, Spherize, Ripple, Sharpen and Sharpen More.
+- [x] Surface Blur, Spin/Zoom Radial Blur, seeded Clouds/Difference Clouds with saved colors, Poster Edges, five Grain patterns and Fragment.
 - [x] Average, Find Edges, Emboss, Solarize, Unsharp Mask, Minimum, Maximum, Offset, Twirl and Wave, with source/alpha/sampling/cancellation references.
 - [x] Glow Radius, shadow Angle/Distance/Spread and Stroke Width/Rounded corners controls; older native projects retain square strokes.
-- [ ] Remaining conventional filter catalog, including edge filters, radial/edge-preserving blurs, distortions and textures.
+- [x] Mouse-positioned source-local origins for Twirl, Wave, Radial Blur, Pinch, Spherize, Ripple, Polar Coordinates and ZigZag; live crosshair, numeric X/Y, reset, Apply/Cancel and native v6 migration.
+- [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
+- [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
+- [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
+- [x] Registry-generated filter inventory: 79 of 121 implemented, 42 remaining; Filter Gallery and layer styles counted separately.
+- [ ] Remaining conventional filter catalog, including further distortions, artistic/brush-stroke/sketch filters, textures and custom convolution.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
+
+- [x] Color Balance, Photo Filter, Channel Mixer, two-stop Gradient Map, nine-range Selective Color and local Shadows/Highlights; removable live adjustment stacks.
+- [x] Fixed Blur/Blur More, alpha-safe local tone guides, saved gradient colors and idle percentage-preview regression.
+
+- [x] Colored Pencil, Dry Brush, three Paint Daubs geometries, Smudge Stick, Angled Strokes, Crosshatch, Dark Strokes and Spatter; editable source-preserving controls, saved paper color/seeds and bounded neighborhoods.
 
 ## Phase 6
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.

@@ -1,5 +1,6 @@
 //! Transactional processing controls. Preview jobs use reduced documents and
 //! a cancellation ticket; only Apply mutates the original full-resolution model.
+mod origin;
 mod toolbar;
 use super::*;
 use palette_core::{
@@ -52,6 +53,8 @@ pub(super) struct Dialog {
     pub ready: Option<u64>,
     pub image: Option<TextureHandle>,
     pub(super) parameter: usize,
+    pub(super) pick_origin: bool,
+    pub(super) origin_drag: bool,
 }
 impl Dialog {
     fn document(&self) -> Result<Document, String> {
@@ -185,7 +188,7 @@ impl PaletteApp {
             self.error = Some("Unlock the layer before editing filters or effects".into());
             return;
         }
-        let operation = if let Some(id) = instance {
+        let mut operation = if let Some(id) = instance {
             let l = self.current().document.active();
             if let Some(f) = l.filters.iter().find(|f| f.id == id) {
                 Operation::Filter(f.filter.clone())
@@ -197,6 +200,44 @@ impl PaletteApp {
         } else {
             kind.default_operation()
         };
+        if instance.is_none()
+            && matches!(
+                operation.kind(),
+                Kind::Clouds
+                    | Kind::GradientMap
+                    | Kind::DifferenceClouds
+                    | Kind::Fibers
+                    | Kind::Photocopy
+                    | Kind::HalftonePattern
+            )
+        {
+            let [r, g, b, _] = self.brush.color;
+            operation
+                .set_value("low", Value::Color([r, g, b]))
+                .expect("captured color");
+            let [r, g, b, _] = self.background.to_srgba_unmultiplied();
+            operation
+                .set_value("high", Value::Color([r, g, b]))
+                .expect("captured color");
+        }
+        // egui colors store premultiplied bytes; filter colors are straight
+        // RGB and retain the source layer's alpha independently.
+        if instance.is_none() && matches!(kind, Kind::Pointillize | Kind::StainedGlass) {
+            let rgba = if kind == Kind::Pointillize {
+                self.background.to_srgba_unmultiplied()
+            } else {
+                self.brush.color
+            };
+            operation
+                .set_value("color", Value::Color([rgba[0], rgba[1], rgba[2]]))
+                .expect("captured color");
+        }
+        if instance.is_none() && kind == Kind::ColoredPencil {
+            let [r, g, b, _] = self.background.to_srgba_unmultiplied();
+            operation
+                .set_value("paper", Value::Color([r, g, b]))
+                .expect("captured paper color");
+        }
         let kind = operation.kind();
         let ticket = self
             .processing_worker
@@ -221,6 +262,8 @@ impl PaletteApp {
             layer: session.document.active_layer,
             instance,
             operation,
+            pick_origin: true,
+            origin_drag: false,
             original: session.document.clone(),
             preview: true,
             ticket,

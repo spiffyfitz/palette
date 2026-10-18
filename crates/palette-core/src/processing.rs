@@ -1,15 +1,28 @@
 //! Implemented processing catalog and shared, UI-independent parameter metadata.
 //! The renderer never knows widget types; adding an operation extends this
 //! registry and its evaluator rather than introducing a second UI parameter model.
+mod adjustments;
+mod artistic;
+mod cellular;
 mod conventional;
+mod creative;
+mod cutout;
+mod distort;
 mod extended;
 mod gaussian;
 mod layer;
 pub mod menu;
 mod neighborhood;
+mod painting;
+mod pixelate;
 mod point;
+mod retouch;
 mod round;
-use crate::document::{Effect, Filter, FilterEdges, NoiseDistribution, StrokePosition};
+mod studio;
+use crate::document::{
+    DaubStyle, DiffuseMode, Effect, Filter, FilterEdges, GrainStyle, HalftoneStyle, MezzotintStyle,
+    NoiseDistribution, StrokePosition, ZigZagStyle,
+};
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
 pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_cancel};
@@ -19,6 +32,24 @@ pub(crate) use point::point_filter;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    ColoredPencil,
+    DryBrush,
+    PaintDaubs,
+    SmudgeStick,
+    AngledStrokes,
+    Crosshatch,
+    DarkStrokes,
+    Spatter,
+
+    ColorBalance,
+    PhotoFilter,
+    ChannelMixer,
+    GradientMap,
+    SelectiveColor,
+    ShadowsHighlights,
+    Blur,
+    BlurMore,
+
     Invert,
     Brightness,
     GaussianBlur,
@@ -53,6 +84,41 @@ pub enum Kind {
     Offset,
     Twirl,
     Wave,
+    SurfaceBlur,
+    RadialBlur,
+    Clouds,
+    DifferenceClouds,
+    PosterEdges,
+    Grain,
+    Fragment,
+    Despeckle,
+    DustScratches,
+    ReduceNoise,
+    Pinch,
+    Spherize,
+    Ripple,
+    Sharpen,
+    SharpenMore,
+    PolarCoordinates,
+    ZigZag,
+    Fibers,
+    GlowingEdges,
+    Cutout,
+    FilmGrain,
+    AccentedEdges,
+    InkOutlines,
+    Photocopy,
+    HalftonePattern,
+    Patchwork,
+    Craquelure,
+    ColorHalftone,
+    Crystallize,
+    Facet,
+    Mezzotint,
+    Pointillize,
+    StainedGlass,
+    MosaicTiles,
+    Diffuse,
 }
 #[derive(Clone, Copy, Debug)]
 /// UI-independent input constraints, shared by model validation and controls.
@@ -102,9 +168,166 @@ const EDGES: Parameter = Parameter {
     label: "Undefined areas",
     kind: ParameterType::Choice(&["Wrap around", "Repeat edge pixels", "Transparent"]),
 };
+const CENTER_X: Parameter = number("center_x", "Origin X", 0., 1., 0.001);
+const CENTER_Y: Parameter = number("center_y", "Origin Y", 0., 1., 0.001);
 const SIZE: Parameter = number("size", "Size (px)", 0., 64., 0.1);
 /// Implemented operations only; unfinished catalog entries are never registered.
 pub const REGISTRY: &[Descriptor] = &[
+    Descriptor {
+        kind: Kind::ColorBalance,
+        label: "Color Balance",
+        category: "Adjustments",
+        parameters: &[
+            number("shadow_red", "Shad. Cyan–Red", -1.0, 1.0, 0.01),
+            number("shadow_green", "Shad. Mag.–Green", -1.0, 1.0, 0.01),
+            number("shadow_blue", "Shad. Yellow–Blue", -1.0, 1.0, 0.01),
+            number("midtone_red", "Mid. Cyan–Red", -1.0, 1.0, 0.01),
+            number("midtone_green", "Mid. Mag.–Green", -1.0, 1.0, 0.01),
+            number("midtone_blue", "Mid. Yellow–Blue", -1.0, 1.0, 0.01),
+            number("highlight_red", "High. Cyan–Red", -1.0, 1.0, 0.01),
+            number("highlight_green", "High. Mag.–Green", -1.0, 1.0, 0.01),
+            number("highlight_blue", "High. Yellow–Blue", -1.0, 1.0, 0.01),
+            Parameter {
+                key: "preserve_luminosity",
+                label: "Preserve luminosity",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::PhotoFilter,
+        label: "Photo Filter",
+        category: "Adjustments",
+        parameters: &[
+            COLOR,
+            number("density", "Density", 0.0, 1.0, 0.01),
+            Parameter {
+                key: "preserve_luminosity",
+                label: "Preserve luminosity",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::ChannelMixer,
+        label: "Channel Mixer",
+        category: "Adjustments",
+        parameters: &[
+            number("red_red", "Red <- Red", -2.0, 2.0, 0.01),
+            number("red_green", "Red <- Green", -2.0, 2.0, 0.01),
+            number("red_blue", "Red <- Blue", -2.0, 2.0, 0.01),
+            number("red_constant", "Red <- Constant", -1.0, 1.0, 0.01),
+            number("green_red", "Green <- Red", -2.0, 2.0, 0.01),
+            number("green_green", "Green <- Green", -2.0, 2.0, 0.01),
+            number("green_blue", "Green <- Blue", -2.0, 2.0, 0.01),
+            number("green_constant", "Green <- Constant", -1.0, 1.0, 0.01),
+            number("blue_red", "Blue <- Red", -2.0, 2.0, 0.01),
+            number("blue_green", "Blue <- Green", -2.0, 2.0, 0.01),
+            number("blue_blue", "Blue <- Blue", -2.0, 2.0, 0.01),
+            number("blue_constant", "Blue <- Constant", -1.0, 1.0, 0.01),
+            Parameter {
+                key: "monochrome",
+                label: "Monochrome",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::GradientMap,
+        label: "Gradient Map",
+        category: "Adjustments",
+        parameters: &[
+            Parameter {
+                key: "low",
+                label: "Shadow color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Highlight color",
+                kind: ParameterType::Color,
+            },
+            number("midpoint", "Midpoint", 0.01, 0.99, 0.01),
+            Parameter {
+                key: "reverse",
+                label: "Reverse",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::SelectiveColor,
+        label: "Selective Color",
+        category: "Adjustments",
+        parameters: &[
+            number("reds_cyan", "Reds · Cyan", -1.0, 1.0, 0.01),
+            number("reds_magenta", "Reds · Magenta", -1.0, 1.0, 0.01),
+            number("reds_yellow", "Reds · Yellow", -1.0, 1.0, 0.01),
+            number("reds_black", "Reds · Black", -1.0, 1.0, 0.01),
+            number("yellows_cyan", "Yellows · Cyan", -1.0, 1.0, 0.01),
+            number("yellows_magenta", "Yellows · Magenta", -1.0, 1.0, 0.01),
+            number("yellows_yellow", "Yellows · Yellow", -1.0, 1.0, 0.01),
+            number("yellows_black", "Yellows · Black", -1.0, 1.0, 0.01),
+            number("greens_cyan", "Greens · Cyan", -1.0, 1.0, 0.01),
+            number("greens_magenta", "Greens · Magenta", -1.0, 1.0, 0.01),
+            number("greens_yellow", "Greens · Yellow", -1.0, 1.0, 0.01),
+            number("greens_black", "Greens · Black", -1.0, 1.0, 0.01),
+            number("cyans_cyan", "Cyans · Cyan", -1.0, 1.0, 0.01),
+            number("cyans_magenta", "Cyans · Magenta", -1.0, 1.0, 0.01),
+            number("cyans_yellow", "Cyans · Yellow", -1.0, 1.0, 0.01),
+            number("cyans_black", "Cyans · Black", -1.0, 1.0, 0.01),
+            number("blues_cyan", "Blues · Cyan", -1.0, 1.0, 0.01),
+            number("blues_magenta", "Blues · Magenta", -1.0, 1.0, 0.01),
+            number("blues_yellow", "Blues · Yellow", -1.0, 1.0, 0.01),
+            number("blues_black", "Blues · Black", -1.0, 1.0, 0.01),
+            number("magentas_cyan", "Magentas · Cyan", -1.0, 1.0, 0.01),
+            number("magentas_magenta", "Magentas · Magenta", -1.0, 1.0, 0.01),
+            number("magentas_yellow", "Magentas · Yellow", -1.0, 1.0, 0.01),
+            number("magentas_black", "Magentas · Black", -1.0, 1.0, 0.01),
+            number("whites_cyan", "Whites · Cyan", -1.0, 1.0, 0.01),
+            number("whites_magenta", "Whites · Magenta", -1.0, 1.0, 0.01),
+            number("whites_yellow", "Whites · Yellow", -1.0, 1.0, 0.01),
+            number("whites_black", "Whites · Black", -1.0, 1.0, 0.01),
+            number("neutrals_cyan", "Neutrals · Cyan", -1.0, 1.0, 0.01),
+            number("neutrals_magenta", "Neutrals · Magenta", -1.0, 1.0, 0.01),
+            number("neutrals_yellow", "Neutrals · Yellow", -1.0, 1.0, 0.01),
+            number("neutrals_black", "Neutrals · Black", -1.0, 1.0, 0.01),
+            number("blacks_cyan", "Blacks · Cyan", -1.0, 1.0, 0.01),
+            number("blacks_magenta", "Blacks · Magenta", -1.0, 1.0, 0.01),
+            number("blacks_yellow", "Blacks · Yellow", -1.0, 1.0, 0.01),
+            number("blacks_black", "Blacks · Black", -1.0, 1.0, 0.01),
+            Parameter {
+                key: "relative",
+                label: "Relative",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::ShadowsHighlights,
+        label: "Shadows/Highlights",
+        category: "Adjustments",
+        parameters: &[
+            number("shadows", "Shadows", 0.0, 1.0, 0.01),
+            number("shadow_width", "Shadow tone", 0.01, 1.0, 0.01),
+            number("shadow_radius", "Shadow radius (px)", 0.0, 64.0, 0.1),
+            number("highlights", "Highlights", 0.0, 1.0, 0.01),
+            number("highlight_width", "Highlight tone", 0.01, 1.0, 0.01),
+            number("highlight_radius", "Highlight radius (px)", 0.0, 64.0, 0.1),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Blur,
+        label: "Blur",
+        category: "Blur",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::BlurMore,
+        label: "Blur More",
+        category: "Blur",
+        parameters: &[],
+    },
     Descriptor {
         kind: Kind::Invert,
         label: "Invert",
@@ -389,6 +612,8 @@ pub const REGISTRY: &[Descriptor] = &[
         parameters: &[
             number("angle", "Angle (°)", -720., 720., 1.),
             number("radius", "Radius (px)", 0., 4096., 0.1),
+            CENTER_X,
+            CENTER_Y,
         ],
     },
     Descriptor {
@@ -404,6 +629,563 @@ pub const REGISTRY: &[Descriptor] = &[
                 kind: ParameterType::Boolean,
             },
             EDGES,
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::SurfaceBlur,
+        label: "Surface Blur",
+        category: "Blur",
+        parameters: &[
+            number("radius", "Radius (px)", 0., 8., 1.),
+            number("threshold", "Threshold", 0., 255., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::RadialBlur,
+        label: "Radial Blur",
+        category: "Blur",
+        parameters: &[
+            number("amount", "Amount", 0., 100., 0.1),
+            number("samples", "Samples", 2., 64., 1.),
+            Parameter {
+                key: "zoom",
+                label: "Method",
+                kind: ParameterType::Choice(&["Spin", "Zoom"]),
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Clouds,
+        label: "Clouds",
+        category: "Render",
+        parameters: &[
+            number("seed", "Seed", 0., 65535., 1.),
+            number("scale", "Scale (px)", 1., 1024., 0.1),
+            Parameter {
+                key: "low",
+                label: "First color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Second color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::DifferenceClouds,
+        label: "Difference Clouds",
+        category: "Render",
+        parameters: &[
+            number("seed", "Seed", 0., 65535., 1.),
+            number("scale", "Scale (px)", 1., 1024., 0.1),
+            Parameter {
+                key: "low",
+                label: "First color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Second color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::PosterEdges,
+        label: "Poster Edges",
+        category: "Artistic",
+        parameters: &[
+            number("thickness", "Edge thickness (px)", 0., 4., 1.),
+            number("intensity", "Edge intensity", 0., 1., 0.01),
+            number("levels", "Levels", 2., 16., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Grain,
+        label: "Grain",
+        category: "Texture",
+        parameters: &[
+            number("strength", "Amount", 0., 1., 0.01),
+            number("contrast", "Contrast", 0., 1., 0.01),
+            number("grain_size", "Grain size (px)", 0.5, 32., 0.1),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "monochrome",
+                label: "Monochrome",
+                kind: ParameterType::Boolean,
+            },
+            Parameter {
+                key: "style",
+                label: "Grain type",
+                kind: ParameterType::Choice(&[
+                    "Regular",
+                    "Soft",
+                    "Speckle",
+                    "Horizontal",
+                    "Vertical",
+                ]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Fragment,
+        label: "Fragment",
+        category: "Pixelate",
+        parameters: &[number("distance", "Distance (px)", 0., 32., 0.1)],
+    },
+    Descriptor {
+        kind: Kind::Despeckle,
+        label: "Despeckle",
+        category: "Noise",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::DustScratches,
+        label: "Dust & Scratches",
+        category: "Noise",
+        parameters: &[
+            number("radius", "Radius (px)", 0., 5., 1.),
+            number("threshold", "Threshold", 0., 255., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::ReduceNoise,
+        label: "Reduce Noise",
+        category: "Noise",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("radius", "Radius (px)", 0., 4., 1.),
+            number("preserve_details", "Preserve details", 0., 1., 0.01),
+            number("color_noise", "Reduce color noise", 0., 1., 0.01),
+            number("sharpen", "Sharpen details", 0., 1., 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Pinch,
+        label: "Pinch",
+        category: "Distort",
+        parameters: &[
+            number("strength", "Amount", -1., 1., 0.01),
+            number("radius", "Radius (px)", 0., 4096., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Spherize,
+        label: "Spherize",
+        category: "Distort",
+        parameters: &[
+            number("strength", "Amount", -1., 1., 0.01),
+            number("radius", "Radius (px)", 0., 4096., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Ripple,
+        label: "Ripple",
+        category: "Distort",
+        parameters: &[
+            number("amplitude", "Amount (px)", -64., 64., 0.1),
+            number("wavelength", "Wavelength (px)", 1., 1024., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Sharpen,
+        label: "Sharpen",
+        category: "Sharpen",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::SharpenMore,
+        label: "Sharpen More",
+        category: "Sharpen",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::PolarCoordinates,
+        label: "Polar Coordinates",
+        category: "Distort",
+        parameters: &[
+            Parameter {
+                key: "to_polar",
+                label: "Conversion",
+                kind: ParameterType::Choice(&["Rectangular to Polar", "Polar to Rectangular"]),
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::ZigZag,
+        label: "ZigZag",
+        category: "Distort",
+        parameters: &[
+            number("amount", "Amount (px)", -100., 100., 0.1),
+            number("radius", "Radius (px)", 0., 4096., 0.1),
+            number("ridges", "Ridges", 1., 20., 1.),
+            Parameter {
+                key: "style",
+                label: "Style",
+                kind: ParameterType::Choice(&["Around Center", "Out From Center", "Pond Ripples"]),
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Fibers,
+        label: "Fibers",
+        category: "Render",
+        parameters: &[
+            number("variance", "Variance", 1., 64., 0.1),
+            number("strength", "Strength", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "low",
+                label: "Foreground color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Background color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::GlowingEdges,
+        label: "Glowing Edges",
+        category: "Stylize",
+        parameters: &[
+            number("width", "Edge width (px)", 0.5, 10., 0.1),
+            number("brightness", "Edge brightness", 0., 4., 0.01),
+            number("smoothness", "Smoothness (px)", 0., 8., 0.1),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Cutout,
+        label: "Cutout",
+        category: "Artistic",
+        parameters: &[
+            number("levels", "Number of levels", 2., 8., 1.),
+            number("simplicity", "Edge simplicity (px)", 0., 8., 0.1),
+            number("fidelity", "Edge fidelity", 0., 1., 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::FilmGrain,
+        label: "Film Grain",
+        category: "Artistic",
+        parameters: &[
+            number("grain", "Grain", 0., 1., 0.01),
+            number("highlight", "Highlight area", 0., 1., 0.01),
+            number("intensity", "Intensity", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::AccentedEdges,
+        label: "Accented Edges",
+        category: "Brush Strokes",
+        parameters: &[
+            number("width", "Edge width (px)", 0.5, 8., 0.1),
+            number("brightness", "Edge brightness", 0., 1., 0.01),
+            number("smoothness", "Smoothness (px)", 0., 4., 0.1),
+        ],
+    },
+    Descriptor {
+        kind: Kind::InkOutlines,
+        label: "Ink Outlines",
+        category: "Brush Strokes",
+        parameters: &[
+            number("length", "Stroke length (px)", 0.5, 12., 0.1),
+            number("dark", "Dark intensity", 0., 1., 0.01),
+            number("light", "Light intensity", 0., 1., 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Photocopy,
+        label: "Photocopy",
+        category: "Sketch",
+        parameters: &[
+            number("detail", "Detail", 0., 1., 0.01),
+            number("darkness", "Darkness", 0., 1., 0.01),
+            Parameter {
+                key: "low",
+                label: "Ink color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Paper color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::HalftonePattern,
+        label: "Halftone Pattern",
+        category: "Sketch",
+        parameters: &[
+            number("size", "Size (px)", 1., 64., 0.1),
+            number("contrast", "Contrast", 0., 1., 0.01),
+            Parameter {
+                key: "pattern",
+                label: "Pattern",
+                kind: ParameterType::Choice(&["Dot", "Line", "Circle"]),
+            },
+            Parameter {
+                key: "low",
+                label: "Ink color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Paper color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Patchwork,
+        label: "Patchwork",
+        category: "Texture",
+        parameters: &[
+            number("square", "Square size (px)", 1., 64., 1.),
+            number("relief", "Relief", 0., 32., 0.1),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Craquelure,
+        label: "Craquelure",
+        category: "Texture",
+        parameters: &[
+            number("spacing", "Crack spacing (px)", 2., 128., 0.1),
+            number("depth", "Crack depth", 0., 1., 0.01),
+            number("brightness", "Crack brightness", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::ColorHalftone,
+        label: "Color Halftone",
+        category: "Pixelate",
+        parameters: &[
+            number("radius", "Maximum radius (px)", 0.5, 32., 0.1),
+            number("cyan", "Cyan angle (°)", 0., 180., 1.),
+            number("magenta", "Magenta angle (°)", 0., 180., 1.),
+            number("yellow", "Yellow angle (°)", 0., 180., 1.),
+            number("black", "Black angle (°)", 0., 180., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Crystallize,
+        label: "Crystallize",
+        category: "Pixelate",
+        parameters: &[
+            number("cell_size", "Cell size (px)", 2., 128., 1.),
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Facet,
+        label: "Facet",
+        category: "Pixelate",
+        parameters: &[],
+    },
+    Descriptor {
+        kind: Kind::Mezzotint,
+        label: "Mezzotint",
+        category: "Pixelate",
+        parameters: &[
+            Parameter {
+                key: "pattern",
+                label: "Type",
+                kind: ParameterType::Choice(&[
+                    "Fine Dots",
+                    "Medium Dots",
+                    "Grainy Dots",
+                    "Coarse Dots",
+                    "Short Lines",
+                    "Medium Lines",
+                    "Long Lines",
+                    "Short Strokes",
+                    "Medium Strokes",
+                    "Long Strokes",
+                ]),
+            },
+            number("pattern_scale", "Scale", 0.05, 8., 0.05),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "monochrome",
+                label: "Monochrome",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Pointillize,
+        label: "Pointillize",
+        category: "Pixelate",
+        parameters: &[
+            number("cell_size", "Cell size (px)", 2., 128., 1.),
+            number("dot", "Dot size", 0., 1., 0.01),
+            Parameter {
+                key: "color",
+                label: "Canvas color",
+                kind: ParameterType::Color,
+            },
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::StainedGlass,
+        label: "Stained Glass",
+        category: "Texture",
+        parameters: &[
+            number("cell_size", "Cell size (px)", 2., 128., 1.),
+            number("width", "Border width (px)", 0., 16., 0.1),
+            number("light", "Light intensity", 0., 1., 0.01),
+            Parameter {
+                key: "color",
+                label: "Border color",
+                kind: ParameterType::Color,
+            },
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::MosaicTiles,
+        label: "Mosaic Tiles",
+        category: "Texture",
+        parameters: &[
+            number("tile_size", "Tile size (px)", 1., 64., 1.),
+            number("grout", "Grout width (px)", 0., 16., 0.1),
+            Parameter {
+                key: "lighten",
+                label: "Lighten grout",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Diffuse,
+        label: "Diffuse",
+        category: "Stylize",
+        parameters: &[
+            Parameter {
+                key: "mode",
+                label: "Mode",
+                kind: ParameterType::Choice(&[
+                    "Normal",
+                    "Darken Only",
+                    "Lighten Only",
+                    "Anisotropic",
+                ]),
+            },
+            number("radius", "Radius (px)", 0., 8., 1.),
+            number("seed", "Seed", 0., 65535., 1.),
+        ],
+    },
+    Descriptor {
+        kind: Kind::ColoredPencil,
+        label: "Colored Pencil",
+        category: "Artistic",
+        parameters: &[
+            number("width", "Pencil width (px)", 0.5, 16.0, 0.1),
+            number("pressure", "Stroke pressure", 0.0, 1.0, 0.01),
+            number("brightness", "Paper brightness", 0.0, 1.0, 0.01),
+            Parameter {
+                key: "paper",
+                label: "Paper color",
+                kind: ParameterType::Color,
+            },
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+        ],
+    },
+    Descriptor {
+        kind: Kind::DryBrush,
+        label: "Dry Brush",
+        category: "Artistic",
+        parameters: &[
+            number("radius", "Brush size (px)", 0.0, 16.0, 0.1),
+            number("detail", "Brush detail", 0.0, 1.0, 0.01),
+            number("texture", "Texture", 0.0, 1.0, 0.01),
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+        ],
+    },
+    Descriptor {
+        kind: Kind::PaintDaubs,
+        label: "Paint Daubs",
+        category: "Artistic",
+        parameters: &[
+            number("radius", "Brush size (px)", 0.0, 16.0, 0.1),
+            number("sharpness", "Sharpness", 0.0, 1.0, 0.01),
+            Parameter {
+                key: "style",
+                label: "Brush type",
+                kind: ParameterType::Choice(&["Round", "Square", "Diagonal"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::SmudgeStick,
+        label: "Smudge Stick",
+        category: "Artistic",
+        parameters: &[
+            number("length", "Stroke length (px)", 0.5, 32.0, 0.1),
+            number("highlight", "Highlight area", 0.0, 1.0, 0.01),
+            number("intensity", "Intensity", 0.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::AngledStrokes,
+        label: "Angled Strokes",
+        category: "Brush Strokes",
+        parameters: &[
+            number("balance", "Direction balance", 0.0, 1.0, 0.01),
+            number("length", "Stroke length (px)", 0.5, 32.0, 0.1),
+            number("sharpness", "Sharpness", 0.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Crosshatch,
+        label: "Crosshatch",
+        category: "Brush Strokes",
+        parameters: &[
+            number("length", "Stroke length (px)", 2.0, 32.0, 0.1),
+            number("sharpness", "Sharpness", 0.0, 1.0, 0.01),
+            number("strength", "Strength", 0.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::DarkStrokes,
+        label: "Dark Strokes",
+        category: "Brush Strokes",
+        parameters: &[
+            number("balance", "Stroke balance", 0.0, 1.0, 0.01),
+            number("black", "Black intensity", 0.0, 1.0, 0.01),
+            number("white", "White intensity", 0.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Spatter,
+        label: "Spatter",
+        category: "Brush Strokes",
+        parameters: &[
+            number("radius", "Spray radius (px)", 0.0, 16.0, 0.1),
+            number("smoothness", "Smoothness (px)", 0.0, 4.0, 0.1),
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
         ],
     },
 ];
@@ -418,6 +1200,256 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::ColoredPencil => Operation::Filter(Filter::ColoredPencil {
+                width: 2.,
+                pressure: 0.8,
+                brightness: 1.,
+                paper: [255; 3],
+                seed: 1,
+            }),
+            Self::DryBrush => Operation::Filter(Filter::DryBrush {
+                radius: 4.,
+                detail: 0.5,
+                texture: 0.3,
+                seed: 1,
+            }),
+            Self::PaintDaubs => Operation::Filter(Filter::PaintDaubs {
+                radius: 5.,
+                sharpness: 0.4,
+                style: DaubStyle::Round,
+            }),
+            Self::SmudgeStick => Operation::Filter(Filter::SmudgeStick {
+                length: 8.,
+                highlight: 0.7,
+                intensity: 0.7,
+            }),
+            Self::AngledStrokes => Operation::Filter(Filter::AngledStrokes {
+                balance: 0.5,
+                length: 12.,
+                sharpness: 0.4,
+            }),
+            Self::Crosshatch => Operation::Filter(Filter::Crosshatch {
+                length: 12.,
+                sharpness: 0.6,
+                strength: 0.6,
+            }),
+            Self::DarkStrokes => Operation::Filter(Filter::DarkStrokes {
+                balance: 0.5,
+                black: 0.5,
+                white: 0.5,
+            }),
+            Self::Spatter => Operation::Filter(Filter::Spatter {
+                radius: 4.,
+                smoothness: 0.8,
+                seed: 1,
+            }),
+
+            Self::ColorBalance => Operation::Filter(Filter::ColorBalance {
+                balance: [[0.; 3]; 3],
+                preserve_luminosity: true,
+            }),
+            Self::PhotoFilter => Operation::Filter(Filter::PhotoFilter {
+                color: [255, 155, 55],
+                density: 0.25,
+                preserve_luminosity: true,
+            }),
+            Self::ChannelMixer => Operation::Filter(Filter::ChannelMixer {
+                matrix: [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.]],
+                monochrome: false,
+            }),
+            Self::GradientMap => Operation::Filter(Filter::GradientMap {
+                low: [0; 3],
+                high: [255; 3],
+                midpoint: 0.5,
+                reverse: false,
+            }),
+            Self::SelectiveColor => Operation::Filter(Filter::SelectiveColor {
+                adjustments: [[0.; 4]; 9],
+                relative: true,
+            }),
+            Self::ShadowsHighlights => Operation::Filter(Filter::ShadowsHighlights {
+                shadows: 0.35,
+                shadow_width: 0.5,
+                shadow_radius: 30.,
+                highlights: 0.,
+                highlight_width: 0.5,
+                highlight_radius: 30.,
+            }),
+            Self::Blur => Operation::Filter(Filter::Blur),
+            Self::BlurMore => Operation::Filter(Filter::BlurMore),
+
+            Self::ColorHalftone => Operation::Filter(Filter::ColorHalftone {
+                radius: 4.,
+                cyan: 108.,
+                magenta: 162.,
+                yellow: 90.,
+                black: 45.,
+            }),
+            Self::Crystallize => Operation::Filter(Filter::Crystallize { size: 16, seed: 1 }),
+            Self::Facet => Operation::Filter(Filter::Facet),
+            Self::Mezzotint => Operation::Filter(Filter::Mezzotint {
+                pattern: MezzotintStyle::FineDots,
+                scale: 1.,
+                seed: 1,
+                monochrome: true,
+            }),
+            Self::Pointillize => Operation::Filter(Filter::Pointillize {
+                size: 16,
+                dot: 0.75,
+                color: [255; 3],
+                seed: 1,
+            }),
+            Self::StainedGlass => Operation::Filter(Filter::StainedGlass {
+                size: 24,
+                width: 2.,
+                light: 0.3,
+                color: [0; 3],
+                seed: 1,
+            }),
+            Self::MosaicTiles => Operation::Filter(Filter::MosaicTiles {
+                size: 12,
+                grout: 2.,
+                lighten: true,
+            }),
+            Self::Diffuse => Operation::Filter(Filter::Diffuse {
+                radius: 1,
+                mode: DiffuseMode::Normal,
+                seed: 1,
+            }),
+
+            Self::Cutout => Operation::Filter(Filter::Cutout {
+                levels: 4,
+                simplicity: 2.,
+                fidelity: 0.5,
+            }),
+            Self::FilmGrain => Operation::Filter(Filter::FilmGrain {
+                grain: 0.25,
+                highlight: 0.5,
+                intensity: 0.5,
+                seed: 1,
+            }),
+            Self::AccentedEdges => Operation::Filter(Filter::AccentedEdges {
+                width: 1.,
+                brightness: 0.8,
+                smoothness: 1.,
+            }),
+            Self::InkOutlines => Operation::Filter(Filter::InkOutlines {
+                length: 4.,
+                dark: 0.7,
+                light: 0.2,
+            }),
+            Self::Photocopy => Operation::Filter(Filter::Photocopy {
+                detail: 0.5,
+                darkness: 0.4,
+                low: [0; 3],
+                high: [255; 3],
+            }),
+            Self::HalftonePattern => Operation::Filter(Filter::HalftonePattern {
+                size: 8.,
+                contrast: 0.2,
+                pattern: HalftoneStyle::Dot,
+                low: [0; 3],
+                high: [255; 3],
+            }),
+            Self::Patchwork => Operation::Filter(Filter::Patchwork {
+                square: 8,
+                relief: 8.,
+            }),
+            Self::Craquelure => Operation::Filter(Filter::Craquelure {
+                spacing: 16.,
+                depth: 0.6,
+                brightness: 0.1,
+                seed: 1,
+            }),
+
+            Self::PolarCoordinates => Operation::Filter(Filter::PolarCoordinates {
+                center: [0.5; 2],
+                to_polar: true,
+            }),
+            Self::ZigZag => Operation::Filter(Filter::ZigZag {
+                center: [0.5; 2],
+                amount: 12.,
+                radius: 128.,
+                ridges: 5,
+                style: ZigZagStyle::PondRipples,
+            }),
+            Self::Fibers => Operation::Filter(Filter::Fibers {
+                seed: 1,
+                variance: 16.,
+                strength: 0.6,
+                low: [0; 3],
+                high: [255; 3],
+            }),
+            Self::GlowingEdges => Operation::Filter(Filter::GlowingEdges {
+                width: 1.,
+                brightness: 1.5,
+                smoothness: 1.,
+            }),
+            Self::Despeckle => Operation::Filter(Filter::Despeckle),
+            Self::DustScratches => Operation::Filter(Filter::DustScratches {
+                radius: 1,
+                threshold: 12,
+            }),
+            Self::ReduceNoise => Operation::Filter(Filter::ReduceNoise {
+                radius: 2,
+                strength: 0.5,
+                preserve_details: 0.5,
+                color_noise: 0.3,
+                sharpen: 0.,
+            }),
+            Self::Pinch => Operation::Filter(Filter::Pinch {
+                amount: 0.5,
+                radius: 128.,
+                center: [0.5; 2],
+            }),
+            Self::Spherize => Operation::Filter(Filter::Spherize {
+                amount: 0.5,
+                radius: 128.,
+                center: [0.5; 2],
+            }),
+            Self::Ripple => Operation::Filter(Filter::Ripple {
+                amplitude: 6.,
+                wavelength: 48.,
+                center: [0.5; 2],
+            }),
+            Self::Sharpen => Operation::Filter(Filter::Sharpen),
+            Self::SharpenMore => Operation::Filter(Filter::SharpenMore),
+            Self::SurfaceBlur => Operation::Filter(Filter::SurfaceBlur {
+                radius: 2,
+                threshold: 24,
+            }),
+            Self::RadialBlur => Operation::Filter(Filter::RadialBlur {
+                amount: 10.,
+                samples: 16,
+                zoom: false,
+                center: [0.5; 2],
+            }),
+            Self::Clouds => Operation::Filter(Filter::Clouds {
+                seed: 1,
+                scale: 128.,
+                low: [0; 3],
+                high: [255; 3],
+            }),
+            Self::DifferenceClouds => Operation::Filter(Filter::DifferenceClouds {
+                seed: 1,
+                scale: 128.,
+                low: [0; 3],
+                high: [255; 3],
+            }),
+            Self::PosterEdges => Operation::Filter(Filter::PosterEdges {
+                thickness: 1,
+                intensity: 0.8,
+                levels: 6,
+            }),
+            Self::Grain => Operation::Filter(Filter::Grain {
+                amount: 0.12,
+                contrast: 0.2,
+                size: 1.,
+                seed: 1,
+                monochrome: true,
+                style: GrainStyle::Regular,
+            }),
+            Self::Fragment => Operation::Filter(Filter::Fragment { distance: 2. }),
             Self::Average => Operation::Filter(Filter::Average),
             Self::FindEdges => Operation::Filter(Filter::FindEdges),
             Self::Solarize => Operation::Filter(Filter::Solarize),
@@ -441,12 +1473,14 @@ impl Kind {
             Self::Twirl => Operation::Filter(Filter::Twirl {
                 radius: 128.,
                 angle: 90.,
+                center: [0.5; 2],
             }),
             Self::Wave => Operation::Filter(Filter::Wave {
                 amplitude: 8.,
                 wavelength: 64.,
                 vertical: false,
                 edges: FilterEdges::Wrap,
+                center: [0.; 2],
             }),
             Self::BrightnessContrast => Operation::Filter(Filter::BrightnessContrast {
                 brightness: 0.,
@@ -547,6 +1581,59 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::ColoredPencil { .. }) => Kind::ColoredPencil,
+            Self::Filter(Filter::DryBrush { .. }) => Kind::DryBrush,
+            Self::Filter(Filter::PaintDaubs { .. }) => Kind::PaintDaubs,
+            Self::Filter(Filter::SmudgeStick { .. }) => Kind::SmudgeStick,
+            Self::Filter(Filter::AngledStrokes { .. }) => Kind::AngledStrokes,
+            Self::Filter(Filter::Crosshatch { .. }) => Kind::Crosshatch,
+            Self::Filter(Filter::DarkStrokes { .. }) => Kind::DarkStrokes,
+            Self::Filter(Filter::Spatter { .. }) => Kind::Spatter,
+
+            Self::Filter(Filter::ColorBalance { .. }) => Kind::ColorBalance,
+            Self::Filter(Filter::PhotoFilter { .. }) => Kind::PhotoFilter,
+            Self::Filter(Filter::ChannelMixer { .. }) => Kind::ChannelMixer,
+            Self::Filter(Filter::GradientMap { .. }) => Kind::GradientMap,
+            Self::Filter(Filter::SelectiveColor { .. }) => Kind::SelectiveColor,
+            Self::Filter(Filter::ShadowsHighlights { .. }) => Kind::ShadowsHighlights,
+            Self::Filter(Filter::Blur) => Kind::Blur,
+            Self::Filter(Filter::BlurMore) => Kind::BlurMore,
+
+            Self::Filter(Filter::Facet) => Kind::Facet,
+            Self::Filter(Filter::Diffuse { .. }) => Kind::Diffuse,
+            Self::Filter(Filter::MosaicTiles { .. }) => Kind::MosaicTiles,
+            Self::Filter(Filter::StainedGlass { .. }) => Kind::StainedGlass,
+            Self::Filter(Filter::Pointillize { .. }) => Kind::Pointillize,
+            Self::Filter(Filter::Mezzotint { .. }) => Kind::Mezzotint,
+            Self::Filter(Filter::Crystallize { .. }) => Kind::Crystallize,
+            Self::Filter(Filter::ColorHalftone { .. }) => Kind::ColorHalftone,
+            Self::Filter(Filter::Craquelure { .. }) => Kind::Craquelure,
+            Self::Filter(Filter::Patchwork { .. }) => Kind::Patchwork,
+            Self::Filter(Filter::HalftonePattern { .. }) => Kind::HalftonePattern,
+            Self::Filter(Filter::Photocopy { .. }) => Kind::Photocopy,
+            Self::Filter(Filter::InkOutlines { .. }) => Kind::InkOutlines,
+            Self::Filter(Filter::AccentedEdges { .. }) => Kind::AccentedEdges,
+            Self::Filter(Filter::FilmGrain { .. }) => Kind::FilmGrain,
+            Self::Filter(Filter::Cutout { .. }) => Kind::Cutout,
+            Self::Filter(Filter::Despeckle) => Kind::Despeckle,
+            Self::Filter(Filter::DustScratches { .. }) => Kind::DustScratches,
+            Self::Filter(Filter::ReduceNoise { .. }) => Kind::ReduceNoise,
+            Self::Filter(Filter::PolarCoordinates { .. }) => Kind::PolarCoordinates,
+            Self::Filter(Filter::ZigZag { .. }) => Kind::ZigZag,
+            Self::Filter(Filter::Fibers { .. }) => Kind::Fibers,
+            Self::Filter(Filter::GlowingEdges { .. }) => Kind::GlowingEdges,
+            Self::Filter(Filter::Pinch { .. }) => Kind::Pinch,
+            Self::Filter(Filter::Spherize { .. }) => Kind::Spherize,
+            Self::Filter(Filter::Ripple { .. }) => Kind::Ripple,
+            Self::Filter(Filter::Sharpen) => Kind::Sharpen,
+            Self::Filter(Filter::SharpenMore) => Kind::SharpenMore,
+            Self::Filter(Filter::SurfaceBlur { .. }) => Kind::SurfaceBlur,
+            Self::Filter(Filter::RadialBlur { .. }) => Kind::RadialBlur,
+            Self::Filter(Filter::Clouds { .. }) => Kind::Clouds,
+            Self::Filter(Filter::DifferenceClouds { .. }) => Kind::DifferenceClouds,
+            Self::Filter(Filter::PosterEdges { .. }) => Kind::PosterEdges,
+            Self::Filter(Filter::Grain { .. }) => Kind::Grain,
+            Self::Filter(Filter::Fragment { .. }) => Kind::Fragment,
             Self::Filter(Filter::Average) => Kind::Average,
             Self::Filter(Filter::FindEdges) => Kind::FindEdges,
             Self::Filter(Filter::Solarize) => Kind::Solarize,
@@ -585,7 +1672,374 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(value) = adjustments::value(f, key)
+        {
+            return Some(value);
+        }
+        if let Self::Filter(f) = self
+            && let Some(c) = f.center()
+        {
+            match key {
+                "center_x" => return Some(Value::Number(c[0])),
+                "center_y" => return Some(Value::Number(c[1])),
+                _ => {}
+            }
+        }
+
         match (self, key) {
+            (Self::Filter(Filter::ColoredPencil { width: v, .. }), "width") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColoredPencil { pressure: v, .. }), "pressure") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColoredPencil { brightness: v, .. }), "brightness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColoredPencil { paper: v, .. }), "paper") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::ColoredPencil { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::DryBrush { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::DryBrush { detail: v, .. }), "detail") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::DryBrush { texture: v, .. }), "texture") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::DryBrush { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::PaintDaubs { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PaintDaubs { sharpness: v, .. }), "sharpness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PaintDaubs { style: v, .. }), "style") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::SmudgeStick { length: v, .. }), "length") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::SmudgeStick { highlight: v, .. }), "highlight") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::SmudgeStick { intensity: v, .. }), "intensity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AngledStrokes { balance: v, .. }), "balance") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AngledStrokes { length: v, .. }), "length") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AngledStrokes { sharpness: v, .. }), "sharpness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Crosshatch { length: v, .. }), "length") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Crosshatch { sharpness: v, .. }), "sharpness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Crosshatch { strength: v, .. }), "strength") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::DarkStrokes { balance: v, .. }), "balance") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::DarkStrokes { black: v, .. }), "black") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::DarkStrokes { white: v, .. }), "white") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Spatter { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Spatter { smoothness: v, .. }), "smoothness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Spatter { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+
+            (Self::Filter(Filter::ColorHalftone { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColorHalftone { cyan: v, .. }), "cyan") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColorHalftone { magenta: v, .. }), "magenta") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColorHalftone { yellow: v, .. }), "yellow") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ColorHalftone { black: v, .. }), "black") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Crystallize { size: v, .. }), "cell_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Crystallize { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Mezzotint { pattern: v, .. }), "pattern") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Mezzotint { scale: v, .. }), "pattern_scale") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Mezzotint { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Mezzotint { monochrome: v, .. }), "monochrome") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Pointillize { size: v, .. }), "cell_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Pointillize { dot: v, .. }), "dot") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Pointillize { color: v, .. }), "color") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::Pointillize { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::StainedGlass { size: v, .. }), "cell_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::StainedGlass { width: v, .. }), "width") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::StainedGlass { light: v, .. }), "light") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::StainedGlass { color: v, .. }), "color") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::StainedGlass { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::MosaicTiles { size: v, .. }), "tile_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::MosaicTiles { grout: v, .. }), "grout") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::MosaicTiles { lighten: v, .. }), "lighten") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Diffuse { radius: v, .. }), "radius") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Diffuse { mode: v, .. }), "mode") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Diffuse { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Cutout { levels: v, .. }), "levels") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Cutout { simplicity: v, .. }), "simplicity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Cutout { fidelity: v, .. }), "fidelity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::FilmGrain { grain: v, .. }), "grain") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::FilmGrain { highlight: v, .. }), "highlight") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::FilmGrain { intensity: v, .. }), "intensity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::FilmGrain { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::AccentedEdges { width: v, .. }), "width") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AccentedEdges { brightness: v, .. }), "brightness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::AccentedEdges { smoothness: v, .. }), "smoothness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::InkOutlines { length: v, .. }), "length") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::InkOutlines { dark: v, .. }), "dark") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::InkOutlines { light: v, .. }), "light") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Photocopy { detail: v, .. }), "detail") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Photocopy { darkness: v, .. }), "darkness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Photocopy { low: v, .. }), "low") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::Photocopy { high: v, .. }), "high") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::HalftonePattern { size: v, .. }), "size") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::HalftonePattern { contrast: v, .. }), "contrast") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::HalftonePattern { pattern: v, .. }), "pattern") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::HalftonePattern { low: v, .. }), "low") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::HalftonePattern { high: v, .. }), "high") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::Patchwork { square: v, .. }), "square") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Patchwork { relief: v, .. }), "relief") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Craquelure { spacing: v, .. }), "spacing") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Craquelure { depth: v, .. }), "depth") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Craquelure { brightness: v, .. }), "brightness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Craquelure { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::PolarCoordinates { to_polar, .. }), "to_polar") => {
+                Some(Value::Choice(usize::from(!to_polar)))
+            }
+            (Self::Filter(Filter::ZigZag { amount, .. }), "amount") => Some(Value::Number(*amount)),
+            (Self::Filter(Filter::ZigZag { radius, .. }), "radius") => Some(Value::Number(*radius)),
+            (Self::Filter(Filter::ZigZag { ridges, .. }), "ridges") => {
+                Some(Value::Number(f32::from(*ridges)))
+            }
+            (Self::Filter(Filter::ZigZag { style, .. }), "style") => {
+                Some(Value::Choice(*style as usize))
+            }
+            (Self::Filter(Filter::Fibers { seed, .. }), "seed") => {
+                Some(Value::Number(f32::from(*seed)))
+            }
+            (Self::Filter(Filter::Fibers { variance, .. }), "variance") => {
+                Some(Value::Number(*variance))
+            }
+            (Self::Filter(Filter::Fibers { strength, .. }), "strength") => {
+                Some(Value::Number(*strength))
+            }
+            (Self::Filter(Filter::Fibers { low, .. }), "low") => Some(Value::Color(*low)),
+            (Self::Filter(Filter::Fibers { high, .. }), "high") => Some(Value::Color(*high)),
+            (Self::Filter(Filter::GlowingEdges { width, .. }), "width") => {
+                Some(Value::Number(*width))
+            }
+            (Self::Filter(Filter::GlowingEdges { brightness, .. }), "brightness") => {
+                Some(Value::Number(*brightness))
+            }
+            (Self::Filter(Filter::GlowingEdges { smoothness, .. }), "smoothness") => {
+                Some(Value::Number(*smoothness))
+            }
+
+            (Self::Filter(Filter::DustScratches { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::DustScratches { threshold: v, .. }), "threshold") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::ReduceNoise { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::ReduceNoise { strength: v, .. }), "strength") => {
+                Some(Value::Number(*v))
+            }
+            (
+                Self::Filter(Filter::ReduceNoise {
+                    preserve_details: v,
+                    ..
+                }),
+                "preserve_details",
+            ) => Some(Value::Number(*v)),
+            (Self::Filter(Filter::ReduceNoise { color_noise: v, .. }), "color_noise") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::ReduceNoise { sharpen: v, .. }), "sharpen") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Pinch { amount: v, .. }), "strength") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Pinch { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Spherize { amount: v, .. }), "strength") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Spherize { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Ripple { amplitude: v, .. }), "amplitude") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Ripple { wavelength: v, .. }), "wavelength") => {
+                Some(Value::Number(*v))
+            }
+
+            (Self::Filter(Filter::Fragment { distance }), "distance") => {
+                Some(Value::Number(*distance))
+            }
+            (Self::Filter(Filter::SurfaceBlur { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::SurfaceBlur { threshold: v, .. }), "threshold") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::RadialBlur { amount: v, .. }), "amount") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::RadialBlur { samples: v, .. }), "samples") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::RadialBlur { zoom: v, .. }), "zoom") => {
+                Some(Value::Choice(usize::from(*v)))
+            }
+            (Self::Filter(Filter::PosterEdges { thickness: v, .. }), "thickness") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::PosterEdges { intensity: v, .. }), "intensity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PosterEdges { levels: v, .. }), "levels") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Grain { amount: v, .. }), "strength") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Grain { contrast: v, .. }), "contrast") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Grain { size: v, .. }), "grain_size") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Grain { seed: v, .. }), "seed") => Some(Value::Number(*v as f32)),
+            (Self::Filter(Filter::Grain { monochrome: v, .. }), "monochrome") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Grain { style: v, .. }), "style") => Some(Value::Choice(
+                GrainStyle::ALL
+                    .iter()
+                    .position(|e| e == v)
+                    .expect("grain type"),
+            )),
+            (Self::Filter(Filter::Clouds { seed: v, .. }), "seed") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::Clouds { scale: v, .. }), "scale") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Clouds { low: v, .. }), "low") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::Clouds { high: v, .. }), "high") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::DifferenceClouds { seed: v, .. }), "seed") => {
+                Some(Value::Number(*v as f32))
+            }
+            (Self::Filter(Filter::DifferenceClouds { scale: v, .. }), "scale") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::DifferenceClouds { low: v, .. }), "low") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::DifferenceClouds { high: v, .. }), "high") => {
+                Some(Value::Color(*v))
+            }
             (Self::Filter(Filter::Emboss { angle: v, .. }), "angle") => Some(Value::Number(*v)),
             (Self::Filter(Filter::Emboss { height: v, .. }), "height") => {
                 Some(Value::Number(*v as f32))
@@ -823,7 +2277,645 @@ impl Operation {
         {
             return Err("Input black must be below input white".into());
         }
+        if let Self::Filter(f) = self
+            && let Some(c) = f.center_mut()
+            && let Value::Number(n) = value
+        {
+            match key {
+                "center_x" => {
+                    c[0] = n;
+                    return Ok(());
+                }
+                "center_y" => {
+                    c[1] = n;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        if let Self::Filter(f) = self
+            && adjustments::set(f, key, value)
+        {
+            return Ok(());
+        }
         match (self, key, value) {
+            (Self::Filter(Filter::ColoredPencil { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::ColoredPencil { pressure: v, .. }),
+                "pressure",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::ColoredPencil { brightness: v, .. }),
+                "brightness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ColoredPencil { paper: v, .. }), "paper", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ColoredPencil { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Expected an integer seed".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::DryBrush { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DryBrush { detail: v, .. }), "detail", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DryBrush { texture: v, .. }), "texture", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DryBrush { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Expected an integer seed".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::PaintDaubs { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::PaintDaubs { sharpness: v, .. }),
+                "sharpness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PaintDaubs { style: v, .. }), "style", Value::Choice(n)) => {
+                *v = DaubStyle::ALL[n];
+            }
+            (Self::Filter(Filter::SmudgeStick { length: v, .. }), "length", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::SmudgeStick { highlight: v, .. }),
+                "highlight",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::SmudgeStick { intensity: v, .. }),
+                "intensity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::AngledStrokes { balance: v, .. }),
+                "balance",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::AngledStrokes { length: v, .. }), "length", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::AngledStrokes { sharpness: v, .. }),
+                "sharpness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Crosshatch { length: v, .. }), "length", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Crosshatch { sharpness: v, .. }),
+                "sharpness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Crosshatch { strength: v, .. }),
+                "strength",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DarkStrokes { balance: v, .. }), "balance", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DarkStrokes { black: v, .. }), "black", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DarkStrokes { white: v, .. }), "white", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Spatter { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Spatter { smoothness: v, .. }),
+                "smoothness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Spatter { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Expected an integer seed".into());
+                }
+                *v = n as u16;
+            }
+
+            (Self::Filter(Filter::ColorHalftone { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ColorHalftone { cyan: v, .. }), "cyan", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::ColorHalftone { magenta: v, .. }),
+                "magenta",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ColorHalftone { yellow: v, .. }), "yellow", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ColorHalftone { black: v, .. }), "black", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Crystallize { size: v, .. }), "cell_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral cell_size required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Crystallize { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Mezzotint { pattern: v, .. }), "pattern", Value::Choice(n)) => {
+                *v = MezzotintStyle::ALL[n];
+            }
+            (
+                Self::Filter(Filter::Mezzotint { scale: v, .. }),
+                "pattern_scale",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Mezzotint { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::Mezzotint { monochrome: v, .. }),
+                "monochrome",
+                Value::Boolean(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Pointillize { size: v, .. }), "cell_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral cell_size required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Pointillize { dot: v, .. }), "dot", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Pointillize { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Pointillize { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::StainedGlass { size: v, .. }), "cell_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral cell_size required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::StainedGlass { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::StainedGlass { light: v, .. }), "light", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::StainedGlass { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::StainedGlass { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::MosaicTiles { size: v, .. }), "tile_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral tile_size required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::MosaicTiles { grout: v, .. }), "grout", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::MosaicTiles { lighten: v, .. }),
+                "lighten",
+                Value::Boolean(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Diffuse { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral radius required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Diffuse { mode: v, .. }), "mode", Value::Choice(n)) => {
+                *v = DiffuseMode::ALL[n];
+            }
+            (Self::Filter(Filter::Diffuse { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Cutout { levels: v, .. }), "levels", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral levels required".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::Cutout { simplicity: v, .. }),
+                "simplicity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Cutout { fidelity: v, .. }), "fidelity", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::FilmGrain { grain: v, .. }), "grain", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::FilmGrain { highlight: v, .. }),
+                "highlight",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::FilmGrain { intensity: v, .. }),
+                "intensity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::FilmGrain { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::AccentedEdges { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::AccentedEdges { brightness: v, .. }),
+                "brightness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::AccentedEdges { smoothness: v, .. }),
+                "smoothness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::InkOutlines { length: v, .. }), "length", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::InkOutlines { dark: v, .. }), "dark", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::InkOutlines { light: v, .. }), "light", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Photocopy { detail: v, .. }), "detail", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Photocopy { darkness: v, .. }), "darkness", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Photocopy { low: v, .. }), "low", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Photocopy { high: v, .. }), "high", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::HalftonePattern { size: v, .. }), "size", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::HalftonePattern { contrast: v, .. }),
+                "contrast",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::HalftonePattern { pattern: v, .. }),
+                "pattern",
+                Value::Choice(n),
+            ) => {
+                *v = HalftoneStyle::ALL[n];
+            }
+            (Self::Filter(Filter::HalftonePattern { low: v, .. }), "low", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::HalftonePattern { high: v, .. }), "high", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Patchwork { square: v, .. }), "square", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral square required".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Patchwork { relief: v, .. }), "relief", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Craquelure { spacing: v, .. }), "spacing", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Craquelure { depth: v, .. }), "depth", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Craquelure { brightness: v, .. }),
+                "brightness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Craquelure { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Integral seed required".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::PolarCoordinates { to_polar, .. }),
+                "to_polar",
+                Value::Choice(n),
+            ) => *to_polar = n == 0,
+            (Self::Filter(Filter::ZigZag { amount, .. }), "amount", Value::Number(n)) => {
+                *amount = n
+            }
+            (Self::Filter(Filter::ZigZag { radius, .. }), "radius", Value::Number(n)) => {
+                *radius = n
+            }
+            (Self::Filter(Filter::ZigZag { ridges, .. }), "ridges", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Ridges must be integral".into());
+                }
+                *ridges = n as u8;
+            }
+            (Self::Filter(Filter::ZigZag { style, .. }), "style", Value::Choice(n)) => {
+                *style = ZigZagStyle::ALL[n]
+            }
+            (Self::Filter(Filter::Fibers { seed, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Seed must be integral".into());
+                }
+                *seed = n as u16;
+            }
+            (Self::Filter(Filter::Fibers { variance, .. }), "variance", Value::Number(n)) => {
+                *variance = n
+            }
+            (Self::Filter(Filter::Fibers { strength, .. }), "strength", Value::Number(n)) => {
+                *strength = n
+            }
+            (Self::Filter(Filter::Fibers { low, .. }), "low", Value::Color(n)) => *low = n,
+            (Self::Filter(Filter::Fibers { high, .. }), "high", Value::Color(n)) => *high = n,
+            (Self::Filter(Filter::GlowingEdges { width, .. }), "width", Value::Number(n)) => {
+                *width = n
+            }
+            (
+                Self::Filter(Filter::GlowingEdges { brightness, .. }),
+                "brightness",
+                Value::Number(n),
+            ) => *brightness = n,
+            (
+                Self::Filter(Filter::GlowingEdges { smoothness, .. }),
+                "smoothness",
+                Value::Number(n),
+            ) => *smoothness = n,
+
+            (Self::Filter(Filter::DustScratches { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::DustScratches { threshold: v, .. }),
+                "threshold",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::ReduceNoise { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::ReduceNoise { strength: v, .. }),
+                "strength",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::ReduceNoise {
+                    preserve_details: v,
+                    ..
+                }),
+                "preserve_details",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::ReduceNoise { color_noise: v, .. }),
+                "color_noise",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::ReduceNoise { sharpen: v, .. }), "sharpen", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Pinch { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Pinch { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Spherize { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Spherize { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Ripple { amplitude: v, .. }), "amplitude", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Ripple { wavelength: v, .. }),
+                "wavelength",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+
+            (Self::Filter(Filter::Fragment { distance }), "distance", Value::Number(n)) => {
+                *distance = n
+            }
+            (Self::Filter(Filter::SurfaceBlur { radius: v, .. }), "radius", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::SurfaceBlur { threshold: v, .. }),
+                "threshold",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::RadialBlur { amount: v, .. }), "amount", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::RadialBlur { samples: v, .. }), "samples", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::RadialBlur { zoom: v, .. }), "zoom", Value::Choice(n)) => {
+                *v = n == 1;
+            }
+            (
+                Self::Filter(Filter::PosterEdges { thickness: v, .. }),
+                "thickness",
+                Value::Number(n),
+            ) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (
+                Self::Filter(Filter::PosterEdges { intensity: v, .. }),
+                "intensity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PosterEdges { levels: v, .. }), "levels", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Grain { amount: v, .. }), "strength", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Grain { contrast: v, .. }), "contrast", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Grain { size: v, .. }), "grain_size", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Grain { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::Grain { monochrome: v, .. }),
+                "monochrome",
+                Value::Boolean(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Grain { style: v, .. }), "style", Value::Choice(n)) => {
+                *v = GrainStyle::ALL[n];
+            }
+            (Self::Filter(Filter::Clouds { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Clouds { scale: v, .. }), "scale", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Clouds { low: v, .. }), "low", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Clouds { high: v, .. }), "high", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DifferenceClouds { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::DifferenceClouds { scale: v, .. }),
+                "scale",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DifferenceClouds { low: v, .. }), "low", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::DifferenceClouds { high: v, .. }), "high", Value::Color(n)) => {
+                *v = n;
+            }
             (Self::Filter(Filter::Emboss { angle: v, .. }), "angle", Value::Number(n)) => {
                 *v = n;
             }
@@ -1197,14 +3289,28 @@ impl Operation {
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
         for key in [
+            "shadow_radius",
+            "highlight_radius",
             "radius",
             "size",
             "distance",
             "width",
             "block_size",
+            "scale",
+            "grain_size",
+            "thickness",
             "height",
             "amplitude",
             "wavelength",
+            "smoothness",
+            "simplicity",
+            "length",
+            "square",
+            "spacing",
+            "cell_size",
+            "tile_size",
+            "grout",
+            "pattern_scale",
             "x",
             "y",
         ] {
@@ -1216,7 +3322,17 @@ impl Operation {
                             if matches!(
                                 self,
                                 Self::Filter(
-                                    Filter::Minimum { .. }
+                                    Filter::Crystallize { .. }
+                                        | Filter::Pointillize { .. }
+                                        | Filter::StainedGlass { .. }
+                                        | Filter::MosaicTiles { .. }
+                                        | Filter::Diffuse { .. }
+                                        | Filter::Patchwork { .. }
+                                        | Filter::DustScratches { .. }
+                                        | Filter::ReduceNoise { .. }
+                                        | Filter::SurfaceBlur { .. }
+                                        | Filter::PosterEdges { .. }
+                                        | Filter::Minimum { .. }
                                         | Filter::Maximum { .. }
                                         | Filter::Emboss { .. }
                                         | Filter::Offset { .. }
@@ -1225,26 +3341,76 @@ impl Operation {
                                         | Filter::Mosaic { .. }
                                 )
                             ) {
-                                (n * scale)
-                                    .round()
-                                    .max(if matches!(key, "block_size" | "height") {
+                                (n * scale).round().max(
+                                    if matches!(key, "block_size" | "height" | "square") {
+                                        1.
+                                    } else if key == "cell_size" {
+                                        2.
+                                    } else if key == "tile_size" {
                                         1.
                                     } else if matches!(key, "x" | "y") {
                                         -16384.
                                     } else {
                                         0.
-                                    })
+                                    },
+                                )
                             } else {
-                                (n * scale).max(if key == "wavelength" {
-                                    1.
-                                } else {
-                                    f32::NEG_INFINITY
-                                })
+                                (n * scale).max(
+                                    if matches!(key, "wavelength" | "scale")
+                                        || (key == "size"
+                                            && matches!(
+                                                self,
+                                                Self::Filter(Filter::HalftonePattern { .. })
+                                            ))
+                                    {
+                                        1.
+                                    } else if key == "pattern_scale" {
+                                        0.05
+                                    } else if key == "radius"
+                                        && matches!(
+                                            self,
+                                            Self::Filter(Filter::ColorHalftone { .. })
+                                        )
+                                    {
+                                        0.5
+                                    } else if key == "spacing"
+                                        || (key == "length"
+                                            && matches!(
+                                                self,
+                                                Self::Filter(Filter::Crosshatch { .. })
+                                            ))
+                                    {
+                                        2.
+                                    } else if matches!(key, "length" | "grain_size")
+                                        || (key == "width"
+                                            && matches!(
+                                                self,
+                                                Self::Filter(
+                                                    Filter::ColoredPencil { .. }
+                                                        | Filter::GlowingEdges { .. }
+                                                        | Filter::AccentedEdges { .. }
+                                                )
+                                            ))
+                                    {
+                                        0.5
+                                    } else {
+                                        f32::NEG_INFINITY
+                                    },
+                                )
                             },
                         ),
                     )
                     .expect("downscaled parameter");
             }
+        }
+        // Most "amount" parameters are dimensionless. ZigZag's displacement
+        // is in pixels, so it must shrink together with its support radius.
+        if matches!(self, Self::Filter(Filter::ZigZag { .. }))
+            && let Some(Value::Number(amount)) = self.value("amount")
+        {
+            result
+                .set_value("amount", Value::Number(amount * scale))
+                .expect("downscaled displacement");
         }
         result
     }

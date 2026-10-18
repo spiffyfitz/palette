@@ -1,5 +1,6 @@
 //! Shared point-filter mathematics for both fast point compositing and spatial
-//! pipelines. Alpha is coverage and is never changed by these adjustments.
+//! pipelines. Point adjustments preserve alpha; procedural generators use the
+//! spatial path because they can introduce new coverage.
 use crate::document::{Filter, NoiseDistribution};
 
 fn linear(v: f32) -> f32 {
@@ -53,6 +54,42 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
+        Filter::ColoredPencil { .. }
+        | Filter::DryBrush { .. }
+        | Filter::PaintDaubs { .. }
+        | Filter::SmudgeStick { .. }
+        | Filter::AngledStrokes { .. }
+        | Filter::Crosshatch { .. }
+        | Filter::DarkStrokes { .. }
+        | Filter::Spatter { .. } => return pixel,
+        Filter::ColorBalance { .. }
+        | Filter::PhotoFilter { .. }
+        | Filter::ChannelMixer { .. }
+        | Filter::GradientMap { .. }
+        | Filter::SelectiveColor { .. } => return super::adjustments::point(filter, pixel),
+        Filter::ShadowsHighlights { .. } | Filter::Blur | Filter::BlurMore => return pixel,
+        Filter::Mezzotint { .. } => return super::pixelate::mezzotint(filter, pixel, x, y),
+        Filter::ColorHalftone { .. }
+        | Filter::Crystallize { .. }
+        | Filter::Facet
+        | Filter::Pointillize { .. }
+        | Filter::StainedGlass { .. }
+        | Filter::MosaicTiles { .. }
+        | Filter::Diffuse { .. } => return pixel,
+        Filter::FilmGrain { .. } | Filter::Craquelure { .. } => {
+            return super::artistic::point(filter, pixel, x, y);
+        }
+        Filter::Cutout { .. }
+        | Filter::AccentedEdges { .. }
+        | Filter::InkOutlines { .. }
+        | Filter::Photocopy { .. }
+        | Filter::HalftonePattern { .. }
+        | Filter::Patchwork { .. } => return pixel,
+        Filter::PolarCoordinates { .. }
+        | Filter::ZigZag { .. }
+        | Filter::Fibers { .. }
+        | Filter::GlowingEdges { .. } => return pixel,
+        Filter::Grain { .. } => return super::creative::grain(pixel, x, y, filter),
         Filter::Levels {
             black,
             white,
@@ -174,7 +211,21 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
             input.map(|v| (v * steps).round() / steps)
         }
         // Zero-radius neighborhood operations can use the point fast path.
-        Filter::Average
+        Filter::Despeckle
+        | Filter::DustScratches { .. }
+        | Filter::ReduceNoise { .. }
+        | Filter::Pinch { .. }
+        | Filter::Spherize { .. }
+        | Filter::Ripple { .. }
+        | Filter::Sharpen
+        | Filter::SharpenMore
+        | Filter::Clouds { .. }
+        | Filter::DifferenceClouds { .. }
+        | Filter::SurfaceBlur { .. }
+        | Filter::RadialBlur { .. }
+        | Filter::PosterEdges { .. }
+        | Filter::Fragment { .. }
+        | Filter::Average
         | Filter::FindEdges
         | Filter::Emboss { .. }
         | Filter::UnsharpMask { .. }

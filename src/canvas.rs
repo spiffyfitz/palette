@@ -202,6 +202,17 @@ impl PaletteApp {
                 let point = image_point(p, canvas, zoom);
                 [point[0].floor() as u32, point[1].floor() as u32]
             });
+        self.processing_origin_interaction(
+            &painter,
+            canvas,
+            pointer,
+            [
+                hovered,
+                ctx.input(|i| i.pointer.primary_pressed()),
+                ctx.input(|i| i.pointer.primary_down()),
+                space || middle,
+            ],
+        );
         let drawing_allowed = self.close_pending_none()
             && self.current().feather_preview.is_none()
             && self.current().selection_brush_draft.is_none()
@@ -384,7 +395,10 @@ impl PaletteApp {
         );
         self.selection_interaction(ui, &painter, canvas, pointer, [down, released]);
         self.text_interaction(&painter, canvas, pointer, down, released);
-        if self.cursor.is_some() && (self.tool.paints() || self.tool == Tool::SelectBrush) && !space
+        if self.close_pending_none()
+            && self.cursor.is_some()
+            && (self.tool.paints() || self.tool == Tool::SelectBrush)
+            && !space
         {
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             if let Some(point) = pointer {

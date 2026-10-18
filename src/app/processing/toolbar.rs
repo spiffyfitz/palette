@@ -195,6 +195,16 @@ fn editor_controls(
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
+        if matches!(&d.operation, Operation::Filter(f) if f.center().is_some())
+            && icons::button(
+                ui, Icon::Move,
+                "Place distortion origin: click or drag on the layer; Space or middle-drag pans. Origin X/Y accept exact values.",
+                d.pick_origin, true, Vec2::splat(24.),
+            ).clicked()
+        {
+            d.pick_origin = !d.pick_origin;
+            d.origin_drag = false;
+        }
         let selected_parameter = d
             .operation
             .kind()
@@ -282,6 +292,12 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if matches!(&d.operation, Operation::Filter(f) if f.center().is_some()) && ui.button("Reset origin").clicked() {
+                    let defaults = d.operation.kind().default_operation();
+                    for key in ["center_x", "center_y"] { d.operation.set_value(key, defaults.value(key).expect("origin")).expect("default origin"); }
+                    changed = true;
+                    ui.close();
+                }
                 if ui
                     .add_enabled(d.instance.is_some(), egui::Button::new("Remove"))
                     .on_hover_text("Remove this filter/effect; source pixels are preserved")
@@ -317,97 +333,189 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
     selector.response.on_hover_text("Choose a setting to edit");
     let p = parameters[d.parameter];
     ui.push_id(p.key, |ui| {
-        match (
-            p.kind,
-            d.operation.value(p.key).expect("registered parameter"),
-        ) {
-            (ParameterType::Number { min, max, step }, Value::Number(mut value)) => {
-                let (mut min, mut max) = (min, max);
-                if let Operation::Filter(Filter::Levels { black, white, .. }) = d.operation {
-                    if p.key == "black" {
-                        max = max.min(f32::from(white) - 1.);
-                    }
-                    if p.key == "white" {
-                        min = min.max(f32::from(black) + 1.);
-                    }
-                }
-                let percent = matches!(
-                    p.key,
-                    "opacity"
-                        | "spread"
-                        | "brightness"
-                        | "contrast"
-                        | "saturation"
-                        | "lightness"
-                        | "strength"
-                );
-                let scale = if percent { 100. } else { 1. };
-                value *= scale;
-                ui.spacing_mut().slider_width = if compact { 60. } else { 100. };
-                let display_step = step * scale;
-                let decimals = if display_step >= 1. {
-                    0
-                } else if display_step >= 0.1 {
-                    1
-                } else {
-                    2
-                };
-                let mut slider = egui::Slider::new(&mut value, min * scale..=max * scale)
-                    .step_by(f64::from(display_step))
-                    .max_decimals(decimals);
-                if percent {
-                    slider = slider.suffix("%");
-                }
-                let response = ui.add(slider).on_hover_text(p.label);
-                let mut accepted = false;
-                if response.changed() {
-                    // Integer model fields cannot receive fractional typed input.
-                    let number = if step >= 1. {
-                        (value / scale).round()
-                    } else {
-                        value / scale
-                    };
-                    accepted = d.operation.set_value(p.key, Value::Number(number)).is_ok();
-                }
-                accepted
-            }
-            (ParameterType::Color, Value::Color(mut color)) => {
-                let changed = ui.color_edit_button_srgb(&mut color).changed();
-                if changed {
-                    d.operation
-                        .set_value(p.key, Value::Color(color))
-                        .expect("color");
-                }
-                changed
-            }
-            (ParameterType::Choice(options), Value::Choice(mut selected)) => {
-                let before = selected;
-                egui::ComboBox::from_id_salt("processing-choice")
-                    .width(88.)
-                    .selected_text(options[selected])
-                    .show_ui(ui, |ui| {
-                        for (index, label) in options.iter().enumerate() {
-                            ui.selectable_value(&mut selected, index, *label);
+        let stochastic = !(p.key == "seed"
+            && matches!(
+                d.operation,
+                Operation::Filter(Filter::Diffuse {
+                    mode: palette_core::document::DiffuseMode::Anisotropic,
+                    ..
+                })
+            ));
+        let channel_active = !matches!(
+            d.operation,
+            Operation::Filter(Filter::ChannelMixer {
+                monochrome: true,
+                ..
+            })
+        ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
+        ui.add_enabled_ui(stochastic && channel_active, |ui| {
+            match (
+                p.kind,
+                d.operation.value(p.key).expect("registered parameter"),
+            ) {
+                (ParameterType::Number { min, max, step }, Value::Number(mut value)) => {
+                    let (mut min, mut max) = (min, max);
+                    if let Operation::Filter(Filter::Levels { black, white, .. }) = d.operation {
+                        if p.key == "black" {
+                            max = max.min(f32::from(white) - 1.);
                         }
-                    });
-                if selected != before {
-                    d.operation
-                        .set_value(p.key, Value::Choice(selected))
-                        .expect("registered choice");
+                        if p.key == "white" {
+                            min = min.max(f32::from(black) + 1.);
+                        }
+                    }
+                    let adjustment_percent = matches!(
+                        d.operation,
+                        Operation::Filter(
+                            Filter::ColorBalance { .. }
+                                | Filter::ChannelMixer { .. }
+                                | Filter::SelectiveColor { .. }
+                        )
+                    ) || matches!(
+                        p.key,
+                        "density"
+                            | "midpoint"
+                            | "shadows"
+                            | "highlights"
+                            | "shadow_width"
+                            | "highlight_width"
+                    );
+                    let painting_percent = matches!(
+                        d.operation.kind(),
+                        Kind::ColoredPencil
+                            | Kind::DryBrush
+                            | Kind::PaintDaubs
+                            | Kind::SmudgeStick
+                            | Kind::AngledStrokes
+                            | Kind::Crosshatch
+                            | Kind::DarkStrokes
+                            | Kind::Spatter
+                    ) && matches!(
+                        p.kind,
+                        ParameterType::Number {
+                            min: 0.,
+                            max: 1.,
+                            ..
+                        }
+                    );
+                    let percent = painting_percent
+                        || adjustment_percent
+                        || matches!(
+                            p.key,
+                            "center_x"
+                                | "center_y"
+                                | "opacity"
+                                | "spread"
+                                | "brightness"
+                                | "contrast"
+                                | "saturation"
+                                | "lightness"
+                                | "strength"
+                                | "preserve_details"
+                                | "color_noise"
+                                | "sharpen"
+                                | "grain"
+                                | "highlight"
+                                | "fidelity"
+                                | "dark"
+                                | "light"
+                                | "detail"
+                                | "darkness"
+                                | "depth"
+                                | "dot"
+                        )
+                        || (p.key == "intensity"
+                            && matches!(d.operation, Operation::Filter(Filter::FilmGrain { .. })));
+                    let scale = if percent { 100. } else { 1. };
+                    value *= scale;
+                    ui.spacing_mut().slider_width = if compact { 60. } else { 100. };
+                    let display_step = step * scale;
+                    let decimals = if display_step >= 1. {
+                        0
+                    } else if display_step >= 0.1 {
+                        1
+                    } else {
+                        2
+                    };
+                    let mut slider = egui::Slider::new(&mut value, min * scale..=max * scale)
+                        .step_by(f64::from(display_step))
+                        .max_decimals(decimals);
+                    if percent {
+                        slider = slider.suffix("%");
+                    }
+                    let response = ui.add(slider).on_hover_text(p.label);
+                    let mut accepted = false;
+                    if response.changed() {
+                        // Integer model fields cannot receive fractional typed input.
+                        let number = if step >= 1. {
+                            (value / scale).round()
+                        } else {
+                            value / scale
+                        };
+                        let before = d.operation.value(p.key);
+                        // Percentage display conversion can report a slider change
+                        // on idle frames (e.g. 0.6 × 100). Only a real model change
+                        // may invalidate the preview and cancel its worker ticket.
+                        accepted = d.operation.set_value(p.key, Value::Number(number)).is_ok()
+                            && d.operation.value(p.key) != before;
+                    }
+                    accepted
                 }
-                selected != before
-            }
-            (ParameterType::Boolean, Value::Boolean(mut value)) => {
-                let changed = ui.checkbox(&mut value, p.label).changed();
-                if changed {
-                    d.operation
-                        .set_value(p.key, Value::Boolean(value))
-                        .expect("boolean");
+                (ParameterType::Color, Value::Color(mut color)) => {
+                    let changed = ui.color_edit_button_srgb(&mut color).changed();
+                    if changed {
+                        d.operation
+                            .set_value(p.key, Value::Color(color))
+                            .expect("color");
+                    }
+                    changed
                 }
-                changed
+                (ParameterType::Choice(options), Value::Choice(mut selected)) => {
+                    let before = selected;
+                    egui::ComboBox::from_id_salt("processing-choice")
+                        .width(88.)
+                        .truncate()
+                        .selected_text(if compact && p.key == "to_polar" {
+                            if selected == 0 {
+                                "To Polar"
+                            } else {
+                                "To Rectangular"
+                            }
+                        } else {
+                            options[selected]
+                        })
+                        .show_ui(ui, |ui| {
+                            for (index, label) in options.iter().enumerate() {
+                                ui.selectable_value(&mut selected, index, *label);
+                            }
+                        });
+                    if selected != before {
+                        d.operation
+                            .set_value(p.key, Value::Choice(selected))
+                            .expect("registered choice");
+                    }
+                    selected != before
+                }
+                (ParameterType::Boolean, Value::Boolean(mut value)) => {
+                    let label = if compact && p.key == "preserve_luminosity" {
+                        "On"
+                    } else {
+                        p.label
+                    };
+                    let changed = ui
+                        .checkbox(&mut value, label)
+                        .on_hover_text(p.label)
+                        .changed();
+                    if changed {
+                        d.operation
+                            .set_value(p.key, Value::Boolean(value))
+                            .expect("boolean");
+                    }
+                    changed
+                }
+                _ => unreachable!("registered parameter type"),
             }
-            _ => unreachable!("registered parameter type"),
-        }
+        })
+        .inner
     })
     .inner
 }

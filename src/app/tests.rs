@@ -3326,6 +3326,635 @@ fn processing_document() -> Document {
     }
     doc
 }
+
+#[test]
+fn pixelate_controls_preview_cancel_apply_persist_undo_and_remove_with_saved_colors_and_choices() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::ColorHalftone,
+        Kind::Crystallize,
+        Kind::Facet,
+        Kind::Mezzotint,
+        Kind::Pointillize,
+        Kind::StainedGlass,
+        Kind::MosaicTiles,
+        Kind::Diffuse,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = if kind == Kind::Pointillize {
+            Color32::from_rgba_unmultiplied(240, 220, 180, 128)
+        } else {
+            Color32::from_rgb(240, 220, 180)
+        };
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        if matches!(kind, Kind::Mezzotint | Kind::Diffuse) {
+            let current = label_position(
+                &mut app,
+                &ctx,
+                if kind == Kind::Mezzotint {
+                    "Fine Dots"
+                } else {
+                    "Normal"
+                },
+            );
+            click_ui(&mut app, &ctx, current);
+            let choice = label_position(
+                &mut app,
+                &ctx,
+                if kind == Kind::Mezzotint {
+                    "Coarse Dots"
+                } else {
+                    "Anisotropic"
+                },
+            );
+            click_ui(&mut app, &ctx, choice);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog.as_ref().unwrap().operation.value(
+                    if kind == Kind::Mezzotint {
+                        "pattern"
+                    } else {
+                        "mode"
+                    }
+                ),
+                Some(Value::Choice(3))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if matches!(kind, Kind::Pointillize | Kind::StainedGlass) {
+            assert_eq!(
+                changed.value("color"),
+                Some(Value::Color(if kind == Kind::Pointillize {
+                    canvas_color
+                } else {
+                    [20, 40, 80]
+                }))
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pixelate.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn adjustment_controls_preview_cancel_apply_persist_undo_and_remove_with_saved_gradient_colors() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::ColorBalance,
+        Kind::PhotoFilter,
+        Kind::ChannelMixer,
+        Kind::GradientMap,
+        Kind::SelectiveColor,
+        Kind::ShadowsHighlights,
+        Kind::Blur,
+        Kind::BlurMore,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = if kind == Kind::GradientMap {
+            Color32::from_rgba_unmultiplied(240, 220, 180, 128)
+        } else {
+            Color32::from_rgb(240, 220, 180)
+        };
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if kind == Kind::GradientMap {
+            assert_eq!(changed.value("low"), Some(Value::Color([20, 40, 80])));
+            assert_eq!(changed.value("high"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("adjustments.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn painting_filters_preview_cancel_apply_save_and_remove_with_paper_color_and_daub_choices() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::ColoredPencil,
+        Kind::DryBrush,
+        Kind::PaintDaubs,
+        Kind::SmudgeStick,
+        Kind::AngledStrokes,
+        Kind::Crosshatch,
+        Kind::DarkStrokes,
+        Kind::Spatter,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = if kind == Kind::ColoredPencil {
+            Color32::from_rgba_unmultiplied(240, 220, 180, 128)
+        } else {
+            Color32::from_rgb(240, 220, 180)
+        };
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        if kind == Kind::PaintDaubs {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let brush_type = label_position(&mut app, &ctx, "Brush type");
+            click_ui(&mut app, &ctx, brush_type);
+            let round = label_position(&mut app, &ctx, "Round");
+            click_ui(&mut app, &ctx, round);
+            let diagonal = label_position(&mut app, &ctx, "Diagonal");
+            click_ui(&mut app, &ctx, diagonal);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("style"),
+                Some(Value::Choice(2))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if kind == Kind::ColoredPencil {
+            assert_eq!(changed.value("paper"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("painting.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn artistic_controls_preview_cancel_then_save_undo_and_remove_each_editable_filter() {
+    use palette_core::processing::{Kind, Value};
+    for kind in [
+        Kind::Cutout,
+        Kind::FilmGrain,
+        Kind::AccentedEdges,
+        Kind::InkOutlines,
+        Kind::Photocopy,
+        Kind::HalftonePattern,
+        Kind::Patchwork,
+        Kind::Craquelure,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = Color32::from_rgb(240, 220, 180);
+        let original = app.current().document.clone();
+        let parameter = kind.descriptor().parameters[0];
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let setting = scoped_label_bounds(&mut app, &ctx, parameter.label, true);
+        click_ui(
+            &mut app,
+            &ctx,
+            pos2(setting.right() + 95., setting.center().y),
+        );
+        wait_for_processing(&mut app, &ctx);
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert_ne!(
+            changed.value(parameter.key),
+            before.value(parameter.key),
+            "{kind:?}"
+        );
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        // Reuse the accepted draft value; Apply/Cancel, menu routing and field
+        // input above are exercised through real egui events.
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if matches!(kind, Kind::Photocopy | Kind::HalftonePattern) {
+            assert_eq!(changed.value("low"), Some(Value::Color([20, 40, 80])));
+            assert_eq!(changed.value("high"), Some(Value::Color([240, 220, 180])));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("artistic.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_one_undo() {
+    use palette_core::processing::{Kind, Operation, Value};
+    let near = |actual: Option<Value>, expected: f32| {
+        let Some(Value::Number(n)) = actual else {
+            panic!("numeric origin");
+        };
+        assert!((n - expected).abs() < 0.00001, "{n} vs {expected}");
+    };
+    for dpi in [1., 1.5, 2.] {
+        let ctx = Context::default();
+        ctx.set_pixels_per_point(dpi);
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.current_mut().document.active_mut().offset = [17, -9];
+        app.current_mut().zoom = 0.75;
+        app.current_mut().pan = vec2(-30., 25.);
+        let original = app.current().document.clone();
+        for kind in [
+            Kind::Twirl,
+            Kind::Wave,
+            Kind::Pinch,
+            Kind::Spherize,
+            Kind::Ripple,
+            Kind::RadialBlur,
+            Kind::PolarCoordinates,
+            Kind::ZigZag,
+        ] {
+            app.open_processing(kind, None);
+            wait_for_processing(&mut app, &ctx);
+            let initial_ticket = app.processing_dialog.as_ref().unwrap().ticket;
+            // These are exact source sample centers on the offset layer.
+            let a = app.image_rect.min + vec2(17. + 30.5, -9. + 40.5) * 0.75;
+            let b = app.image_rect.min + vec2(17. + 130.5, -9. + 80.5) * 0.75;
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(a), pointer(a, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(b)]);
+            let d = app.processing_dialog.as_ref().unwrap();
+            assert!(d.ticket > initial_ticket, "{kind:?}");
+            near(d.operation.value("center_x"), 130. / 179.);
+            near(d.operation.value("center_y"), 80. / 119.);
+            wait_for_processing(&mut app, &ctx); // still holding the mouse
+            let texture = app.processing_preview().unwrap().id();
+            assert!(canvas_uses_texture(&mut app, &ctx, texture));
+            assert!(app.current().document == original);
+            frame(&mut app, &ctx, vec![pointer(b, false)]);
+            // Toolbar input must not move the origin or paint through it.
+            let d = app.processing_dialog.as_ref().unwrap().operation.clone();
+            let p = app.processing_toolbar_rect.left_center() + vec2(10., 0.);
+            click_ui(&mut app, &ctx, p);
+            assert_eq!(app.processing_dialog.as_ref().unwrap().operation, d);
+            // Space-drag pans without moving the source-local center.
+            let key = egui::Event::Key {
+                key: egui::Key::Space,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![key, egui::Event::PointerMoved(b), pointer(b, true)],
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(b + vec2(8., 5.))],
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    pointer(b + vec2(8., 5.), false),
+                    egui::Event::Key {
+                        key: egui::Key::Space,
+                        physical_key: None,
+                        pressed: false,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            assert_eq!(app.processing_dialog.as_ref().unwrap().operation, d);
+            app.cancel_processing();
+            assert!(app.current().document == original);
+        }
+        app.open_processing(Kind::Twirl, None);
+        wait_for_processing(&mut app, &ctx);
+        let a = app.image_rect.min + vec2(17. + 20.5, -9. + 30.5) * 0.75;
+        let b = app.image_rect.min + vec2(17. + 90.5, -9. + 70.5) * 0.75;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(a), pointer(a, true)],
+        );
+        // The final release event can contain a position not seen while held.
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(b), pointer(b, false)],
+        );
+        near(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("center_x"),
+            90. / 179.,
+        );
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        assert!(saved.active().source == original.active().source);
+        near(
+            Operation::Filter(saved.active().filters[0].filter.clone()).value("center_y"),
+            70. / 119.,
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("origin.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.open_processing(Kind::Twirl, Some(saved.active().filters[0].id));
+        near(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("center_x"),
+            90. / 179.,
+        );
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let reset = label_position(&mut app, &ctx, "Reset origin");
+        click_ui(&mut app, &ctx, reset);
+        wait_for_processing(&mut app, &ctx);
+        near(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("center_x"),
+            0.5,
+        );
+        near(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("center_y"),
+            0.5,
+        );
+        assert!(app.current().document == saved);
+        app.processing_dialog.as_mut().unwrap().pick_origin = false;
+        let p = app.image_rect.center();
+        click_ui(&mut app, &ctx, p);
+        near(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("center_x"),
+            0.5,
+        );
+        app.cancel_processing();
+        assert!(app.current().document == saved);
+        app.open_processing(Kind::Twirl, Some(saved.active().filters[0].id));
+        app.new_document();
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.processing_dialog.is_none());
+    }
+}
 #[track_caller]
 fn wait_for_processing(app: &mut PaletteApp, ctx: &Context) {
     let deadline = std::time::Instant::now() + Duration::from_secs(8);
@@ -3669,25 +4298,92 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
         for entry in REGISTRY {
             app.cancel_processing();
             app.open_processing(entry.kind, None);
-            for _ in 0..4 {
-                let mut output = ctx.run_ui(
-                    RawInput {
-                        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 520.))),
-                        ..Default::default()
-                    },
-                    |ui| app.draw(ui),
-                );
-                output.textures_delta.clear();
+            if matches!(entry.kind, Kind::Mezzotint | Kind::Diffuse) {
+                let d = app.processing_dialog.as_mut().unwrap();
+                d.operation
+                    .set_value(
+                        if entry.kind == Kind::Mezzotint {
+                            "pattern"
+                        } else {
+                            "mode"
+                        },
+                        palette_core::processing::Value::Choice(if entry.kind == Kind::Mezzotint {
+                            8
+                        } else {
+                            3
+                        }),
+                    )
+                    .unwrap();
             }
-            assert!(
-                app.canvas_rect.contains_rect(app.processing_toolbar_rect),
-                "{:?}: {:?} outside {:?}",
-                entry.kind,
-                app.processing_toolbar_rect,
-                app.canvas_rect
-            );
-            assert!((app.processing_toolbar_rect.height() - 46.).abs() < 1.);
-            assert!(app.selection_toolbar_rect == Rect::NOTHING);
+            let parameters: Vec<_> = if entry.kind == Kind::ReduceNoise
+                || entry.parameters.iter().any(|p| p.key == "center_x")
+                || matches!(
+                    entry.kind,
+                    Kind::Fibers
+                        | Kind::GlowingEdges
+                        | Kind::Cutout
+                        | Kind::FilmGrain
+                        | Kind::AccentedEdges
+                        | Kind::InkOutlines
+                        | Kind::Photocopy
+                        | Kind::HalftonePattern
+                        | Kind::Patchwork
+                        | Kind::Craquelure
+                        | Kind::ColorHalftone
+                        | Kind::Crystallize
+                        | Kind::Facet
+                        | Kind::Mezzotint
+                        | Kind::Pointillize
+                        | Kind::StainedGlass
+                        | Kind::MosaicTiles
+                        | Kind::Diffuse
+                        | Kind::ColorBalance
+                        | Kind::PhotoFilter
+                        | Kind::ChannelMixer
+                        | Kind::GradientMap
+                        | Kind::SelectiveColor
+                        | Kind::ShadowsHighlights
+                        | Kind::Blur
+                        | Kind::BlurMore
+                        | Kind::ColoredPencil
+                        | Kind::DryBrush
+                        | Kind::PaintDaubs
+                        | Kind::SmudgeStick
+                        | Kind::AngledStrokes
+                        | Kind::Crosshatch
+                        | Kind::DarkStrokes
+                        | Kind::Spatter
+                ) {
+                (0..entry.parameters.len()).collect()
+            } else {
+                vec![app.processing_dialog.as_ref().unwrap().parameter]
+            };
+            for parameter in parameters {
+                app.processing_dialog.as_mut().unwrap().parameter = parameter;
+                for _ in 0..4 {
+                    let mut output = ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                vec2(width, 520.),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| app.draw(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                assert!(
+                    app.canvas_rect.contains_rect(app.processing_toolbar_rect),
+                    "{:?} parameter {}: {:?} outside {:?}",
+                    entry.kind,
+                    parameter,
+                    app.processing_toolbar_rect,
+                    app.canvas_rect
+                );
+                assert!((app.processing_toolbar_rect.height() - 46.).abs() < 1.);
+                assert!(app.selection_toolbar_rect == Rect::NOTHING);
+            }
         }
         app.choose_tool(Tool::Wand);
         assert!(app.processing_dialog.is_none() && app.processing_toolbar.is_none());
@@ -3900,13 +4596,64 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         Kind::Offset,
         Kind::Twirl,
         Kind::Wave,
+        Kind::SurfaceBlur,
+        Kind::RadialBlur,
+        Kind::Clouds,
+        Kind::DifferenceClouds,
+        Kind::PosterEdges,
+        Kind::Grain,
+        Kind::Fragment,
+        Kind::Despeckle,
+        Kind::DustScratches,
+        Kind::ReduceNoise,
+        Kind::Pinch,
+        Kind::Spherize,
+        Kind::Ripple,
+        Kind::Sharpen,
+        Kind::SharpenMore,
+        Kind::PolarCoordinates,
+        Kind::ZigZag,
+        Kind::Fibers,
+        Kind::GlowingEdges,
+        Kind::Cutout,
+        Kind::FilmGrain,
+        Kind::AccentedEdges,
+        Kind::InkOutlines,
+        Kind::Photocopy,
+        Kind::HalftonePattern,
+        Kind::Patchwork,
+        Kind::Craquelure,
+        Kind::ColorHalftone,
+        Kind::Crystallize,
+        Kind::Facet,
+        Kind::Mezzotint,
+        Kind::Pointillize,
+        Kind::StainedGlass,
+        Kind::MosaicTiles,
+        Kind::Diffuse,
+        Kind::ColorBalance,
+        Kind::PhotoFilter,
+        Kind::ChannelMixer,
+        Kind::GradientMap,
+        Kind::SelectiveColor,
+        Kind::ShadowsHighlights,
+        Kind::Blur,
+        Kind::BlurMore,
+        Kind::ColoredPencil,
+        Kind::DryBrush,
+        Kind::PaintDaubs,
+        Kind::SmudgeStick,
+        Kind::AngledStrokes,
+        Kind::Crosshatch,
+        Kind::DarkStrokes,
+        Kind::Spatter,
     ] {
         app.cancel_processing();
         let filter = label_position(&mut app, &ctx, "Filter");
         click_ui(&mut app, &ctx, filter);
         let category = label_position(&mut app, &ctx, kind.descriptor().category);
         click_ui(&mut app, &ctx, category);
-        let item = label_position(
+        let item = rightmost_menu_label_position(
             &mut app,
             &ctx,
             &format!(
@@ -3969,8 +4716,215 @@ fn filter_gallery_is_first_disabled_and_unimplemented_conventional_filters_canno
     }
     let artistic = label_position(&mut app, &ctx, "Artistic");
     click_ui(&mut app, &ctx, artistic);
-    let dry = label_position(&mut app, &ctx, "Dry Brush…");
-    click_ui(&mut app, &ctx, dry);
+    let watercolor = label_position(&mut app, &ctx, "Watercolor…");
+    click_ui(&mut app, &ctx, watercolor);
     assert!(app.current().document == before);
     assert!(app.processing_dialog.is_none());
+}
+
+#[test]
+fn cloud_colors_are_captured_at_creation_and_scale_previews_apply_undo_and_native_preservation() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    app.brush.color = [10, 40, 90, 255];
+    app.background = Color32::from_rgb(240, 190, 30);
+    app.open_processing(Kind::Clouds, None);
+    wait_for_processing(&mut app, &ctx);
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("low"),
+        Some(Value::Color([10, 40, 90]))
+    );
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("high"),
+        Some(Value::Color([240, 190, 30]))
+    );
+    let seed = label_position(&mut app, &ctx, "Seed");
+    click_ui(&mut app, &ctx, seed);
+    let scale = label_position(&mut app, &ctx, "Scale (px)");
+    click_ui(&mut app, &ctx, scale);
+    let scale = scoped_label_bounds(&mut app, &ctx, "Scale (px)", true);
+    click_ui(&mut app, &ctx, pos2(scale.right() + 75., scale.center().y));
+    wait_for_processing(&mut app, &ctx);
+    assert_ne!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("scale"),
+        Some(Value::Number(128.))
+    );
+    assert!(app.current().document == before);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    let saved = app.current().document.clone();
+    let id = saved.active().filters[0].id;
+    assert!(saved.active().source == before.active().source);
+    app.brush.color = [255, 0, 0, 255];
+    app.background = Color32::BLACK;
+    app.open_processing(Kind::Clouds, Some(id));
+    wait_for_processing(&mut app, &ctx);
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("low"),
+        Some(Value::Color([10, 40, 90]))
+    );
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("high"),
+        Some(Value::Color([240, 190, 30]))
+    );
+    app.cancel_processing();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("clouds.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+}
+
+#[test]
+fn noise_cleanup_controls_preview_then_cancel_or_commit_one_removable_native_history_step() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    for commit in [false, true] {
+        app.open_processing(Kind::ReduceNoise, None);
+        wait_for_processing(&mut app, &ctx);
+        let strength = label_position(&mut app, &ctx, "Strength");
+        click_ui(&mut app, &ctx, strength);
+        let details = label_position(&mut app, &ctx, "Preserve details");
+        click_ui(&mut app, &ctx, details);
+        let details = scoped_label_bounds(&mut app, &ctx, "Preserve details", true);
+        click_ui(
+            &mut app,
+            &ctx,
+            pos2(details.right() + 70., details.center().y),
+        );
+        wait_for_processing(&mut app, &ctx);
+        assert_ne!(
+            app.processing_dialog
+                .as_ref()
+                .unwrap()
+                .operation
+                .value("preserve_details"),
+            Some(Value::Number(0.5))
+        );
+        assert!(app.current().document == before);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let action = label_position(&mut app, &ctx, if commit { "Apply" } else { "Cancel" });
+        click_ui(&mut app, &ctx, action);
+        if !commit {
+            assert!(app.current().document == before);
+        }
+    }
+    let saved = app.current().document.clone();
+    assert_eq!(saved.active().filters.len(), 1);
+    assert!(saved.active().source == before.active().source);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("noise-cleanup.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+    let edit = scoped_label_bounds(&mut app, &ctx, "Edit", true).center();
+    click_ui(&mut app, &ctx, edit);
+    wait_for_processing(&mut app, &ctx);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.current().document.active().filters.is_empty());
+    assert!(app.current().document.active().source == before.active().source);
+}
+
+// A branch and its first command can share a caption (Sharpen > Sharpen).
+// Resolve the child by its painted position, rather than assuming pixel offsets.
+fn rightmost_menu_label_position(app: &mut PaletteApp, ctx: &Context, label: &str) -> egui::Pos2 {
+    fn find(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.text() == label => {
+                Some(t.galley.rect.translate(t.pos.to_vec2()).center())
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes
+                .iter()
+                .filter_map(|s| find(s, label))
+                .max_by(|a, b| a.x.total_cmp(&b.x)),
+            _ => None,
+        }
+    }
+    let mut result = None;
+    for _ in 0..6 {
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        );
+        result = output
+            .shapes
+            .iter()
+            .filter_map(|s| find(&s.shape, label))
+            .max_by(|a, b| a.x.total_cmp(&b.x));
+        output.textures_delta.clear();
+    }
+    result.unwrap_or_else(|| panic!("Menu label not found: {label}"))
+}
+
+#[test]
+fn idle_percentage_roundtrips_do_not_restart_filter_previews() {
+    use palette_core::processing::{Kind, Value};
+    for (kind, key) in [
+        (Kind::ColorBalance, "midtone_red"),
+        (Kind::ChannelMixer, "red_green"),
+        (Kind::SelectiveColor, "yellows_magenta"),
+        (Kind::PhotoFilter, "density"),
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.open_processing(kind, None);
+        let draft = app.processing_dialog.as_mut().unwrap();
+        draft.operation.set_value(key, Value::Number(0.6)).unwrap();
+        draft.parameter = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .position(|p| p.key == key)
+            .unwrap();
+        wait_for_processing(&mut app, &ctx);
+        let ticket = app.processing_dialog.as_ref().unwrap().ticket;
+        for _ in 0..30 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        let draft = app.processing_dialog.as_ref().unwrap();
+        assert_eq!(draft.ticket, ticket, "{kind:?} idle frame changed ticket");
+        assert_eq!(draft.ready, Some(ticket));
+    }
 }

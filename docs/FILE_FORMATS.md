@@ -4,7 +4,7 @@
 
 | Format | Open | Write | Meaning |
 |---|---|---|---|
-| `.palette` v1/v2/v3/v4/v5 | Yes | Save/Save As writes v5 | All implemented editable model state; older versions migrate on explicit save |
+| `.palette` v1/v2/v3/v4/v5/v6 | Yes | Save/Save As writes v6 | All implemented editable model state; older versions migrate on explicit save |
 | PNG | Yes | Export | Lossless RGBA; alpha round-trip tested |
 | JPEG | Yes | Export | Lossy RGB; transparency composited over white |
 | BMP | Yes | Export | Raster; alpha behavior depends on BMP variant |
@@ -19,12 +19,12 @@ Raster imports create a single editable source layer. They do not recreate layer
 
 The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
 
-## `.palette` version 5 — current writer (versions 1–4 migration)
+## `.palette` version 6 — current writer (versions 1–5 migration)
 
 | Offset | Encoding | Value |
 |---|---|---|
 | 0 | 8 bytes | ASCII `PALETTE` followed by NUL |
-| 8 | little-endian u32 | `5` |
+| 8 | little-endian u32 | `6` |
 | 12 | little-endian u32 | UTF-8 JSON manifest byte length |
 | 16 | bytes | JSON manifest |
 | After manifest | repeated records | little-endian u64 compressed length, then one zlib stream |
@@ -33,7 +33,7 @@ The manifest contains `width`, `height`, `background` (four straight-alpha RGBA8
 
 Asset records follow `asset_lengths` order, zero-based. Shared Arc backing buffers have one asset, preserving tile sharing on load. Zlib checksums, exact decoded lengths, consumed compressed lengths and trailing-file rejection detect malformed/truncated data. The reader preflights references, dimensions and counts before decompression, then validates the reconstructed model. Unknown versions or enum variants fail explicitly. Limits: 4 MiB manifest, 65536 assets, 512 MiB summed unique decoded bytes, 1 GiB file, 4 MiB each ICC/Exif field, existing 64-megapixel plane and model count limits. These are format/allocation policies rather than a total process-memory cap.
 
-Saving streams assets directly to the same-directory temporary file, backfilling each compressed length with seeks. It does not serialize pixels to JSON or hold every compressed asset in memory. Metadata descriptors remain a small bounded JSON buffer. Existing v1 projects are read into the current model without rewriting the input; an explicit successful Save writes v5 atomically. Version 2 uses the same binary layout without `background`; its reader defaults this field to transparent. Version 3 introduced backing color. Version 4 additionally stores optional `selection_base`, a canvas-sized coverage asset containing the original contour before feathering. Existing versions default it to absent. Older builds reject v4 at version dispatch, preventing silent loss of the retained original during re-save. No future-format placeholders or silent downgrade are used.
+Saving streams assets directly to the same-directory temporary file, backfilling each compressed length with seeks. It does not serialize pixels to JSON or hold every compressed asset in memory. Metadata descriptors remain a small bounded JSON buffer. Existing v1 projects are read into the current model without rewriting the input; an explicit successful Save writes v6 atomically. Version 2 uses the same binary layout without `background`; its reader defaults this field to transparent. Version 3 introduced backing color. Version 4 additionally stores optional `selection_base`, a canvas-sized coverage asset containing the original contour before feathering. Existing versions default it to absent. Older builds reject v4 at version dispatch, preventing silent loss of the retained original during re-save. No future-format placeholders or silent downgrade are used.
 
 ## `.palette` version 1 — legacy reader
 
@@ -71,7 +71,7 @@ Local source/composite round trips and an independent raw-BGRA/Deflate/Pillow or
 
 ## Shape and layer movement preservation
 
-The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. The underlying selection/layer model remains compatible with the v1 migration reader; the current writer stores it in v4. A translated layer with a mask and live filter has a real `.palette` round-trip test. These geometry changes do not establish `.paint` interoperability. AVIF support is independently provided by the codec path above.
+The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. The underlying selection/layer model remains compatible with the v1 migration reader; the current writer stores it in v6. A translated layer with a mask and live filter has a real `.palette` round-trip test. These geometry changes do not establish `.paint` interoperability. AVIF support is independently provided by the codec path above.
 
 ## Still AVIF scope
 
@@ -107,4 +107,40 @@ New typed filter variants are `Levels { black:u8, white:u8, gamma:f32, output_bl
 All 24 registered operations are tested with nondefault parameters through native reopen and separate baked `.paint` pixel comparisons. Version-4 Stroke input lacking the new field retains square corners and unchanged source bytes. These automated Paint comparisons do not replace Microsoft's application save-back validation. Current `.paint` layout and export warnings are unchanged.
 
 
-Version 5 also supports the typed filters `Average`, `FindEdges`, `Solarize`, `Emboss { angle:f32, height:u8, amount:f32 }`, `UnsharpMask { radius:f32, amount:f32, threshold:u8 }`, `Minimum { radius:u8 }`, `Maximum { radius:u8 }`, `Offset { x:i32, y:i32, edges }`, `Twirl { radius:f32, angle:f32 }` and `Wave { amplitude:f32, wavelength:f32, vertical:bool, edges }`. `FilterEdges` uses stable named values `Wrap`, `Repeat`, `Transparent`; numeric UI choice indices are not serialized. There is no container/version change for these new enum variants; previous readers reject unfamiliar variants instead of dropping them. All 34 registered operations receive native and baked-Paint round-trip tests. See [current filter validation](FILTER_MENU_VALIDATION.md). The disabled future menu inventory is UI metadata, not serialized placeholder operations.
+Version 5 also supports the typed filters `Average`, `FindEdges`, `Solarize`, `Emboss { angle:f32, height:u8, amount:f32 }`, `UnsharpMask { radius:f32, amount:f32, threshold:u8 }`, `Minimum { radius:u8 }`, `Maximum { radius:u8 }`, `Offset { x:i32, y:i32, edges }`, `Twirl { radius:f32, angle:f32 }` and `Wave { amplitude:f32, wavelength:f32, vertical:bool, edges }`. `FilterEdges` uses stable named values `Wrap`, `Repeat`, `Transparent`; numeric UI choice indices are not serialized. There is no container/version change for these new enum variants; previous readers reject unfamiliar variants instead of dropping them. That 34-operation batch receives native and baked-Paint round-trip tests; the current additions are listed below. See [current filter validation](FILTER_MENU_VALIDATION.md). The disabled future menu inventory is UI metadata, not serialized placeholder operations.
+
+
+Further v5 filter variants: `SurfaceBlur { radius:u8, threshold:u8 }`, `RadialBlur { amount:f32, samples:u8, zoom:bool }`, `Clouds` / `DifferenceClouds { seed:u16, scale:f32, low:[u8;3], high:[u8;3] }`, `PosterEdges { thickness:u8, intensity:f32, levels:u8 }`, `Grain { amount:f32, contrast:f32, size:f32, seed:u16, monochrome:bool, style }`, and `Fragment { distance:f32 }`. Grain style is a named enum: `Regular`, `Soft`, `Speckle`, `Horizontal`, `Vertical`. The native version/container does not change; unknown variants fail in older readers. At that milestone, all 41 registered operations were covered by nondefault native reopening and baked Paint appearance comparisons. No new native Microsoft Paint save-back check is claimed. See [creative filter validation](CREATIVE_FILTERS_VALIDATION.md).
+
+
+Additional v5 filters: `Despeckle`, `DustScratches { radius:u8, threshold:u8 }`, `ReduceNoise { radius:u8, strength:f32, preserve_details:f32, color_noise:f32, sharpen:f32 }`, `Pinch { amount:f32, radius:f32 }`, `Spherize { amount:f32, radius:f32 }`, `Ripple { amplitude:f32, wavelength:f32 }`, `Sharpen`, and `SharpenMore`. Strength/detail/color/sharpen values are normalized 0–1; Pinch/Spherize amount is signed −1…1. UI percentages are presentation only. The v5 layout is unchanged; older readers reject unknown variants explicitly. At that milestone, nondefault native/mask/source/Paint comparisons covered all 49 operations. [Parameters and test scope](RETOUCH_DISTORT_VALIDATION.md).
+
+## Version 6: movable filter origins
+
+The manifest/assets layout is unchanged. `Twirl`, `Wave`, `RadialBlur`, `Pinch`, `Spherize` and `Ripple` now store `center: [f32;2]`. Each finite component is 0–1, relative to the source pixel-center grid: `center_x * (source.width - 1)`, `center_y * (source.height - 1)`. A one-pixel axis always resolves to zero. Layer offsets are applied only during composition/display; preview resampling retains the normalized values. Missing fields in v1–v5 migrate to `[0.5,0.5]`, except Wave's historical phase origin `[0,0]`. Inputs are never rewritten on read. Version dispatch prevents older builds silently dropping new fields of known variants.
+
+New typed variants: `PolarCoordinates { center, to_polar:bool }`, `ZigZag { center, amount:f32, radius:f32, ridges:u8, style }`, `Fibers { seed:u16, variance:f32, strength:f32, low:[u8;3], high:[u8;3] }`, and `GlowingEdges { width:f32, brightness:f32, smoothness:f32 }`. ZigZag styles serialize as `AroundCenter`, `OutFromCenter`, `PondRipples`. Registry domains validate every field before rendering/atomic encoding. At the origin milestone, round-trip comparisons covered all **53 operations**, including individual masks and preserved source planes. [Current evidence](ORIGIN_FILTERS_VALIDATION.md).
+
+## Additional version 6 artistic/print/texture filters
+
+New typed variants: `Cutout { levels:u8, simplicity:f32, fidelity:f32 }`, `FilmGrain { grain:f32, highlight:f32, intensity:f32, seed:u16 }`, `AccentedEdges { width:f32, brightness:f32, smoothness:f32 }`, `InkOutlines { length:f32, dark:f32, light:f32 }`, `Photocopy { detail:f32, darkness:f32, low:[u8;3], high:[u8;3] }`, `HalftonePattern { size:f32, contrast:f32, pattern, low:[u8;3], high:[u8;3] }`, `Patchwork { square:u8, relief:f32 }`, and `Craquelure { spacing:f32, depth:f32, brightness:f32, seed:u16 }`. Pattern names are `Dot`, `Line`, `Circle`. Normalized fields use 0–1 rather than displayed percentages; pixel widths, relief, seeds and counts retain their registry domains.
+
+The v6 manifest/asset layout is unchanged. Older readers reject unknown enum variants explicitly. Source/mask/order/property preservation, nondefault native reopening, region/full rendering and separately baked Paint pixels at that milestone covered all **61 registered operations** (55 filters plus six styles). No new native Microsoft Paint save-back validation is claimed. [Current validation](ARTISTIC_FILTERS_VALIDATION.md).
+
+## Additional version 6 pixelate/cell/diffusion filters
+
+New variants: `ColorHalftone { radius:f32, cyan:f32, magenta:f32, yellow:f32, black:f32 }`, `Crystallize { size:u8, seed:u16 }`, `Facet`, `Mezzotint { pattern, scale:f32, seed:u16, monochrome:bool }`, `Pointillize { size:u8, dot:f32, color:[u8;3], seed:u16 }`, `StainedGlass { size:u8, width:f32, light:f32, color:[u8;3], seed:u16 }`, `MosaicTiles { size:u8, grout:f32, lighten:bool }`, `Diffuse { radius:u8, mode, seed:u16 }`. Angles are degrees. Dot/light values are normalized 0–1. Mezzotint stores named `FineDots`, `MediumDots`, `GrainyDots`, `CoarseDots`, `ShortLines`, `MediumLines`, `LongLines`, `ShortStrokes`, `MediumStrokes`, `LongStrokes`. Diffuse modes are `Normal`, `DarkenOnly`, `LightenOnly`, `Anisotropic`.
+
+Registry keys `cell_size`, `tile_size` and `pattern_scale` map to the typed size/scale fields; presentation labels are not wire data. The manifest/asset layout and version remain v6; older readers explicitly reject unknown variants. Nondefault source/mask/order/settings preservation, region/full composition and baked Paint comparisons now cover all **69 registered operations** (63 filters and six styles). No new Microsoft Paint application save-back validation is claimed. [Scope](PIXELATE_FILTERS_VALIDATION.md).
+
+## Additional version 6 color adjustments and fixed blurs
+
+New named variants: `ColorBalance` (3×3 balance matrix, preserve_luminosity), `PhotoFilter` (RGB, density, preserve_luminosity), `ChannelMixer` (3×4 matrix, monochrome), `GradientMap` (low/high RGB, midpoint, reverse), `SelectiveColor` (9×4 adjustments matrix, relative), `ShadowsHighlights` (shadows/shadow_width/shadow_radius and highlights/highlight_width/highlight_radius), `Blur` and `BlurMore`. Array ordering is documented on the model variants and in the adjustment validation note. Presentation names and selected toolbar parameters are not serialized.
+
+The v6 manifest/asset layout is unchanged; earlier v1–v5 readers remain supported. Older application builds reject unfamiliar variants. Nondefault native reopening, original sources, filter/layer masks, properties and order, region/full rendering and separately baked Paint appearance now cover **77 registered operations** (71 filters plus six styles). This is not new Microsoft Paint application save-back validation. [Current adjustment scope](ADJUSTMENT_FILTERS_VALIDATION.md).
+
+## Additional version 6 traditional-media filters
+
+New variants: `ColoredPencil` (width, pressure, brightness, paper RGB, seed), `DryBrush` (radius, detail, texture, seed), `PaintDaubs` (radius, sharpness, style), `SmudgeStick` (length, highlight, intensity), `AngledStrokes` (balance, length, sharpness), `Crosshatch` (length, sharpness, strength), `DarkStrokes` (balance, black, white), `Spatter` (radius, smoothness, seed). Dimensions are f32 image-space pixels; strengths are f32 0–1; seeds are u16. `DaubStyle` serializes named `Round`, `Square` or `Diagonal` variants; UI choice indices are not stored wire data. Pencil paper is straight RGB and does not introduce additional alpha.
+
+These additions retain the v6 bounded manifest/asset layout and v1–v5 migration readers. Older builds reject unfamiliar variants explicitly. Nondefault native reopening, source/mask/settings/order preservation, region/full rendering and separately baked Paint appearance now cover **85 registered operations** (79 filters plus six styles). No new Microsoft Paint application edit/save-back validation is claimed. [Exact scope](PAINTING_FILTERS_VALIDATION.md).
