@@ -167,6 +167,20 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-smart-blur",
         "processing-sharpen-edges",
         "processing-smart-sharpen",
+        "processing-extrude",
+        "processing-oil-paint",
+        "processing-tiles",
+        "processing-trace-contour",
+        "processing-wind",
+        "processing-lens-blur",
+        "processing-lens-flare",
+        "processing-lighting-effects",
+        "processing-color-lookup",
+        "processing-displace",
+        "processing-shear",
+        "processing-custom",
+        "processing-custom-kernel",
+        "processing-shear-curve",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

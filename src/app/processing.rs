@@ -1,5 +1,7 @@
 //! Transactional processing controls. Preview jobs use reduced documents and
 //! a cancellation ticket; only Apply mutates the original full-resolution model.
+mod assets;
+mod editors;
 mod origin;
 mod toolbar;
 use super::*;
@@ -55,6 +57,8 @@ pub(super) struct Dialog {
     pub(super) parameter: usize,
     pub(super) pick_origin: bool,
     pub(super) origin_drag: bool,
+    pub(super) import: Option<assets::Import>,
+    pub(super) import_notice: Option<String>,
 }
 impl Dialog {
     fn document(&self) -> Result<Document, String> {
@@ -210,6 +214,7 @@ impl PaletteApp {
             && matches!(
                 operation.kind(),
                 Kind::Clouds
+                    | Kind::Tiles
                     | Kind::NeonGlow
                     | Kind::ConteCrayon
                     | Kind::Plaster
@@ -281,6 +286,8 @@ impl PaletteApp {
             operation,
             pick_origin: true,
             origin_drag: false,
+            import: None,
+            import_notice: None,
             original: session.document.clone(),
             preview: true,
             ticket,
@@ -386,6 +393,13 @@ impl PaletteApp {
         }
     }
     pub(super) fn apply_processing(&mut self) {
+        if self
+            .processing_dialog
+            .as_ref()
+            .is_some_and(|d| d.import.is_some())
+        {
+            return;
+        }
         let Some(d) = self.processing_dialog.take() else {
             return;
         };

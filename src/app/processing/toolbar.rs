@@ -4,6 +4,7 @@ use super::*;
 
 enum Intent {
     Close,
+    Import,
     Add(Kind),
     Edit(Kind, u64),
     Action(Action),
@@ -82,6 +83,18 @@ impl PaletteApp {
         let compact = self.canvas_rect.width() < if shadow { 1050. } else { 700. };
         let mut intent = None;
         let mut changed = false;
+        if let Some(d) = &mut draft {
+            match assets::poll(d) {
+                Ok(value) => {
+                    changed |= value;
+                    if value && let Some(n) = &d.import_notice {
+                        self.message = n.clone();
+                    }
+                }
+                Err(e) => self.error = Some(format!("Could not load filter asset: {e}")),
+            }
+        }
+
         let popup_was_open = egui::Popup::is_any_open(ctx);
         let available = self.close_pending_none() && !self.current().document.active().locked;
         let bar = egui::Area::new(egui::Id::unique("processing-toolbar"))
@@ -102,7 +115,10 @@ impl PaletteApp {
                         ui.set_min_height(crate::interface::CONTEXT_CONTROL_HEIGHT);
                         let (rect, response) =
                             ui.allocate_exact_size(Vec2::splat(24.), Sense::hover());
-                        if draft.as_ref().is_some_and(|d| d.ready != Some(d.ticket)) {
+                        if draft
+                            .as_ref()
+                            .is_some_and(|d| d.ready != Some(d.ticket) || d.import.is_some())
+                        {
                             // Paint-only status keeps control IDs stable when a job
                             // completes during a pointer gesture or an open menu.
                             let phase = ctx.input(|i| i.time) as f32 * 4.;
@@ -120,7 +136,8 @@ impl PaletteApp {
                         }
                         response.on_hover_text(toolbar.section.label());
                         if let Some(d) = &mut draft {
-                            changed |= editor_controls(ui, d, available, compact, &mut intent);
+                            changed |=
+                                editor_controls(self, ui, d, available, compact, &mut intent);
                         } else {
                             ui.add_enabled_ui(available, |ui| {
                                 stack_controls(self, ui, &mut toolbar, compact, &mut intent);
@@ -164,6 +181,7 @@ impl PaletteApp {
                     self.cancel_processing();
                     self.processing_toolbar = None;
                 }
+                Intent::Import => self.import_processing_asset(ctx),
                 Intent::Cancel => self.cancel_processing(),
                 Intent::Apply => self.apply_processing(),
                 Intent::Add(kind) => self.open_processing(kind, None),
@@ -184,6 +202,7 @@ impl PaletteApp {
 }
 
 fn editor_controls(
+    app: &PaletteApp,
     ui: &mut Ui,
     d: &mut Dialog,
     enabled: bool,
@@ -195,11 +214,12 @@ fn editor_controls(
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
+        let movable=!matches!(d.operation,Operation::Filter(Filter::LightingEffects {kind:palette_core::document::LightKind::Directional,..}));
         if matches!(&d.operation, Operation::Filter(f) if f.center().is_some())
             && icons::button(
                 ui, Icon::Move,
-                "Place distortion origin: click or drag on the layer; Space or middle-drag pans. Origin X/Y accept exact values.",
-                d.pick_origin, true, Vec2::splat(24.),
+                "Place effect origin: click or drag on the layer; Space or middle-drag pans. Origin X/Y accept exact values.",
+                d.pick_origin, movable, Vec2::splat(24.),
             ).clicked()
         {
             d.pick_origin = !d.pick_origin;
@@ -273,7 +293,7 @@ fn editor_controls(
             .inner;
         let apply = ui
             .push_id("processing-apply", |ui| {
-                ui.add(
+                ui.add_enabled(d.import.is_none(),
                     egui::Button::new(egui::RichText::new("Apply").color(Color32::BLACK))
                         .fill(ACCENT),
                 )
@@ -290,8 +310,18 @@ fn editor_controls(
             *intent = Some(Intent::Cancel);
         }
         ui.push_id("processing-edit-actions", |ui| {
-            ui.menu_button("…", |ui| {
+            let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                match &d.operation {
+                    Operation::Filter(Filter::ColorLookup {lut:Some(l),..})=>{ui.label(format!("{} ({}³)",l.name,l.size));},
+                    Operation::Filter(Filter::Displace {map:Some(m),map_name,..})=>{ui.label(format!("{} ({} × {})",map_name,m.width(),m.height()));},
+                    _=>{},
+                }
+                if matches!(d.operation.kind(),Kind::ColorLookup|Kind::Displace) && ui.add_enabled(d.import.is_none(),egui::Button::new(if d.operation.kind()==Kind::ColorLookup {"Load 3D LUT…"} else {"Load displacement map…"})).clicked() {*intent=Some(Intent::Import);ui.close();}
+                if let Some(notice)=&d.import_notice {ui.label(notice);}
+                if d.operation.kind()==Kind::Custom {let sub=ui.menu_button("Edit kernel…",|ui|{changed|=editors::kernel(ui,&mut d.operation);});app.capture_submenu("processing-custom-kernel",ui,&sub.response);}
+                if d.operation.kind()==Kind::Shear {let sub=ui.menu_button("Edit shear curve…",|ui|{changed|=editors::curve(ui,&mut d.operation);});app.capture_submenu("processing-shear-curve",ui,&sub.response);}
+
                 if matches!(&d.operation, Operation::Filter(f) if f.center().is_some()) && ui.button("Reset origin").clicked() {
                     let defaults = d.operation.kind().default_operation();
                     for key in ["center_x", "center_y"] { d.operation.set_value(key, defaults.value(key).expect("origin")).expect("default origin"); }
@@ -307,6 +337,8 @@ fn editor_controls(
                     ui.close();
                 }
             });
+            app.capture_popup("processing-custom-kernel",&menu.response);
+            app.capture_popup("processing-shear-curve",&menu.response);
         });
         changed
     })
@@ -348,7 +380,30 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 ..
             })
         ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
-        ui.add_enabled_ui(stochastic && channel_active, |ui| {
+        let context_active = match d.operation {
+            Operation::Filter(Filter::LightingEffects { kind, .. }) => match kind {
+                palette_core::document::LightKind::Directional => {
+                    !matches!(p.key, "radius" | "center_x" | "center_y")
+                }
+                palette_core::document::LightKind::Point => p.key != "angle",
+                palette_core::document::LightKind::Spot => true,
+            },
+            Operation::Filter(Filter::LensBlur {
+                depth_source: palette_core::document::DepthSource::Uniform,
+                ..
+            }) => !matches!(p.key, "focus" | "invert"),
+            Operation::Filter(Filter::OilPaint {
+                lighting: false, ..
+            }) => !matches!(p.key, "angle" | "shine" | "bristles" | "scale"),
+            Operation::Filter(Filter::Extrude { random: false, .. }) => p.key != "seed",
+            Operation::Filter(Filter::Tiles { fill, .. }) => match p.key {
+                "low" => fill == palette_core::document::TileFill::Foreground,
+                "high" => fill == palette_core::document::TileFill::Background,
+                _ => true,
+            },
+            _ => true,
+        };
+        ui.add_enabled_ui(stochastic && channel_active && context_active, |ui| {
             match (
                 p.kind,
                 d.operation.value(p.key).expect("registered parameter"),
@@ -403,6 +458,18 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                             | Kind::SmartBlur
                             | Kind::SharpenEdges
                             | Kind::SmartSharpen
+                            | Kind::Extrude
+                            | Kind::OilPaint
+                            | Kind::Tiles
+                            | Kind::TraceContour
+                            | Kind::Wind
+                            | Kind::LensBlur
+                            | Kind::LensFlare
+                            | Kind::LightingEffects
+                            | Kind::ColorLookup
+                            | Kind::Displace
+                            | Kind::Shear
+                            | Kind::Custom
                             | Kind::SprayedStrokes
                             | Kind::SumiE
                             | Kind::BasRelief

@@ -4,11 +4,13 @@
 mod adjustments;
 mod artistic;
 mod cellular;
+mod cinematic;
 mod conventional;
 mod creative;
 mod cutout;
 mod distort;
 mod drawing;
+pub mod editable;
 mod extended;
 mod gaussian;
 mod layer;
@@ -23,10 +25,12 @@ mod retouch;
 mod round;
 mod sketch;
 mod studio;
+mod stylize;
 use crate::document::{
-    ApertureShape, DaubStyle, DiffuseMode, Effect, Filter, FilterEdges, GlassSurface, GrainStyle,
-    HalftoneStyle, MezzotintStyle, NoiseDistribution, SmartBlurMode, StrokeDirection,
-    StrokePosition, SurfaceTexture, ZigZagStyle,
+    ApertureShape, DaubStyle, DepthSource, DiffuseMode, Effect, ExtrudeShape, Filter, FilterEdges,
+    FlareStyle, GlassSurface, GrainStyle, HalftoneStyle, LightKind, MapFit, MezzotintStyle,
+    NoiseDistribution, ShearInterpolation, SmartBlurMode, StrokeDirection, StrokePosition,
+    SurfaceTexture, TileFill, WindMethod, ZigZagStyle,
 };
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
@@ -37,6 +41,20 @@ pub(crate) use point::point_filter;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    ColorLookup,
+    Displace,
+    Shear,
+    Custom,
+
+    Extrude,
+    OilPaint,
+    Tiles,
+    TraceContour,
+    Wind,
+    LensBlur,
+    LensFlare,
+    LightingEffects,
+
     DiffuseGlow,
     Glass,
     OceanRipple,
@@ -1756,6 +1774,281 @@ pub const REGISTRY: &[Descriptor] = &[
             number("iterations", "Iterations", 1.0, 6.0, 1.0),
         ],
     },
+    Descriptor {
+        kind: Kind::Extrude,
+        label: "Extrude",
+        category: "Stylize",
+        parameters: &[
+            number("cell_size", "Block size (px)", 4.0, 96.0, 1.0),
+            number("depth", "Depth (px)", 0.0, 64.0, 0.1),
+            Parameter {
+                key: "shape",
+                label: "Shape",
+                kind: ParameterType::Choice(&["Blocks", "Pyramids"]),
+            },
+            Parameter {
+                key: "random",
+                label: "Random depth",
+                kind: ParameterType::Boolean,
+            },
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::OilPaint,
+        label: "Oil Paint",
+        category: "Stylize",
+        parameters: &[
+            number("radius", "Brush radius (px)", 0.0, 12.0, 0.1),
+            number("stylization", "Stylization", 0.0, 1.0, 0.01),
+            number("cleanliness", "Cleanliness", 0.0, 1.0, 0.01),
+            number("scale", "Bristle size (px)", 0.5, 24.0, 0.1),
+            number("bristles", "Bristle detail", 0.0, 1.0, 0.01),
+            Parameter {
+                key: "lighting",
+                label: "Lighting",
+                kind: ParameterType::Boolean,
+            },
+            number("angle", "Light angle (°)", -180.0, 180.0, 1.0),
+            number("shine", "Shine", 0.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Tiles,
+        label: "Tiles",
+        category: "Stylize",
+        parameters: &[
+            number("tile_size", "Tile size (px)", 2.0, 128.0, 1.0),
+            number("offset", "Maximum offset", 0.0, 0.5, 0.01),
+            Parameter {
+                key: "fill",
+                label: "Fill gaps",
+                kind: ParameterType::Choice(&[
+                    "Unaltered",
+                    "Transparent",
+                    "Foreground",
+                    "Background",
+                ]),
+            },
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+            Parameter {
+                key: "low",
+                label: "Foreground color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "high",
+                label: "Background color",
+                kind: ParameterType::Color,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::TraceContour,
+        label: "Trace Contour",
+        category: "Stylize",
+        parameters: &[
+            number("level", "Level", 0.0, 255.0, 1.0),
+            Parameter {
+                key: "upper",
+                label: "Upper edge",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Wind,
+        label: "Wind",
+        category: "Stylize",
+        parameters: &[
+            number("length", "Length (px)", 0.0, 64.0, 0.1),
+            Parameter {
+                key: "method",
+                label: "Method",
+                kind: ParameterType::Choice(&["Wind", "Blast", "Stagger"]),
+            },
+            Parameter {
+                key: "from_right",
+                label: "From right",
+                kind: ParameterType::Boolean,
+            },
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+        ],
+    },
+    Descriptor {
+        kind: Kind::LensBlur,
+        label: "Lens Blur",
+        category: "Blur",
+        parameters: &[
+            number("radius", "Radius (px)", 0.0, 16.0, 0.1),
+            Parameter {
+                key: "shape",
+                label: "Iris shape",
+                kind: ParameterType::Choice(&["Disk", "Triangle", "Square", "Hexagon", "Octagon"]),
+            },
+            number("angle", "Rotation (°)", -180.0, 180.0, 1.0),
+            Parameter {
+                key: "depth_source",
+                label: "Depth source",
+                kind: ParameterType::Choice(&["Uniform", "Alpha", "Luminance"]),
+            },
+            number("focus", "Focal depth", 0.0, 1.0, 0.01),
+            Parameter {
+                key: "invert",
+                label: "Invert depth",
+                kind: ParameterType::Boolean,
+            },
+            number("highlights", "Highlight gain", 0.0, 1.0, 0.01),
+            number("threshold", "Highlight threshold", 0.0, 255.0, 1.0),
+            number("noise", "Noise", 0.0, 1.0, 0.01),
+            number("seed", "Seed", 0.0, 65535.0, 1.0),
+        ],
+    },
+    Descriptor {
+        kind: Kind::LensFlare,
+        label: "Lens Flare",
+        category: "Render",
+        parameters: &[
+            number("brightness", "Brightness", 0.0, 2.0, 0.01),
+            number("radius", "Radius (px)", 0.0, 256.0, 0.1),
+            Parameter {
+                key: "style",
+                label: "Lens type",
+                kind: ParameterType::Choice(&["Zoom", "Prime", "Movie", "Anamorphic"]),
+            },
+            Parameter {
+                key: "color",
+                label: "Color",
+                kind: ParameterType::Color,
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::LightingEffects,
+        label: "Lighting Effects",
+        category: "Render",
+        parameters: &[
+            Parameter {
+                key: "kind",
+                label: "Light type",
+                kind: ParameterType::Choice(&["Point", "Spot", "Directional"]),
+            },
+            number("intensity", "Intensity", 0.0, 2.0, 0.01),
+            number("ambient", "Ambience", 0.0, 1.0, 0.01),
+            number("radius", "Radius (px)", 0.0, 1024.0, 0.1),
+            number("angle", "Angle (°)", -180.0, 180.0, 1.0),
+            number("elevation", "Elevation (°)", 5.0, 90.0, 1.0),
+            number("gloss", "Gloss", 0.0, 1.0, 0.01),
+            number("metallic", "Metallic", 0.0, 1.0, 0.01),
+            number("relief", "Texture height", 0.0, 8.0, 0.1),
+            Parameter {
+                key: "color",
+                label: "Light color",
+                kind: ParameterType::Color,
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::ColorLookup,
+        label: "Color Lookup",
+        category: "Adjustments",
+        parameters: &[number("amount", "Amount", 0.0, 1.0, 0.01)],
+    },
+    Descriptor {
+        kind: Kind::Displace,
+        label: "Displace",
+        category: "Distort",
+        parameters: &[
+            number("horizontal", "Horizontal (px)", -128.0, 128.0, 0.1),
+            number("vertical", "Vertical (px)", -128.0, 128.0, 0.1),
+            Parameter {
+                key: "fit",
+                label: "Map fitting",
+                kind: ParameterType::Choice(&["Stretch", "Tile"]),
+            },
+            Parameter {
+                key: "edges",
+                label: "Edges",
+                kind: ParameterType::Choice(&["Wrap", "Repeat", "Transparent"]),
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Shear,
+        label: "Shear",
+        category: "Distort",
+        parameters: &[
+            Parameter {
+                key: "interpolation",
+                label: "Interpolation",
+                kind: ParameterType::Choice(&["Linear", "Smooth"]),
+            },
+            Parameter {
+                key: "edges",
+                label: "Edges",
+                kind: ParameterType::Choice(&["Wrap", "Repeat", "Transparent"]),
+            },
+            CENTER_X,
+            CENTER_Y,
+            number("curve0", "Curve 1", -1.0, 1.0, 0.01),
+            number("curve1", "Curve 2", -1.0, 1.0, 0.01),
+            number("curve2", "Curve 3", -1.0, 1.0, 0.01),
+            number("curve3", "Curve 4", -1.0, 1.0, 0.01),
+            number("curve4", "Curve 5", -1.0, 1.0, 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Custom,
+        label: "Custom",
+        category: "Other",
+        parameters: &[
+            number("divisor", "Scale", -1024.0, 1024.0, 0.1),
+            number("bias", "Offset", -255.0, 255.0, 1.0),
+            Parameter {
+                key: "alpha",
+                label: "Filter alpha",
+                kind: ParameterType::Boolean,
+            },
+            Parameter {
+                key: "edges",
+                label: "Edges",
+                kind: ParameterType::Choice(&["Wrap", "Repeat", "Transparent"]),
+            },
+            number("k0", "Kernel 1,1", -64.0, 64.0, 0.01),
+            number("k1", "Kernel 1,2", -64.0, 64.0, 0.01),
+            number("k2", "Kernel 1,3", -64.0, 64.0, 0.01),
+            number("k3", "Kernel 1,4", -64.0, 64.0, 0.01),
+            number("k4", "Kernel 1,5", -64.0, 64.0, 0.01),
+            number("k5", "Kernel 2,1", -64.0, 64.0, 0.01),
+            number("k6", "Kernel 2,2", -64.0, 64.0, 0.01),
+            number("k7", "Kernel 2,3", -64.0, 64.0, 0.01),
+            number("k8", "Kernel 2,4", -64.0, 64.0, 0.01),
+            number("k9", "Kernel 2,5", -64.0, 64.0, 0.01),
+            number("k10", "Kernel 3,1", -64.0, 64.0, 0.01),
+            number("k11", "Kernel 3,2", -64.0, 64.0, 0.01),
+            number("k12", "Kernel 3,3", -64.0, 64.0, 0.01),
+            number("k13", "Kernel 3,4", -64.0, 64.0, 0.01),
+            number("k14", "Kernel 3,5", -64.0, 64.0, 0.01),
+            number("k15", "Kernel 4,1", -64.0, 64.0, 0.01),
+            number("k16", "Kernel 4,2", -64.0, 64.0, 0.01),
+            number("k17", "Kernel 4,3", -64.0, 64.0, 0.01),
+            number("k18", "Kernel 4,4", -64.0, 64.0, 0.01),
+            number("k19", "Kernel 4,5", -64.0, 64.0, 0.01),
+            number("k20", "Kernel 5,1", -64.0, 64.0, 0.01),
+            number("k21", "Kernel 5,2", -64.0, 64.0, 0.01),
+            number("k22", "Kernel 5,3", -64.0, 64.0, 0.01),
+            number("k23", "Kernel 5,4", -64.0, 64.0, 0.01),
+            number("k24", "Kernel 5,5", -64.0, 64.0, 0.01),
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -1768,6 +2061,100 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::ColorLookup => Operation::Filter(Filter::ColorLookup {
+                amount: 1.,
+                lut: Some(editable::warm_lut()),
+            }),
+            Self::Displace => Operation::Filter(Filter::Displace {
+                horizontal: 10.,
+                vertical: 10.,
+                fit: MapFit::Stretch,
+                edges: FilterEdges::Repeat,
+                center: [0.5; 2],
+                map: Some(editable::wave_map()),
+                map_name: "Built-in waves".into(),
+            }),
+            Self::Shear => Operation::Filter(Filter::Shear {
+                interpolation: ShearInterpolation::Smooth,
+                edges: FilterEdges::Repeat,
+                center: [0.5; 2],
+                curve: [0., 0.15, 0., -0.15, 0.],
+            }),
+            Self::Custom => Operation::Filter(Filter::Custom {
+                divisor: 1.,
+                bias: 0.,
+                alpha: false,
+                edges: FilterEdges::Repeat,
+                kernel: editable::identity_kernel(),
+            }),
+            Self::Extrude => Operation::Filter(Filter::Extrude {
+                cell_size: 16,
+                depth: 16.,
+                shape: ExtrudeShape::Blocks,
+                random: false,
+                seed: 1,
+                center: [0.5; 2],
+            }),
+            Self::OilPaint => Operation::Filter(Filter::OilPaint {
+                radius: 4.,
+                stylization: 0.7,
+                cleanliness: 0.5,
+                scale: 6.,
+                bristles: 0.4,
+                lighting: true,
+                angle: -45.,
+                shine: 0.3,
+            }),
+            Self::Tiles => Operation::Filter(Filter::Tiles {
+                tile_size: 24,
+                offset: 0.3,
+                fill: TileFill::Unaltered,
+                seed: 1,
+                low: [0, 0, 0],
+                high: [255, 255, 255],
+            }),
+            Self::TraceContour => Operation::Filter(Filter::TraceContour {
+                level: 128,
+                upper: true,
+            }),
+            Self::Wind => Operation::Filter(Filter::Wind {
+                length: 12.,
+                method: WindMethod::Wind,
+                from_right: false,
+                seed: 1,
+            }),
+            Self::LensBlur => Operation::Filter(Filter::LensBlur {
+                radius: 6.,
+                shape: ApertureShape::Hexagon,
+                angle: 0.,
+                depth_source: DepthSource::Uniform,
+                focus: 0.5,
+                invert: false,
+                highlights: 0.3,
+                threshold: 200.,
+                noise: 0.,
+                seed: 1,
+            }),
+            Self::LensFlare => Operation::Filter(Filter::LensFlare {
+                brightness: 0.8,
+                radius: 48.,
+                style: FlareStyle::Zoom,
+                color: [255, 240, 215],
+                center: [0.5; 2],
+            }),
+            Self::LightingEffects => Operation::Filter(Filter::LightingEffects {
+                kind: LightKind::Point,
+                intensity: 1.,
+                ambient: 0.3,
+                radius: 200.,
+                angle: -45.,
+                elevation: 45.,
+                gloss: 0.3,
+                metallic: 0.,
+                relief: 2.,
+                color: [255, 255, 255],
+                center: [0.5; 2],
+            }),
             Self::DiffuseGlow => Operation::Filter(Filter::DiffuseGlow {
                 amount: 0.5,
                 clear: 0.4,
@@ -2357,6 +2744,18 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::ColorLookup { .. }) => Kind::ColorLookup,
+            Self::Filter(Filter::Displace { .. }) => Kind::Displace,
+            Self::Filter(Filter::Shear { .. }) => Kind::Shear,
+            Self::Filter(Filter::Custom { .. }) => Kind::Custom,
+            Self::Filter(Filter::Extrude { .. }) => Kind::Extrude,
+            Self::Filter(Filter::OilPaint { .. }) => Kind::OilPaint,
+            Self::Filter(Filter::Tiles { .. }) => Kind::Tiles,
+            Self::Filter(Filter::TraceContour { .. }) => Kind::TraceContour,
+            Self::Filter(Filter::Wind { .. }) => Kind::Wind,
+            Self::Filter(Filter::LensBlur { .. }) => Kind::LensBlur,
+            Self::Filter(Filter::LensFlare { .. }) => Kind::LensFlare,
+            Self::Filter(Filter::LightingEffects { .. }) => Kind::LightingEffects,
             Self::Filter(Filter::DiffuseGlow { .. }) => Kind::DiffuseGlow,
             Self::Filter(Filter::Glass { .. }) => Kind::Glass,
             Self::Filter(Filter::OceanRipple { .. }) => Kind::OceanRipple,
@@ -2496,6 +2895,186 @@ impl Operation {
         }
 
         match (self, key) {
+            (Self::Filter(Filter::ColorLookup { amount: v, .. }), "amount") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Displace { horizontal: v, .. }), "horizontal") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Displace { vertical: v, .. }), "vertical") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Displace { fit: v, .. }), "fit") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Displace { edges: v, .. }), "edges") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (
+                Self::Filter(Filter::Shear {
+                    interpolation: v, ..
+                }),
+                "interpolation",
+            ) => Some(Value::Choice(*v as usize)),
+            (Self::Filter(Filter::Shear { edges: v, .. }), "edges") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve0") => Some(Value::Number(curve[0])),
+            (Self::Filter(Filter::Shear { curve, .. }), "curve1") => Some(Value::Number(curve[1])),
+            (Self::Filter(Filter::Shear { curve, .. }), "curve2") => Some(Value::Number(curve[2])),
+            (Self::Filter(Filter::Shear { curve, .. }), "curve3") => Some(Value::Number(curve[3])),
+            (Self::Filter(Filter::Shear { curve, .. }), "curve4") => Some(Value::Number(curve[4])),
+            (Self::Filter(Filter::Custom { divisor: v, .. }), "divisor") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Custom { bias: v, .. }), "bias") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Custom { alpha: v, .. }), "alpha") => Some(Value::Boolean(*v)),
+            (Self::Filter(Filter::Custom { edges: v, .. }), "edges") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k0") => Some(Value::Number(kernel[0])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k1") => Some(Value::Number(kernel[1])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k2") => Some(Value::Number(kernel[2])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k3") => Some(Value::Number(kernel[3])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k4") => Some(Value::Number(kernel[4])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k5") => Some(Value::Number(kernel[5])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k6") => Some(Value::Number(kernel[6])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k7") => Some(Value::Number(kernel[7])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k8") => Some(Value::Number(kernel[8])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k9") => Some(Value::Number(kernel[9])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k10") => Some(Value::Number(kernel[10])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k11") => Some(Value::Number(kernel[11])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k12") => Some(Value::Number(kernel[12])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k13") => Some(Value::Number(kernel[13])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k14") => Some(Value::Number(kernel[14])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k15") => Some(Value::Number(kernel[15])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k16") => Some(Value::Number(kernel[16])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k17") => Some(Value::Number(kernel[17])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k18") => Some(Value::Number(kernel[18])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k19") => Some(Value::Number(kernel[19])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k20") => Some(Value::Number(kernel[20])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k21") => Some(Value::Number(kernel[21])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k22") => Some(Value::Number(kernel[22])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k23") => Some(Value::Number(kernel[23])),
+            (Self::Filter(Filter::Custom { kernel, .. }), "k24") => Some(Value::Number(kernel[24])),
+            (Self::Filter(Filter::Extrude { cell_size: v, .. }), "cell_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Extrude { depth: v, .. }), "depth") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Extrude { shape: v, .. }), "shape") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Extrude { random: v, .. }), "random") => Some(Value::Boolean(*v)),
+            (Self::Filter(Filter::Extrude { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::OilPaint { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::OilPaint { stylization: v, .. }), "stylization") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::OilPaint { cleanliness: v, .. }), "cleanliness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::OilPaint { scale: v, .. }), "scale") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::OilPaint { bristles: v, .. }), "bristles") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::OilPaint { lighting: v, .. }), "lighting") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::OilPaint { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::OilPaint { shine: v, .. }), "shine") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tiles { tile_size: v, .. }), "tile_size") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Tiles { offset: v, .. }), "offset") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tiles { fill: v, .. }), "fill") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Tiles { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Tiles { low: v, .. }), "low") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::Tiles { high: v, .. }), "high") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::TraceContour { level: v, .. }), "level") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::TraceContour { upper: v, .. }), "upper") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Wind { length: v, .. }), "length") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Wind { method: v, .. }), "method") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Wind { from_right: v, .. }), "from_right") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Wind { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::LensBlur { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::LensBlur { shape: v, .. }), "shape") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::LensBlur { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (
+                Self::Filter(Filter::LensBlur {
+                    depth_source: v, ..
+                }),
+                "depth_source",
+            ) => Some(Value::Choice(*v as usize)),
+            (Self::Filter(Filter::LensBlur { focus: v, .. }), "focus") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::LensBlur { invert: v, .. }), "invert") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::LensBlur { highlights: v, .. }), "highlights") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LensBlur { threshold: v, .. }), "threshold") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LensBlur { noise: v, .. }), "noise") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::LensBlur { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::LensFlare { brightness: v, .. }), "brightness") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LensFlare { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LensFlare { style: v, .. }), "style") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::LensFlare { color: v, .. }), "color") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::LightingEffects { kind: v, .. }), "kind") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::LightingEffects { intensity: v, .. }), "intensity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { ambient: v, .. }), "ambient") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { angle: v, .. }), "angle") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { elevation: v, .. }), "elevation") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { gloss: v, .. }), "gloss") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { metallic: v, .. }), "metallic") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { relief: v, .. }), "relief") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::LightingEffects { color: v, .. }), "color") => {
+                Some(Value::Color(*v))
+            }
             (Self::Filter(Filter::DiffuseGlow { amount: v, .. }), "amount") => {
                 Some(Value::Number(*v))
             }
@@ -3426,6 +4005,12 @@ impl Operation {
         } else {
             key
         };
+        if self.kind() == Kind::Custom
+            && key == "divisor"
+            && matches!(value,Value::Number(n) if n.abs()<0.000001)
+        {
+            return Err("Scale must be nonzero".into());
+        }
         let parameter = self
             .kind()
             .descriptor()
@@ -3471,6 +4056,359 @@ impl Operation {
             return Ok(());
         }
         match (self, key, value) {
+            (Self::Filter(Filter::ColorLookup { amount: v, .. }), "amount", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::Displace { horizontal: v, .. }),
+                "horizontal",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Displace { vertical: v, .. }), "vertical", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Displace { fit: v, .. }), "fit", Value::Choice(n)) => {
+                *v = MapFit::ALL[n];
+            }
+            (Self::Filter(Filter::Displace { edges: v, .. }), "edges", Value::Choice(n)) => {
+                *v = FilterEdges::ALL[n];
+            }
+            (
+                Self::Filter(Filter::Shear {
+                    interpolation: v, ..
+                }),
+                "interpolation",
+                Value::Choice(n),
+            ) => {
+                *v = ShearInterpolation::ALL[n];
+            }
+            (Self::Filter(Filter::Shear { edges: v, .. }), "edges", Value::Choice(n)) => {
+                *v = FilterEdges::ALL[n];
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve0", Value::Number(n)) => {
+                curve[0] = n;
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve1", Value::Number(n)) => {
+                curve[1] = n;
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve2", Value::Number(n)) => {
+                curve[2] = n;
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve3", Value::Number(n)) => {
+                curve[3] = n;
+            }
+            (Self::Filter(Filter::Shear { curve, .. }), "curve4", Value::Number(n)) => {
+                curve[4] = n;
+            }
+            (Self::Filter(Filter::Custom { divisor: v, .. }), "divisor", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Custom { bias: v, .. }), "bias", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Custom { alpha: v, .. }), "alpha", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Custom { edges: v, .. }), "edges", Value::Choice(n)) => {
+                *v = FilterEdges::ALL[n];
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k0", Value::Number(n)) => {
+                kernel[0] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k1", Value::Number(n)) => {
+                kernel[1] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k2", Value::Number(n)) => {
+                kernel[2] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k3", Value::Number(n)) => {
+                kernel[3] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k4", Value::Number(n)) => {
+                kernel[4] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k5", Value::Number(n)) => {
+                kernel[5] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k6", Value::Number(n)) => {
+                kernel[6] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k7", Value::Number(n)) => {
+                kernel[7] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k8", Value::Number(n)) => {
+                kernel[8] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k9", Value::Number(n)) => {
+                kernel[9] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k10", Value::Number(n)) => {
+                kernel[10] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k11", Value::Number(n)) => {
+                kernel[11] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k12", Value::Number(n)) => {
+                kernel[12] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k13", Value::Number(n)) => {
+                kernel[13] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k14", Value::Number(n)) => {
+                kernel[14] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k15", Value::Number(n)) => {
+                kernel[15] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k16", Value::Number(n)) => {
+                kernel[16] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k17", Value::Number(n)) => {
+                kernel[17] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k18", Value::Number(n)) => {
+                kernel[18] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k19", Value::Number(n)) => {
+                kernel[19] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k20", Value::Number(n)) => {
+                kernel[20] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k21", Value::Number(n)) => {
+                kernel[21] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k22", Value::Number(n)) => {
+                kernel[22] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k23", Value::Number(n)) => {
+                kernel[23] = n;
+            }
+            (Self::Filter(Filter::Custom { kernel, .. }), "k24", Value::Number(n)) => {
+                kernel[24] = n;
+            }
+
+            (Self::Filter(Filter::Extrude { cell_size: v, .. }), "cell_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Extrude { depth: v, .. }), "depth", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Extrude { shape: v, .. }), "shape", Value::Choice(n)) => {
+                *v = ExtrudeShape::ALL[n];
+            }
+            (Self::Filter(Filter::Extrude { random: v, .. }), "random", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Extrude { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::OilPaint { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::OilPaint { stylization: v, .. }),
+                "stylization",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::OilPaint { cleanliness: v, .. }),
+                "cleanliness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::OilPaint { scale: v, .. }), "scale", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::OilPaint { bristles: v, .. }), "bristles", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::OilPaint { lighting: v, .. }), "lighting", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::OilPaint { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::OilPaint { shine: v, .. }), "shine", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tiles { tile_size: v, .. }), "tile_size", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Tiles { offset: v, .. }), "offset", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tiles { fill: v, .. }), "fill", Value::Choice(n)) => {
+                *v = TileFill::ALL[n];
+            }
+            (Self::Filter(Filter::Tiles { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Tiles { low: v, .. }), "low", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tiles { high: v, .. }), "high", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::TraceContour { level: v, .. }), "level", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::TraceContour { upper: v, .. }), "upper", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wind { length: v, .. }), "length", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wind { method: v, .. }), "method", Value::Choice(n)) => {
+                *v = WindMethod::ALL[n];
+            }
+            (Self::Filter(Filter::Wind { from_right: v, .. }), "from_right", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Wind { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::LensBlur { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensBlur { shape: v, .. }), "shape", Value::Choice(n)) => {
+                *v = ApertureShape::ALL[n];
+            }
+            (Self::Filter(Filter::LensBlur { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LensBlur {
+                    depth_source: v, ..
+                }),
+                "depth_source",
+                Value::Choice(n),
+            ) => {
+                *v = DepthSource::ALL[n];
+            }
+            (Self::Filter(Filter::LensBlur { focus: v, .. }), "focus", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensBlur { invert: v, .. }), "invert", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LensBlur { highlights: v, .. }),
+                "highlights",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LensBlur { threshold: v, .. }),
+                "threshold",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensBlur { noise: v, .. }), "noise", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensBlur { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Value must be an integer".into());
+                }
+                *v = n as u16;
+            }
+            (
+                Self::Filter(Filter::LensFlare { brightness: v, .. }),
+                "brightness",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensFlare { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LensFlare { style: v, .. }), "style", Value::Choice(n)) => {
+                *v = FlareStyle::ALL[n];
+            }
+            (Self::Filter(Filter::LensFlare { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LightingEffects { kind: v, .. }), "kind", Value::Choice(n)) => {
+                *v = LightKind::ALL[n];
+            }
+            (
+                Self::Filter(Filter::LightingEffects { intensity: v, .. }),
+                "intensity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LightingEffects { ambient: v, .. }),
+                "ambient",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LightingEffects { radius: v, .. }),
+                "radius",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LightingEffects { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LightingEffects { elevation: v, .. }),
+                "elevation",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LightingEffects { gloss: v, .. }), "gloss", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LightingEffects { metallic: v, .. }),
+                "metallic",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::LightingEffects { relief: v, .. }),
+                "relief",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::LightingEffects { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+
             (Self::Filter(Filter::DiffuseGlow { amount: v, .. }), "amount", Value::Number(n)) => {
                 *v = n;
             }
@@ -5074,6 +6012,9 @@ impl Operation {
         {
             return Err("Input black must be below input white".into());
         }
+        if let Self::Filter(f) = self {
+            editable::validate_assets(f)?;
+        }
         let mut copy = self.clone();
         for p in self.kind().descriptor().parameters {
             copy.set_value(p.key, self.value(p.key).expect("registered parameter"))?;
@@ -5084,6 +6025,9 @@ impl Operation {
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
         for key in [
+            "horizontal",
+            "vertical",
+            "depth",
             "distortion",
             "shadow_radius",
             "highlight_radius",
@@ -5121,36 +6065,41 @@ impl Operation {
                     .set_value(
                         key,
                         Value::Number(
-                            if matches!(
+                            if (matches!(
                                 self,
-                                Self::Filter(
-                                    Filter::SmartBlur { .. }
-                                        | Filter::Crystallize { .. }
-                                        | Filter::Pointillize { .. }
-                                        | Filter::StainedGlass { .. }
-                                        | Filter::MosaicTiles { .. }
-                                        | Filter::Diffuse { .. }
-                                        | Filter::Patchwork { .. }
-                                        | Filter::DustScratches { .. }
-                                        | Filter::ReduceNoise { .. }
-                                        | Filter::SurfaceBlur { .. }
-                                        | Filter::PosterEdges { .. }
-                                        | Filter::Minimum { .. }
-                                        | Filter::Maximum { .. }
-                                        | Filter::Emboss { .. }
-                                        | Filter::Offset { .. }
-                                        | Filter::BoxBlur { .. }
-                                        | Filter::Median { .. }
-                                        | Filter::Mosaic { .. }
+                                Self::Filter(Filter::Extrude { .. } | Filter::Tiles { .. })
+                            ) && matches!(key, "cell_size" | "tile_size"))
+                                || matches!(
+                                    self,
+                                    Self::Filter(
+                                        Filter::SmartBlur { .. }
+                                            | Filter::Crystallize { .. }
+                                            | Filter::Pointillize { .. }
+                                            | Filter::StainedGlass { .. }
+                                            | Filter::MosaicTiles { .. }
+                                            | Filter::Diffuse { .. }
+                                            | Filter::Patchwork { .. }
+                                            | Filter::DustScratches { .. }
+                                            | Filter::ReduceNoise { .. }
+                                            | Filter::SurfaceBlur { .. }
+                                            | Filter::PosterEdges { .. }
+                                            | Filter::Minimum { .. }
+                                            | Filter::Maximum { .. }
+                                            | Filter::Emboss { .. }
+                                            | Filter::Offset { .. }
+                                            | Filter::BoxBlur { .. }
+                                            | Filter::Median { .. }
+                                            | Filter::Mosaic { .. }
+                                    )
                                 )
-                            ) {
+                            {
                                 (n * scale).round().max(
                                     if matches!(key, "block_size" | "height" | "square") {
                                         1.
                                     } else if key == "cell_size" {
-                                        2.
+                                        if self.kind() == Kind::Extrude { 4. } else { 2. }
                                     } else if key == "tile_size" {
-                                        1.
+                                        if self.kind() == Kind::Tiles { 2. } else { 1. }
                                     } else if matches!(key, "x" | "y") {
                                         -16384.
                                     } else {
@@ -5159,7 +6108,9 @@ impl Operation {
                                 )
                             } else {
                                 (n * scale).max(
-                                    if matches!(key, "wavelength" | "scale")
+                                    if key == "scale" && self.kind() == Kind::OilPaint {
+                                        0.5
+                                    } else if matches!(key, "wavelength" | "scale")
                                         || (key == "size"
                                             && matches!(
                                                 self,
@@ -5187,7 +6138,9 @@ impl Operation {
                                     } else if key == "length"
                                         && matches!(
                                             self,
-                                            Self::Filter(Filter::SprayedStrokes { .. })
+                                            Self::Filter(
+                                                Filter::SprayedStrokes { .. } | Filter::Wind { .. }
+                                            )
                                         )
                                     {
                                         0.

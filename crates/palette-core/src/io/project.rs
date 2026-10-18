@@ -51,11 +51,23 @@ struct MaskRecord {
     asset: usize,
 }
 #[derive(Serialize, Deserialize)]
+struct LutRecord {
+    name: String,
+    size: u8,
+    domain_min: [f32; 3],
+    domain_max: [f32; 3],
+    asset: usize,
+}
+#[derive(Serialize, Deserialize)]
 struct FilterRecord {
     id: u64,
     enabled: bool,
     filter: Filter,
     mask: Option<MaskRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    map: Option<RasterRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lut: Option<LutRecord>,
 }
 #[derive(Serialize, Deserialize)]
 struct LayerRecord {
@@ -74,6 +86,7 @@ struct LayerRecord {
 #[derive(Default)]
 struct Assets {
     ids: HashMap<usize, usize>,
+    lut_ids: HashMap<usize, usize>,
     data: Vec<Arc<Vec<u8>>>,
 }
 impl Assets {
@@ -84,6 +97,55 @@ impl Assets {
             self.data.push(bytes.clone());
             id
         })
+    }
+    fn raster(&mut self, r: &Raster) -> RasterRecord {
+        RasterRecord {
+            width: r.width(),
+            height: r.height(),
+            tiles: r.tiles().iter().map(|t| self.add(t)).collect(),
+        }
+    }
+    fn filter(&mut self, f: &FilterInstance) -> FilterRecord {
+        let mut filter = f.filter.clone();
+        let mut map_record = None;
+        let mut lut_record = None;
+        match &mut filter {
+            Filter::Displace { map, .. } => {
+                map_record = map.take().map(|r| self.raster(&r));
+            }
+            Filter::ColorLookup { lut, .. } => {
+                if let Some(l) = lut.take() {
+                    let key = Arc::as_ptr(&l.values) as usize;
+                    let asset = if let Some(id) = self.lut_ids.get(&key) {
+                        *id
+                    } else {
+                        let mut bytes = Vec::with_capacity(l.values.len() * 12);
+                        for v in l.values.iter().flatten() {
+                            bytes.extend_from_slice(&v.to_le_bytes());
+                        }
+                        let id = self.add(&Arc::new(bytes));
+                        self.lut_ids.insert(key, id);
+                        id
+                    };
+                    lut_record = Some(LutRecord {
+                        name: l.name,
+                        size: l.size,
+                        domain_min: l.domain_min,
+                        domain_max: l.domain_max,
+                        asset,
+                    });
+                }
+            }
+            _ => {}
+        }
+        FilterRecord {
+            id: f.id,
+            enabled: f.enabled,
+            filter,
+            mask: f.mask.as_ref().map(|m| self.mask(m)),
+            map: map_record,
+            lut: lut_record,
+        }
     }
     fn mask(&mut self, m: &Coverage) -> MaskRecord {
         MaskRecord {
@@ -116,16 +178,7 @@ pub(super) fn write(file: &mut File, doc: &Document) -> Result<(), FileError> {
             blend: l.blend,
             offset: l.offset,
             mask: l.mask.as_ref().map(|m| assets.mask(m)),
-            filters: l
-                .filters
-                .iter()
-                .map(|f| FilterRecord {
-                    id: f.id,
-                    enabled: f.enabled,
-                    filter: f.filter.clone(),
-                    mask: f.mask.as_ref().map(|m| assets.mask(m)),
-                })
-                .collect(),
+            filters: l.filters.iter().map(|f| assets.filter(f)).collect(),
             effects: l.effects.clone(),
         })
         .collect();
@@ -179,6 +232,16 @@ impl Manifest {
         Raster::new(m.width, m.height, [0; 4]).map_err(FileError::Invalid)?;
         self.asset(m.asset, m.width as usize * m.height as usize)
     }
+    fn raster_asset(&self, r: &RasterRecord) -> Result<(), FileError> {
+        Raster::new(r.width, r.height, [0; 4]).map_err(FileError::Invalid)?;
+        if r.tiles.len() != (r.width.div_ceil(TILE) * r.height.div_ceil(TILE)) as usize {
+            return Err(invalid("Invalid filter-map tile count"));
+        }
+        for id in &r.tiles {
+            self.asset(*id, TILE_BYTES)?;
+        }
+        Ok(())
+    }
     fn validate(&self) -> Result<(), FileError> {
         Raster::new(self.width, self.height, [0; 4]).map_err(FileError::Invalid)?;
         if self.layers.is_empty()
@@ -215,6 +278,31 @@ impl Manifest {
             }
             for id in &r.tiles {
                 self.asset(*id, TILE_BYTES)?;
+            }
+            for f in &layer.filters {
+                match (&f.filter, &f.map, &f.lut) {
+                    (Filter::Displace { map: None, .. }, Some(r), None) => {
+                        if r.width > 1024 || r.height > 1024 {
+                            return Err(invalid("Displacement map exceeds 1024 × 1024"));
+                        }
+                        self.raster_asset(r)?;
+                    }
+                    (Filter::ColorLookup { lut: None, .. }, None, Some(l)) => {
+                        if !(2..=33).contains(&l.size) {
+                            return Err(invalid("Invalid LUT dimensions"));
+                        }
+                        self.asset(l.asset, usize::from(l.size).pow(3) * 12)?;
+                        // Domains/name are checked again with decoded finite values.
+                        if l.name.chars().count() > 128 {
+                            return Err(invalid("Invalid LUT name"));
+                        }
+                    }
+                    (Filter::Displace { .. } | Filter::ColorLookup { .. }, _, _) => {
+                        return Err(invalid("Missing or inline filter asset"));
+                    }
+                    (_, None, None) => {}
+                    _ => return Err(invalid("Unexpected filter asset")),
+                }
             }
             for mask in layer
                 .mask
@@ -283,6 +371,7 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
         enabled: r.enabled,
         values: assets[r.asset].clone(),
     };
+    let mut lut_values = HashMap::<usize, Arc<Vec<[f32; 3]>>>::new();
     let layers = m
         .layers
         .into_iter()
@@ -309,13 +398,61 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
                 filters: l
                     .filters
                     .into_iter()
-                    .map(|f| FilterInstance {
-                        id: f.id,
-                        enabled: f.enabled,
-                        filter: f.filter,
-                        mask: f.mask.map(mask),
+                    .map(|f| {
+                        let mut filter = f.filter;
+                        match &mut filter {
+                            Filter::Displace { map, .. } => {
+                                let r = f.map.ok_or_else(|| invalid("Missing map"))?;
+                                *map = Some(
+                                    Raster::from_tiles(
+                                        r.width,
+                                        r.height,
+                                        r.tiles.iter().map(|id| assets[*id].clone()).collect(),
+                                    )
+                                    .map_err(FileError::Invalid)?,
+                                );
+                            }
+                            Filter::ColorLookup { lut, .. } => {
+                                let l = f.lut.ok_or_else(|| invalid("Missing LUT"))?;
+                                let values = lut_values
+                                    .entry(l.asset)
+                                    .or_insert_with(|| {
+                                        Arc::new(
+                                            assets[l.asset]
+                                                .as_chunks::<12>()
+                                                .0
+                                                .iter()
+                                                .map(|p| {
+                                                    std::array::from_fn(|c| {
+                                                        f32::from_le_bytes(
+                                                            p[c * 4..c * 4 + 4]
+                                                                .try_into()
+                                                                .expect("float bytes"),
+                                                        )
+                                                    })
+                                                })
+                                                .collect(),
+                                        )
+                                    })
+                                    .clone();
+                                *lut = Some(Lut3D {
+                                    name: l.name,
+                                    size: l.size,
+                                    domain_min: l.domain_min,
+                                    domain_max: l.domain_max,
+                                    values,
+                                });
+                            }
+                            _ => {}
+                        }
+                        Ok(FilterInstance {
+                            id: f.id,
+                            enabled: f.enabled,
+                            filter,
+                            mask: f.mask.map(mask),
+                        })
                     })
-                    .collect(),
+                    .collect::<Result<Vec<_>, FileError>>()?,
                 effects: l.effects,
             })
         })

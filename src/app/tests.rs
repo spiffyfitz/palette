@@ -4094,6 +4094,274 @@ fn optical_filters_preview_save_undo_remove_and_preserve_materials_modes_and_glo
 }
 
 #[test]
+fn editable_catalog_filters_preview_apply_save_undo_remove_and_preserve_sources() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [Kind::ColorLookup, Kind::Displace, Kind::Shear, Kind::Custom] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = Color32::from_rgba_unmultiplied(240, 220, 180, 128);
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let choice = match kind {
+            Kind::Displace => Some(("Map fitting", "Stretch", "Tile", "fit", 1)),
+            Kind::Shear => Some(("Interpolation", "Smooth", "Linear", "interpolation", 0)),
+            Kind::Custom => Some(("Edges", "Repeat", "Wrap", "edges", 0)),
+            _ => None,
+        };
+        if let Some((label, old, new, key, value)) = choice {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let param = label_position(&mut app, &ctx, label);
+            click_ui(&mut app, &ctx, param);
+            let selected = label_position(&mut app, &ctx, old);
+            click_ui(&mut app, &ctx, selected);
+            let option = label_position(&mut app, &ctx, new);
+            click_ui(&mut app, &ctx, option);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog.as_ref().unwrap().operation.value(key),
+                Some(Value::Choice(value))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("editable.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn stylize_render_filters_preview_save_undo_remove_and_preserve_choices_and_tile_colors() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::Extrude,
+        Kind::OilPaint,
+        Kind::Tiles,
+        Kind::TraceContour,
+        Kind::Wind,
+        Kind::LensBlur,
+        Kind::LensFlare,
+        Kind::LightingEffects,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = Color32::from_rgba_unmultiplied(240, 220, 180, 128);
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let choice = match kind {
+            Kind::Extrude => Some(("Shape", "Blocks", "Pyramids", "shape", 1)),
+            Kind::Tiles => Some(("Fill gaps", "Unaltered", "Background", "fill", 3)),
+            Kind::Wind => Some(("Method", "Wind", "Blast", "method", 1)),
+            Kind::LensBlur => Some(("Depth source", "Uniform", "Luminance", "depth_source", 2)),
+            Kind::LensFlare => Some(("Lens type", "Zoom", "Anamorphic", "style", 3)),
+            Kind::LightingEffects => Some(("Light type", "Point", "Spot", "kind", 1)),
+            _ => None,
+        };
+        if let Some((label, old, new, key, value)) = choice {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let param = label_position(&mut app, &ctx, label);
+            click_ui(&mut app, &ctx, param);
+            let selected = if kind == Kind::Wind {
+                // The operation title and selected method both say Wind. Pick
+                // the value widget on the right, not the noninteractive title.
+                fn labels(shape: &egui::epaint::Shape, out: &mut Vec<egui::Pos2>) {
+                    match shape {
+                        egui::epaint::Shape::Text(t) if t.galley.text() == "Wind" => {
+                            out.push(t.galley.rect.translate(t.pos.to_vec2()).center())
+                        }
+                        egui::epaint::Shape::Vec(v) => {
+                            for s in v {
+                                labels(s, out);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut positions = vec![];
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+                        ..Default::default()
+                    },
+                    |ui| app.draw(ui),
+                );
+                for shape in &output.shapes {
+                    labels(&shape.shape, &mut positions);
+                }
+                output.textures_delta.clear();
+                positions
+                    .into_iter()
+                    .max_by(|a, b| a.x.total_cmp(&b.x))
+                    .unwrap()
+            } else {
+                label_position(&mut app, &ctx, old)
+            };
+            click_ui(&mut app, &ctx, selected);
+            let option = label_position(&mut app, &ctx, new);
+            click_ui(&mut app, &ctx, option);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog.as_ref().unwrap().operation.value(key),
+                Some(Value::Choice(value))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if kind == Kind::Tiles {
+            assert_eq!(changed.value("low"), Some(Value::Color([20, 40, 80])));
+            assert_eq!(changed.value("high"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stylize.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
 fn artistic_controls_preview_cancel_then_save_undo_and_remove_each_editable_filter() {
     use palette_core::processing::{Kind, Value};
     for kind in [
@@ -4203,6 +4471,11 @@ fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_o
             Kind::DiffuseGlow,
             Kind::Glass,
             Kind::OceanRipple,
+            Kind::Extrude,
+            Kind::LensFlare,
+            Kind::LightingEffects,
+            Kind::Displace,
+            Kind::Shear,
         ] {
             app.open_processing(kind, None);
             wait_for_processing(&mut app, &ctx);
@@ -4362,7 +4635,7 @@ fn wait_for_processing(app: &mut PaletteApp, ctx: &Context) {
         frame(app, ctx, vec![]);
         assert!(app.error.is_none(), "{:?}", app.error);
         let d = app.processing_dialog.as_ref().expect("processing dialog");
-        if d.ready == Some(d.ticket) {
+        if d.ready == Some(d.ticket) && d.import.is_none() {
             break;
         }
         assert!(
@@ -4371,6 +4644,204 @@ fn wait_for_processing(app: &mut PaletteApp, ctx: &Context) {
         );
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn imported_filter_assets_preview_stay_embedded_and_reject_failed_or_stale_jobs() {
+    use palette_core::processing::{Kind, Operation};
+    let dir = tempfile::tempdir().unwrap();
+    let cube = dir.path().join("swap.cube");
+    let mut text = "LUT_3D_SIZE 2\n".to_owned();
+    for b in 0..2 {
+        for g in 0..2 {
+            for r in 0..2 {
+                text += &format!("{b} {g} {r}\n");
+            }
+        }
+    }
+    std::fs::write(&cube, text).unwrap();
+    let map_path = dir.path().join("map.png");
+    io::export(
+        &map_path,
+        &Document::from_raster(Raster::new(3, 2, [192, 128, 0, 255]).unwrap()),
+    )
+    .unwrap();
+    for (kind, path, label) in [
+        (Kind::ColorLookup, cube.clone(), "Load 3D LUT…"),
+        (Kind::Displace, map_path.clone(), "Load displacement map…"),
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        assert!(label_bounds(&mut app, &ctx, label).is_positive());
+        frame(
+            &mut app,
+            &ctx,
+            vec![Event::Key {
+                key: Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::default(),
+            }],
+        );
+        app.begin_processing_asset_import(path.clone(), ctx.clone());
+        app.apply_processing();
+        assert!(app.processing_dialog.is_some());
+        assert!(app.current().document == original);
+        wait_for_processing(&mut app, &ctx);
+        let imported = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert_ne!(before, imported);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        assert!(app.current().document == original);
+        app.apply_processing();
+        let saved = app.current().document.clone();
+        let project = dir.path().join(format!("{kind:?}.palette"));
+        io::save_project(&project, &saved).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(io::open(&project).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        let id = saved.active().filters[0].id;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, imported);
+        // A new draft owns a new result channel; an abandoned job cannot write it.
+        app.begin_processing_asset_import(dir.path().join("missing.cube"), ctx.clone());
+        app.cancel_processing();
+        app.open_processing(Kind::Custom, None);
+        for _ in 0..10 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        assert!(app.error.is_none());
+        assert!(matches!(
+            app.processing_dialog.as_ref().unwrap().operation,
+            Operation::Filter(Filter::Custom { .. })
+        ));
+    }
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.open_processing(Kind::ColorLookup, None);
+    wait_for_processing(&mut app, &ctx);
+    let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+    let bad = dir.path().join("invalid.cube");
+    std::fs::write(&bad, "LUT_3D_SIZE 99").unwrap();
+    app.begin_processing_asset_import(bad, ctx.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while app.error.is_none() {
+        frame(&mut app, &ctx, vec![]);
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert_eq!(app.processing_dialog.as_ref().unwrap().operation, before);
+}
+
+#[test]
+fn kernel_popup_and_mouse_shear_curve_edit_live_without_committing_source_pixels() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let original = app.current().document.clone();
+    app.open_processing(Kind::Custom, None);
+    wait_for_processing(&mut app, &ctx);
+    let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+    click_ui(&mut app, &ctx, actions);
+    let edit = label_position(&mut app, &ctx, "Edit kernel…");
+    click_ui(&mut app, &ctx, edit);
+    let sharpen = label_position(&mut app, &ctx, "Sharpen");
+    click_ui(&mut app, &ctx, sharpen);
+    wait_for_processing(&mut app, &ctx);
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("k12"),
+        Some(Value::Number(5.))
+    );
+    assert_eq!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("k11"),
+        Some(Value::Number(-1.))
+    );
+    assert!(app.current().document == original);
+    app.cancel_processing();
+    egui::Popup::close_all(&ctx);
+    app.open_processing(Kind::Shear, None);
+    wait_for_processing(&mut app, &ctx);
+    let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+    click_ui(&mut app, &ctx, actions);
+    let edit = label_position(&mut app, &ctx, "Edit shear curve…");
+    click_ui(&mut app, &ctx, edit);
+    let _ = label_bounds(&mut app, &ctx, "Drag the five curve points horizontally");
+    fn handles(shape: &egui::epaint::Shape, out: &mut Vec<egui::Pos2>) {
+        match shape {
+            egui::epaint::Shape::Circle(c)
+                if c.radius == 4.
+                    && c.fill.a() > 0
+                    && c.fill.r() == c.fill.g()
+                    && c.fill.g() == c.fill.b() =>
+            {
+                out.push(c.center)
+            }
+            egui::epaint::Shape::Vec(v) => {
+                for shape in v {
+                    handles(shape, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut output = ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    let mut points = vec![];
+    for shape in &output.shapes {
+        handles(&shape.shape, &mut points);
+    }
+    output.textures_delta.clear();
+    points.sort_by(|a, b| a.y.total_cmp(&b.y));
+    assert_eq!(points.len(), 5);
+    let start = points[2];
+    let end = start + vec2(35., 0.);
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(start), pointer(start, true)],
+    );
+    frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![pointer(end, false)]);
+    wait_for_processing(&mut app, &ctx);
+    let Some(Value::Number(value)) = app
+        .processing_dialog
+        .as_ref()
+        .unwrap()
+        .operation
+        .value("curve2")
+    else {
+        panic!("curve")
+    };
+    assert!(value > 0.2);
+    assert!(app.current().document == original);
+    app.cancel_processing();
+    assert!(app.current().document == original);
 }
 #[test]
 fn gaussian_dialog_previews_real_parameter_input_cancels_and_applies_one_native_undoable_filter() {
@@ -4716,6 +5187,11 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                     .unwrap();
             }
             if let Some((key, index)) = match entry.kind {
+                Kind::LensBlur => Some(("depth_source", 2)),
+                Kind::LensFlare => Some(("style", 3)),
+                Kind::LightingEffects => Some(("kind", 2)),
+                Kind::Extrude => Some(("shape", 1)),
+                Kind::Tiles => Some(("fill", 3)),
                 Kind::SmartBlur => Some(("mode", 2)),
                 Kind::ShapeBlur => Some(("shape", 4)),
                 Kind::Glass | Kind::Texturizer => Some(("texture", 3)),
@@ -4796,6 +5272,18 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                         | Kind::SmartBlur
                         | Kind::SharpenEdges
                         | Kind::SmartSharpen
+                        | Kind::Extrude
+                        | Kind::OilPaint
+                        | Kind::Tiles
+                        | Kind::TraceContour
+                        | Kind::Wind
+                        | Kind::LensBlur
+                        | Kind::LensFlare
+                        | Kind::LightingEffects
+                        | Kind::ColorLookup
+                        | Kind::Displace
+                        | Kind::Shear
+                        | Kind::Custom
                 ) {
                 (0..entry.parameters.len()).collect()
             } else {
@@ -5120,6 +5608,18 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         Kind::SmartBlur,
         Kind::SharpenEdges,
         Kind::SmartSharpen,
+        Kind::Extrude,
+        Kind::OilPaint,
+        Kind::Tiles,
+        Kind::TraceContour,
+        Kind::Wind,
+        Kind::LensBlur,
+        Kind::LensFlare,
+        Kind::LightingEffects,
+        Kind::ColorLookup,
+        Kind::Displace,
+        Kind::Shear,
+        Kind::Custom,
     ] {
         app.cancel_processing();
         let filter = label_position(&mut app, &ctx, "Filter");
@@ -5170,8 +5670,7 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
 }
 
 #[test]
-fn filter_gallery_is_first_disabled_and_unimplemented_conventional_filters_cannot_mutate_documents()
-{
+fn filter_gallery_stays_first_and_disabled_after_catalog_completion() {
     let ctx = Context::default();
     let mut app = test_app(&ctx);
     app.current_mut().document = processing_document();
@@ -5183,16 +5682,15 @@ fn filter_gallery_is_first_disabled_and_unimplemented_conventional_filters_canno
     assert!(gallery.bottom() < adjustments.top());
     click_ui(&mut app, &ctx, gallery.center());
     assert!(app.processing_dialog.is_none() && app.current().document == before);
-    if !egui::Popup::is_any_open(&ctx) {
-        let filter = label_position(&mut app, &ctx, "Filter");
-        click_ui(&mut app, &ctx, filter);
-    }
-    let blur = label_position(&mut app, &ctx, "Blur");
-    click_ui(&mut app, &ctx, blur);
-    let lens = label_position(&mut app, &ctx, "Lens Blur…");
-    click_ui(&mut app, &ctx, lens);
-    assert!(app.current().document == before);
-    assert!(app.processing_dialog.is_none());
+    // The conventional catalog is now implemented; Gallery alone remains disabled.
+    assert!(
+        palette_core::processing::menu::CATEGORIES
+            .iter()
+            .all(|category| category
+                .entries
+                .iter()
+                .all(|name| category.implemented(name).is_some()))
+    );
 }
 
 #[test]

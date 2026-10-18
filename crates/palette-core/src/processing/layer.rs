@@ -110,7 +110,12 @@ impl PreparedLayer {
     /// Conservative cache estimate, including retained source and coverage planes.
     /// Shared masks/tiles are deliberately counted repeatedly.
     pub fn byte_len(&self) -> usize {
-        self.original.source.byte_len()
+        self.original
+            .filters
+            .iter()
+            .map(|f| f.filter.asset_bytes())
+            .sum::<usize>()
+            + self.original.source.byte_len()
             + self.original.mask.as_ref().map_or(0, |m| m.values.len())
             + self
                 .original
@@ -156,6 +161,17 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
                 | Filter::SmartBlur { .. }
                 | Filter::SharpenEdges
                 | Filter::SmartSharpen { .. }
+                | Filter::Extrude { .. }
+                | Filter::OilPaint { .. }
+                | Filter::Tiles { .. }
+                | Filter::TraceContour { .. }
+                | Filter::Wind { .. }
+                | Filter::LensBlur { .. }
+                | Filter::LensFlare { .. }
+                | Filter::LightingEffects { .. }
+                | Filter::Displace { .. }
+                | Filter::Shear { .. }
+                | Filter::Custom { .. }
                 | Filter::Watercolor { .. }
                 | Filter::WaterPaper { .. } => true,
                 Filter::SprayedStrokes { .. }
@@ -259,6 +275,19 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::Displace { .. } | Filter::Shear { .. } | Filter::Custom { .. } => {
+                pixels = super::editable::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::LensBlur { .. } | Filter::LensFlare { .. } | Filter::LightingEffects { .. } => {
+                pixels = super::cinematic::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Extrude { .. }
+            | Filter::OilPaint { .. }
+            | Filter::Tiles { .. }
+            | Filter::TraceContour { .. }
+            | Filter::Wind { .. } => {
+                pixels = super::stylize::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::DiffuseGlow { .. }
             | Filter::Glass { .. }
             | Filter::OceanRipple { .. }

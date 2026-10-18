@@ -119,7 +119,21 @@ impl PaletteApp {
                 | "processing-shape-blur"
                 | "processing-smart-blur"
                 | "processing-sharpen-edges"
-                | "processing-smart-sharpen",
+                | "processing-smart-sharpen"
+                | "processing-extrude"
+                | "processing-oil-paint"
+                | "processing-tiles"
+                | "processing-trace-contour"
+                | "processing-wind"
+                | "processing-lens-blur"
+                | "processing-lens-flare"
+                | "processing-lighting-effects"
+                | "processing-color-lookup"
+                | "processing-displace"
+                | "processing-shear"
+                | "processing-custom"
+                | "processing-custom-kernel"
+                | "processing-shear-curve",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -227,6 +241,20 @@ impl PaletteApp {
                             | "processing-smart-blur"
                             | "processing-sharpen-edges"
                             | "processing-smart-sharpen"
+                            | "processing-extrude"
+                            | "processing-oil-paint"
+                            | "processing-tiles"
+                            | "processing-trace-contour"
+                            | "processing-wind"
+                            | "processing-lens-blur"
+                            | "processing-lens-flare"
+                            | "processing-lighting-effects"
+                            | "processing-color-lookup"
+                            | "processing-displace"
+                            | "processing-shear"
+                            | "processing-custom"
+                            | "processing-custom-kernel"
+                            | "processing-shear-curve"
                     )
                 );
                 for y in 200..390 {
@@ -402,6 +430,19 @@ impl PaletteApp {
                         Some("processing-smart-blur") => Kind::SmartBlur,
                         Some("processing-sharpen-edges") => Kind::SharpenEdges,
                         Some("processing-smart-sharpen") => Kind::SmartSharpen,
+                        Some("processing-extrude") => Kind::Extrude,
+                        Some("processing-oil-paint") => Kind::OilPaint,
+                        Some("processing-tiles") => Kind::Tiles,
+                        Some("processing-trace-contour") => Kind::TraceContour,
+                        Some("processing-wind") => Kind::Wind,
+                        Some("processing-lens-blur") => Kind::LensBlur,
+                        Some("processing-lens-flare") => Kind::LensFlare,
+                        Some("processing-lighting-effects") => Kind::LightingEffects,
+                        Some("processing-color-lookup") => Kind::ColorLookup,
+                        Some("processing-displace") => Kind::Displace,
+                        Some("processing-shear") => Kind::Shear,
+                        Some("processing-custom" | "processing-custom-kernel") => Kind::Custom,
+                        Some("processing-shear-curve") => Kind::Shear,
 
                         _ => Kind::GaussianBlur,
                     };

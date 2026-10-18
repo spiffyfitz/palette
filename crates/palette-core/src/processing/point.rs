@@ -51,6 +51,13 @@ fn rgb([h, s, l]: [f32; 3]) -> [f32; 3] {
 }
 
 pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [u8; 4] {
+    if let Filter::ColorLookup {
+        lut: Some(lut),
+        amount,
+    } = filter
+    {
+        return super::editable::lookup(pixel, lut, *amount);
+    }
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
@@ -74,6 +81,18 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
         | Filter::SmartBlur { .. }
         | Filter::SharpenEdges
         | Filter::SmartSharpen { .. }
+        | Filter::Extrude { .. }
+        | Filter::OilPaint { .. }
+        | Filter::Tiles { .. }
+        | Filter::TraceContour { .. }
+        | Filter::Wind { .. }
+        | Filter::LensBlur { .. }
+        | Filter::LensFlare { .. }
+        | Filter::LightingEffects { .. }
+        | Filter::Displace { .. }
+        | Filter::Shear { .. }
+        | Filter::Custom { .. }
+        | Filter::ColorLookup { .. }
         | Filter::Watercolor { .. }
         | Filter::WaterPaper { .. } => return pixel,
         Filter::SprayedStrokes { .. }

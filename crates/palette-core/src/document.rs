@@ -174,9 +174,208 @@ impl SmartBlurMode {
     pub const ALL: [Self; 3] = [Self::Normal, Self::EdgeOnly, Self::OverlayEdge];
 }
 
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ExtrudeShape {
+    Blocks,
+    Pyramids,
+}
+impl ExtrudeShape {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 2] = [Self::Blocks, Self::Pyramids];
+}
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TileFill {
+    Unaltered,
+    Transparent,
+    Foreground,
+    Background,
+}
+impl TileFill {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 4] = [
+        Self::Unaltered,
+        Self::Transparent,
+        Self::Foreground,
+        Self::Background,
+    ];
+}
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum WindMethod {
+    Wind,
+    Blast,
+    Stagger,
+}
+impl WindMethod {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 3] = [Self::Wind, Self::Blast, Self::Stagger];
+}
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DepthSource {
+    Uniform,
+    Alpha,
+    Luminance,
+}
+impl DepthSource {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 3] = [Self::Uniform, Self::Alpha, Self::Luminance];
+}
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FlareStyle {
+    Zoom,
+    Prime,
+    Movie,
+    Anamorphic,
+}
+impl FlareStyle {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 4] = [Self::Zoom, Self::Prime, Self::Movie, Self::Anamorphic];
+}
+/// Stable named options for an independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum LightKind {
+    Point,
+    Spot,
+    Directional,
+}
+impl LightKind {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 3] = [Self::Point, Self::Spot, Self::Directional];
+}
+
+/// Embedded three-dimensional RGB lookup table, with red varying fastest.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Lut3D {
+    pub name: String,
+    pub size: u8,
+    pub domain_min: [f32; 3],
+    pub domain_max: [f32; 3],
+    pub values: Arc<Vec<[f32; 3]>>,
+}
+/// Stable named filter options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MapFit {
+    Stretch,
+    Tile,
+}
+impl MapFit {
+    /// Stable control order.
+    pub const ALL: [Self; 2] = [Self::Stretch, Self::Tile];
+}
+/// Stable named filter options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ShearInterpolation {
+    Linear,
+    Smooth,
+}
+impl ShearInterpolation {
+    /// Stable control order.
+    pub const ALL: [Self; 2] = [Self::Linear, Self::Smooth];
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    ColorLookup {
+        amount: f32,
+        lut: Option<Lut3D>,
+    },
+    Displace {
+        horizontal: f32,
+        vertical: f32,
+        fit: MapFit,
+        edges: FilterEdges,
+        center: [f32; 2],
+        map: Option<Raster>,
+        map_name: String,
+    },
+    Shear {
+        interpolation: ShearInterpolation,
+        edges: FilterEdges,
+        center: [f32; 2],
+        curve: [f32; 5],
+    },
+    Custom {
+        divisor: f32,
+        bias: f32,
+        alpha: bool,
+        edges: FilterEdges,
+        kernel: [f32; 25],
+    },
+
+    Extrude {
+        cell_size: u16,
+        depth: f32,
+        shape: ExtrudeShape,
+        random: bool,
+        seed: u16,
+        center: [f32; 2],
+    },
+    OilPaint {
+        radius: f32,
+        stylization: f32,
+        cleanliness: f32,
+        scale: f32,
+        bristles: f32,
+        lighting: bool,
+        angle: f32,
+        shine: f32,
+    },
+    Tiles {
+        tile_size: u16,
+        offset: f32,
+        fill: TileFill,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    TraceContour {
+        level: u8,
+        upper: bool,
+    },
+    Wind {
+        length: f32,
+        method: WindMethod,
+        from_right: bool,
+        seed: u16,
+    },
+    LensBlur {
+        radius: f32,
+        shape: ApertureShape,
+        angle: f32,
+        depth_source: DepthSource,
+        focus: f32,
+        invert: bool,
+        highlights: f32,
+        threshold: f32,
+        noise: f32,
+        seed: u16,
+    },
+    LensFlare {
+        brightness: f32,
+        radius: f32,
+        style: FlareStyle,
+        color: [u8; 3],
+        center: [f32; 2],
+    },
+    LightingEffects {
+        kind: LightKind,
+        intensity: f32,
+        ambient: f32,
+        radius: f32,
+        angle: f32,
+        elevation: f32,
+        gloss: f32,
+        metallic: f32,
+        relief: f32,
+        color: [u8; 3],
+        center: [f32; 2],
+    },
+
     DiffuseGlow {
         amount: f32,
         clear: f32,
@@ -838,6 +1037,15 @@ impl ZigZagStyle {
     pub const ALL: [Self; 3] = [Self::AroundCenter, Self::OutFromCenter, Self::PondRipples];
 }
 impl Filter {
+    /// Logical bytes retained by embedded filter assets, excluding shared copies.
+    pub fn asset_bytes(&self) -> usize {
+        match self {
+            Self::Displace { map: Some(m), .. } => m.byte_len(),
+            Self::ColorLookup { lut: Some(l), .. } => l.values.len() * 12,
+            _ => 0,
+        }
+    }
+
     /// Optional normalized source-local origin. Pixel-center zero is the first
     /// pixel; one is the last, including one-pixel axes (which map to zero).
     pub fn center(&self) -> Option<[f32; 2]> {
@@ -845,6 +1053,11 @@ impl Filter {
             Self::DiffuseGlow { center, .. }
             | Self::Glass { center, .. }
             | Self::OceanRipple { center, .. }
+            | Self::Extrude { center, .. }
+            | Self::LensFlare { center, .. }
+            | Self::LightingEffects { center, .. }
+            | Self::Displace { center, .. }
+            | Self::Shear { center, .. }
             | Self::Twirl { center, .. }
             | Self::Wave { center, .. }
             | Self::RadialBlur { center, .. }
@@ -861,6 +1074,11 @@ impl Filter {
             Self::DiffuseGlow { center, .. }
             | Self::Glass { center, .. }
             | Self::OceanRipple { center, .. }
+            | Self::Extrude { center, .. }
+            | Self::LensFlare { center, .. }
+            | Self::LightingEffects { center, .. }
+            | Self::Displace { center, .. }
+            | Self::Shear { center, .. }
             | Self::Twirl { center, .. }
             | Self::Wave { center, .. }
             | Self::RadialBlur { center, .. }
@@ -1074,6 +1292,18 @@ impl Document {
         }
         for layer in &self.layers {
             layer.source.allocations(&mut output);
+            for f in &layer.filters {
+                match &f.filter {
+                    Filter::Displace { map: Some(map), .. } => map.allocations(&mut output),
+                    Filter::ColorLookup { lut: Some(lut), .. } => {
+                        output.insert(
+                            Arc::as_ptr(&lut.values) as usize,
+                            lut.values.capacity() * 12,
+                        );
+                    }
+                    _ => {}
+                }
+            }
         }
         output
     }
@@ -1191,7 +1421,9 @@ impl Document {
                     + l.mask.as_ref().map_or(0, |m| m.values.len())
                     + l.filters
                         .iter()
-                        .map(|f| f.mask.as_ref().map_or(0, |m| m.values.len()))
+                        .map(|f| {
+                            f.mask.as_ref().map_or(0, |m| m.values.len()) + f.filter.asset_bytes()
+                        })
                         .sum::<usize>()
             })
             .sum::<usize>()
