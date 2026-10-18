@@ -381,7 +381,37 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::ColoredPencil
+                        Kind::Chrome
+                            | Kind::ConteCrayon
+                            | Kind::Plaster
+                            | Kind::Reticulation
+                            | Kind::TornEdges
+                            | Kind::WaterPaper
+                            | Kind::Fresco
+                            | Kind::NeonGlow
+                            | Kind::PaletteKnife
+                            | Kind::PlasticWrap
+                            | Kind::RoughPastels
+                            | Kind::Sponge
+                            | Kind::Underpainting
+                            | Kind::Watercolor
+                            | Kind::DiffuseGlow
+                            | Kind::Glass
+                            | Kind::OceanRipple
+                            | Kind::Texturizer
+                            | Kind::ShapeBlur
+                            | Kind::SmartBlur
+                            | Kind::SharpenEdges
+                            | Kind::SmartSharpen
+                            | Kind::SprayedStrokes
+                            | Kind::SumiE
+                            | Kind::BasRelief
+                            | Kind::ChalkCharcoal
+                            | Kind::Charcoal
+                            | Kind::GraphicPen
+                            | Kind::NotePaper
+                            | Kind::Stamp
+                            | Kind::ColoredPencil
                             | Kind::DryBrush
                             | Kind::PaintDaubs
                             | Kind::SmudgeStick
@@ -397,7 +427,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                             ..
                         }
                     );
-                    let percent = painting_percent
+                    let percent = (d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
+                        || painting_percent
                         || adjustment_percent
                         || matches!(
                             p.key,

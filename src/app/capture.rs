@@ -89,7 +89,37 @@ impl PaletteApp {
                 | "processing-angled-strokes"
                 | "processing-crosshatch"
                 | "processing-dark-strokes"
-                | "processing-spatter",
+                | "processing-spatter"
+                | "processing-sprayed-strokes"
+                | "processing-sumi-e"
+                | "processing-bas-relief"
+                | "processing-chalk-charcoal"
+                | "processing-charcoal"
+                | "processing-graphic-pen"
+                | "processing-note-paper"
+                | "processing-stamp"
+                | "processing-chrome"
+                | "processing-conte-crayon"
+                | "processing-plaster"
+                | "processing-reticulation"
+                | "processing-torn-edges"
+                | "processing-water-paper"
+                | "processing-fresco"
+                | "processing-neon-glow"
+                | "processing-palette-knife"
+                | "processing-plastic-wrap"
+                | "processing-rough-pastels"
+                | "processing-sponge"
+                | "processing-underpainting"
+                | "processing-watercolor"
+                | "processing-diffuse-glow"
+                | "processing-glass"
+                | "processing-ocean-ripple"
+                | "processing-texturizer"
+                | "processing-shape-blur"
+                | "processing-smart-blur"
+                | "processing-sharpen-edges"
+                | "processing-smart-sharpen",
             ) => {
                 use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
@@ -167,6 +197,36 @@ impl PaletteApp {
                             | "processing-crosshatch"
                             | "processing-dark-strokes"
                             | "processing-spatter"
+                            | "processing-sprayed-strokes"
+                            | "processing-sumi-e"
+                            | "processing-bas-relief"
+                            | "processing-chalk-charcoal"
+                            | "processing-charcoal"
+                            | "processing-graphic-pen"
+                            | "processing-note-paper"
+                            | "processing-stamp"
+                            | "processing-chrome"
+                            | "processing-conte-crayon"
+                            | "processing-plaster"
+                            | "processing-reticulation"
+                            | "processing-torn-edges"
+                            | "processing-water-paper"
+                            | "processing-fresco"
+                            | "processing-neon-glow"
+                            | "processing-palette-knife"
+                            | "processing-plastic-wrap"
+                            | "processing-rough-pastels"
+                            | "processing-sponge"
+                            | "processing-underpainting"
+                            | "processing-watercolor"
+                            | "processing-diffuse-glow"
+                            | "processing-glass"
+                            | "processing-ocean-ripple"
+                            | "processing-texturizer"
+                            | "processing-shape-blur"
+                            | "processing-smart-blur"
+                            | "processing-sharpen-edges"
+                            | "processing-smart-sharpen"
                     )
                 );
                 for y in 200..390 {
@@ -312,6 +372,36 @@ impl PaletteApp {
                         Some("processing-crosshatch") => Kind::Crosshatch,
                         Some("processing-dark-strokes") => Kind::DarkStrokes,
                         Some("processing-spatter") => Kind::Spatter,
+                        Some("processing-sprayed-strokes") => Kind::SprayedStrokes,
+                        Some("processing-sumi-e") => Kind::SumiE,
+                        Some("processing-bas-relief") => Kind::BasRelief,
+                        Some("processing-chalk-charcoal") => Kind::ChalkCharcoal,
+                        Some("processing-charcoal") => Kind::Charcoal,
+                        Some("processing-graphic-pen") => Kind::GraphicPen,
+                        Some("processing-note-paper") => Kind::NotePaper,
+                        Some("processing-stamp") => Kind::Stamp,
+                        Some("processing-chrome") => Kind::Chrome,
+                        Some("processing-conte-crayon") => Kind::ConteCrayon,
+                        Some("processing-plaster") => Kind::Plaster,
+                        Some("processing-reticulation") => Kind::Reticulation,
+                        Some("processing-torn-edges") => Kind::TornEdges,
+                        Some("processing-water-paper") => Kind::WaterPaper,
+                        Some("processing-fresco") => Kind::Fresco,
+                        Some("processing-neon-glow") => Kind::NeonGlow,
+                        Some("processing-palette-knife") => Kind::PaletteKnife,
+                        Some("processing-plastic-wrap") => Kind::PlasticWrap,
+                        Some("processing-rough-pastels") => Kind::RoughPastels,
+                        Some("processing-sponge") => Kind::Sponge,
+                        Some("processing-underpainting") => Kind::Underpainting,
+                        Some("processing-watercolor") => Kind::Watercolor,
+                        Some("processing-diffuse-glow") => Kind::DiffuseGlow,
+                        Some("processing-glass") => Kind::Glass,
+                        Some("processing-ocean-ripple") => Kind::OceanRipple,
+                        Some("processing-texturizer") => Kind::Texturizer,
+                        Some("processing-shape-blur") => Kind::ShapeBlur,
+                        Some("processing-smart-blur") => Kind::SmartBlur,
+                        Some("processing-sharpen-edges") => Kind::SharpenEdges,
+                        Some("processing-smart-sharpen") => Kind::SmartSharpen,
 
                         _ => Kind::GaussianBlur,
                     };

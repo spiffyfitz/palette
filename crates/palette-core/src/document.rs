@@ -90,9 +90,303 @@ impl DaubStyle {
     pub const ALL: [Self; 3] = [Self::Round, Self::Square, Self::Diagonal];
 }
 
+/// Stored stroke-axis choices, shared by ink and sprayed-color filters.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StrokeDirection {
+    RightDiagonal,
+    LeftDiagonal,
+    Horizontal,
+    Vertical,
+}
+impl StrokeDirection {
+    /// Conventional presentation order; wire values are names, not indices.
+    pub const ALL: [Self; 4] = [
+        Self::RightDiagonal,
+        Self::LeftDiagonal,
+        Self::Horizontal,
+        Self::Vertical,
+    ];
+    /// Unit axis in source coordinates (positive y points down).
+    pub(crate) fn vector(self) -> [f64; 2] {
+        use std::f64::consts::FRAC_1_SQRT_2 as D;
+        match self {
+            Self::RightDiagonal => [D, D],
+            Self::LeftDiagonal => [D, -D],
+            Self::Horizontal => [1., 0.],
+            Self::Vertical => [0., 1.],
+        }
+    }
+}
+
+/// Procedural paper/surface materials; no proprietary texture assets are used.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SurfaceTexture {
+    Canvas,
+    Brick,
+    Burlap,
+    Sandstone,
+}
+impl SurfaceTexture {
+    /// Stable UI order; native serialization stores variant names.
+    pub const ALL: [Self; 4] = [Self::Canvas, Self::Brick, Self::Burlap, Self::Sandstone];
+}
+
+/// Stable named options for the independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GlassSurface {
+    Frosted,
+    TinyLens,
+    Blocks,
+    Canvas,
+}
+impl GlassSurface {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 4] = [Self::Frosted, Self::TinyLens, Self::Blocks, Self::Canvas];
+}
+/// Stable named options for the independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ApertureShape {
+    Disk,
+    Triangle,
+    Square,
+    Hexagon,
+    Octagon,
+}
+impl ApertureShape {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 5] = [
+        Self::Disk,
+        Self::Triangle,
+        Self::Square,
+        Self::Hexagon,
+        Self::Octagon,
+    ];
+}
+/// Stable named options for the independently implemented filter.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SmartBlurMode {
+    Normal,
+    EdgeOnly,
+    OverlayEdge,
+}
+impl SmartBlurMode {
+    /// Stable parameter-choice order.
+    pub const ALL: [Self; 3] = [Self::Normal, Self::EdgeOnly, Self::OverlayEdge];
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    DiffuseGlow {
+        amount: f32,
+        clear: f32,
+        radius: f32,
+        grain: f32,
+        seed: u16,
+        color: [u8; 3],
+        center: [f32; 2],
+    },
+    Glass {
+        distortion: f32,
+        smoothness: f32,
+        scale: f32,
+        texture: GlassSurface,
+        invert: bool,
+        seed: u16,
+        edges: FilterEdges,
+        center: [f32; 2],
+    },
+    OceanRipple {
+        amplitude: f32,
+        wavelength: f32,
+        seed: u16,
+        edges: FilterEdges,
+        center: [f32; 2],
+    },
+    Texturizer {
+        texture: SurfaceTexture,
+        scale: f32,
+        relief: f32,
+        angle: f32,
+        invert: bool,
+        seed: u16,
+    },
+    ShapeBlur {
+        radius: f32,
+        shape: ApertureShape,
+        angle: f32,
+    },
+    SmartBlur {
+        radius: u8,
+        threshold: f32,
+        mode: SmartBlurMode,
+    },
+    SharpenEdges,
+    SmartSharpen {
+        radius: f32,
+        amount: f32,
+        reduce_noise: f32,
+        iterations: u8,
+    },
+
+    Fresco {
+        radius: f32,
+        detail: f32,
+        texture: f32,
+        seed: u16,
+    },
+    NeonGlow {
+        size: f32,
+        brightness: f32,
+        color: [u8; 3],
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    PaletteKnife {
+        length: f32,
+        detail: f32,
+        smoothness: f32,
+    },
+    PlasticWrap {
+        strength: f32,
+        detail: f32,
+        smoothness: f32,
+    },
+    RoughPastels {
+        length: f32,
+        detail: f32,
+        texture: SurfaceTexture,
+        scale: f32,
+        relief: f32,
+        angle: f32,
+        invert: bool,
+        seed: u16,
+    },
+    Sponge {
+        radius: f32,
+        definition: f32,
+        smoothness: f32,
+        seed: u16,
+    },
+    Underpainting {
+        radius: f32,
+        coverage: f32,
+        texture: SurfaceTexture,
+        scale: f32,
+        relief: f32,
+        angle: f32,
+        invert: bool,
+        seed: u16,
+    },
+    Watercolor {
+        detail: f32,
+        shadows: f32,
+        texture: f32,
+        seed: u16,
+    },
+
+    Chrome {
+        detail: f32,
+        smoothness: f32,
+    },
+    ConteCrayon {
+        foreground: f32,
+        background: f32,
+        texture: SurfaceTexture,
+        scale: f32,
+        relief: f32,
+        angle: f32,
+        invert: bool,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    Plaster {
+        balance: f32,
+        smoothness: f32,
+        angle: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    Reticulation {
+        density: f32,
+        foreground: f32,
+        background: f32,
+        grain_size: f32,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    TornEdges {
+        balance: f32,
+        smoothness: f32,
+        contrast: f32,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    WaterPaper {
+        length: f32,
+        brightness: f32,
+        contrast: f32,
+        seed: u16,
+    },
+
+    SprayedStrokes {
+        length: f32,
+        radius: f32,
+        direction: StrokeDirection,
+        seed: u16,
+    },
+    SumiE {
+        width: f32,
+        pressure: f32,
+        contrast: f32,
+    },
+    BasRelief {
+        detail: f32,
+        smoothness: f32,
+        angle: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    ChalkCharcoal {
+        charcoal: f32,
+        chalk: f32,
+        pressure: f32,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    Charcoal {
+        width: f32,
+        detail: f32,
+        balance: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    GraphicPen {
+        length: f32,
+        balance: f32,
+        direction: StrokeDirection,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    NotePaper {
+        balance: f32,
+        grain: f32,
+        relief: f32,
+        seed: u16,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+    Stamp {
+        balance: f32,
+        smoothness: f32,
+        low: [u8; 3],
+        high: [u8; 3],
+    },
+
     ColoredPencil {
         width: f32,
         pressure: f32,
@@ -548,7 +842,10 @@ impl Filter {
     /// pixel; one is the last, including one-pixel axes (which map to zero).
     pub fn center(&self) -> Option<[f32; 2]> {
         match self {
-            Self::Twirl { center, .. }
+            Self::DiffuseGlow { center, .. }
+            | Self::Glass { center, .. }
+            | Self::OceanRipple { center, .. }
+            | Self::Twirl { center, .. }
             | Self::Wave { center, .. }
             | Self::RadialBlur { center, .. }
             | Self::Pinch { center, .. }
@@ -561,7 +858,10 @@ impl Filter {
     }
     pub(crate) fn center_mut(&mut self) -> Option<&mut [f32; 2]> {
         match self {
-            Self::Twirl { center, .. }
+            Self::DiffuseGlow { center, .. }
+            | Self::Glass { center, .. }
+            | Self::OceanRipple { center, .. }
+            | Self::Twirl { center, .. }
             | Self::Wave { center, .. }
             | Self::RadialBlur { center, .. }
             | Self::Pinch { center, .. }

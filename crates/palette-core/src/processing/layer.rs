@@ -136,6 +136,36 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::Chrome { .. }
+                | Filter::ConteCrayon { .. }
+                | Filter::Plaster { .. }
+                | Filter::Reticulation { .. }
+                | Filter::TornEdges { .. }
+                | Filter::Fresco { .. }
+                | Filter::NeonGlow { .. }
+                | Filter::PaletteKnife { .. }
+                | Filter::PlasticWrap { .. }
+                | Filter::RoughPastels { .. }
+                | Filter::Sponge { .. }
+                | Filter::Underpainting { .. }
+                | Filter::DiffuseGlow { .. }
+                | Filter::Glass { .. }
+                | Filter::OceanRipple { .. }
+                | Filter::Texturizer { .. }
+                | Filter::ShapeBlur { .. }
+                | Filter::SmartBlur { .. }
+                | Filter::SharpenEdges
+                | Filter::SmartSharpen { .. }
+                | Filter::Watercolor { .. }
+                | Filter::WaterPaper { .. } => true,
+                Filter::SprayedStrokes { .. }
+                | Filter::SumiE { .. }
+                | Filter::BasRelief { .. }
+                | Filter::ChalkCharcoal { .. }
+                | Filter::Charcoal { .. }
+                | Filter::GraphicPen { .. }
+                | Filter::NotePaper { .. }
+                | Filter::Stamp { .. } => true,
                 Filter::ColoredPencil { .. }
                 | Filter::DryBrush { .. }
                 | Filter::PaintDaubs { .. }
@@ -229,6 +259,44 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::DiffuseGlow { .. }
+            | Filter::Glass { .. }
+            | Filter::OceanRipple { .. }
+            | Filter::Texturizer { .. }
+            | Filter::ShapeBlur { .. }
+            | Filter::SmartBlur { .. }
+            | Filter::SharpenEdges
+            | Filter::SmartSharpen { .. } => {
+                pixels = super::optical::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Fresco { .. }
+            | Filter::NeonGlow { .. }
+            | Filter::PaletteKnife { .. }
+            | Filter::PlasticWrap { .. }
+            | Filter::RoughPastels { .. }
+            | Filter::Sponge { .. }
+            | Filter::Underpainting { .. }
+            | Filter::Watercolor { .. } => {
+                pixels = super::media::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Chrome { .. }
+            | Filter::ConteCrayon { .. }
+            | Filter::Plaster { .. }
+            | Filter::Reticulation { .. }
+            | Filter::TornEdges { .. }
+            | Filter::WaterPaper { .. } => {
+                pixels = super::sketch::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::SprayedStrokes { .. }
+            | Filter::SumiE { .. }
+            | Filter::BasRelief { .. }
+            | Filter::ChalkCharcoal { .. }
+            | Filter::Charcoal { .. }
+            | Filter::GraphicPen { .. }
+            | Filter::NotePaper { .. }
+            | Filter::Stamp { .. } => {
+                pixels = super::drawing::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::ColoredPencil { .. }
             | Filter::DryBrush { .. }
             | Filter::PaintDaubs { .. }

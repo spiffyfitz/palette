@@ -3697,6 +3697,403 @@ fn painting_filters_preview_cancel_apply_save_and_remove_with_paper_color_and_da
 }
 
 #[test]
+fn drawing_filters_preview_cancel_save_remove_and_retain_colors_and_directions() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::SprayedStrokes,
+        Kind::SumiE,
+        Kind::BasRelief,
+        Kind::ChalkCharcoal,
+        Kind::Charcoal,
+        Kind::GraphicPen,
+        Kind::NotePaper,
+        Kind::Stamp,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = if kind.descriptor().category == "Sketch" {
+            Color32::from_rgba_unmultiplied(240, 220, 180, 128)
+        } else {
+            Color32::from_rgb(240, 220, 180)
+        };
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        if matches!(kind, Kind::SprayedStrokes | Kind::GraphicPen) {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let brush_type = label_position(&mut app, &ctx, "Stroke direction");
+            click_ui(&mut app, &ctx, brush_type);
+            let round = label_position(&mut app, &ctx, "Right diagonal");
+            click_ui(&mut app, &ctx, round);
+            let diagonal = label_position(&mut app, &ctx, "Vertical");
+            click_ui(&mut app, &ctx, diagonal);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("direction"),
+                Some(Value::Choice(3))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if kind.descriptor().category == "Sketch" {
+            assert_eq!(changed.value("low"), Some(Value::Color([20, 40, 80])));
+            assert_eq!(changed.value("high"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("drawing.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn sketch_and_artistic_completion_filters_preview_save_undo_remove_and_preserve_texture_and_colors()
+{
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::Chrome,
+        Kind::ConteCrayon,
+        Kind::Plaster,
+        Kind::Reticulation,
+        Kind::TornEdges,
+        Kind::WaterPaper,
+        Kind::Fresco,
+        Kind::NeonGlow,
+        Kind::PaletteKnife,
+        Kind::PlasticWrap,
+        Kind::RoughPastels,
+        Kind::Sponge,
+        Kind::Underpainting,
+        Kind::Watercolor,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = if matches!(
+            kind,
+            Kind::NeonGlow
+                | Kind::ConteCrayon
+                | Kind::Plaster
+                | Kind::Reticulation
+                | Kind::TornEdges
+        ) {
+            Color32::from_rgba_unmultiplied(240, 220, 180, 128)
+        } else {
+            Color32::from_rgb(240, 220, 180)
+        };
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        if matches!(
+            kind,
+            Kind::ConteCrayon | Kind::RoughPastels | Kind::Underpainting
+        ) {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let texture = label_position(&mut app, &ctx, "Texture");
+            click_ui(&mut app, &ctx, texture);
+            let canvas = label_position(&mut app, &ctx, "Canvas");
+            click_ui(&mut app, &ctx, canvas);
+            let sandstone = label_position(&mut app, &ctx, "Sandstone");
+            click_ui(&mut app, &ctx, sandstone);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("texture"),
+                Some(Value::Choice(3))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if matches!(
+            kind,
+            Kind::NeonGlow
+                | Kind::ConteCrayon
+                | Kind::Plaster
+                | Kind::Reticulation
+                | Kind::TornEdges
+        ) {
+            assert_eq!(changed.value("low"), Some(Value::Color([20, 40, 80])));
+            assert_eq!(changed.value("high"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sketch.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
+fn optical_filters_preview_save_undo_remove_and_preserve_materials_modes_and_glow_color() {
+    use palette_core::processing::{Kind, ParameterType, Value};
+    for kind in [
+        Kind::DiffuseGlow,
+        Kind::Glass,
+        Kind::OceanRipple,
+        Kind::Texturizer,
+        Kind::ShapeBlur,
+        Kind::SmartBlur,
+        Kind::SharpenEdges,
+        Kind::SmartSharpen,
+    ] {
+        let ctx = Context::default();
+        let mut app = test_app(&ctx);
+        app.current_mut().document = processing_document();
+        app.brush.color = [20, 40, 80, 255];
+        app.background = Color32::from_rgba_unmultiplied(240, 220, 180, 128);
+        let [r, g, b, _] = app.background.to_srgba_unmultiplied();
+        let canvas_color = [r, g, b];
+        let original = app.current().document.clone();
+        app.open_processing(kind, None);
+        wait_for_processing(&mut app, &ctx);
+        let before = app.processing_dialog.as_ref().unwrap().operation.clone();
+        let choice = match kind {
+            Kind::Glass => Some(("Texture", "Frosted", "Canvas", "texture", 3)),
+            Kind::Texturizer => Some(("Texture", "Canvas", "Sandstone", "texture", 3)),
+            Kind::SmartBlur => Some(("Mode", "Normal", "Overlay edge", "mode", 2)),
+            Kind::ShapeBlur => Some(("Shape", "Hexagon", "Octagon", "shape", 4)),
+            _ => None,
+        };
+        if let Some((label, old, new, key, value)) = choice {
+            let current = kind.descriptor().parameters
+                [app.processing_dialog.as_ref().unwrap().parameter]
+                .label;
+            let selected = label_position(&mut app, &ctx, current);
+            click_ui(&mut app, &ctx, selected);
+            let param = label_position(&mut app, &ctx, label);
+            click_ui(&mut app, &ctx, param);
+            let selected = label_position(&mut app, &ctx, old);
+            click_ui(&mut app, &ctx, selected);
+            let option = label_position(&mut app, &ctx, new);
+            click_ui(&mut app, &ctx, option);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog.as_ref().unwrap().operation.value(key),
+                Some(Value::Choice(value))
+            );
+        }
+        if let Some((index, p)) = kind
+            .descriptor()
+            .parameters
+            .iter()
+            .enumerate()
+            .find(|(_, p)| matches!(p.kind, ParameterType::Number { .. }))
+        {
+            let selected = app.processing_dialog.as_ref().unwrap().parameter;
+            if selected != index {
+                let selected =
+                    label_position(&mut app, &ctx, kind.descriptor().parameters[selected].label);
+                click_ui(&mut app, &ctx, selected);
+                let parameter = label_position(&mut app, &ctx, p.label);
+                click_ui(&mut app, &ctx, parameter);
+            }
+            let setting = scoped_label_bounds(&mut app, &ctx, p.label, true);
+            click_ui(
+                &mut app,
+                &ctx,
+                pos2(setting.right() + 95., setting.center().y),
+            );
+            wait_for_processing(&mut app, &ctx);
+            assert_ne!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value(p.key),
+                before.value(p.key),
+                "{kind:?}"
+            );
+        }
+        let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
+        assert!(app.current().document == original);
+        let preview = app.processing_preview().unwrap().id();
+        assert!(canvas_uses_texture(&mut app, &ctx, preview));
+        let cancel = label_position(&mut app, &ctx, "Cancel");
+        click_ui(&mut app, &ctx, cancel);
+        assert!(app.current().document == original);
+        app.open_processing(kind, None);
+        app.processing_dialog.as_mut().unwrap().operation = changed.clone();
+        wait_for_processing(&mut app, &ctx);
+        let apply = label_position(&mut app, &ctx, "Apply");
+        click_ui(&mut app, &ctx, apply);
+        let saved = app.current().document.clone();
+        let id = saved.active().filters[0].id;
+        assert!(saved.active().source == original.active().source);
+        if kind == Kind::DiffuseGlow {
+            assert_eq!(changed.value("color"), Some(Value::Color(canvas_color)));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("optical.palette");
+        io::save_project(&path, &saved).unwrap();
+        assert!(io::open(&path).unwrap() == saved);
+        app.undo_current();
+        assert!(app.current().document == original);
+        app.redo_current();
+        assert!(app.current().document == saved);
+        app.brush.color = [255, 0, 0, 255];
+        app.background = Color32::BLACK;
+        app.open_processing(kind, Some(id));
+        wait_for_processing(&mut app, &ctx);
+        assert_eq!(app.processing_dialog.as_ref().unwrap().operation, changed);
+        let actions = scoped_label_bounds(&mut app, &ctx, "…", true).center();
+        click_ui(&mut app, &ctx, actions);
+        let remove = label_position(&mut app, &ctx, "Remove");
+        click_ui(&mut app, &ctx, remove);
+        assert!(app.current().document.active().filters.is_empty());
+        assert!(app.current().document.active().source == original.active().source);
+        app.undo_current();
+        assert!(app.current().document == saved);
+    }
+}
+
+#[test]
 fn artistic_controls_preview_cancel_then_save_undo_and_remove_each_editable_filter() {
     use palette_core::processing::{Kind, Value};
     for kind in [
@@ -3803,6 +4200,9 @@ fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_o
             Kind::RadialBlur,
             Kind::PolarCoordinates,
             Kind::ZigZag,
+            Kind::DiffuseGlow,
+            Kind::Glass,
+            Kind::OceanRipple,
         ] {
             app.open_processing(kind, None);
             wait_for_processing(&mut app, &ctx);
@@ -4315,6 +4715,19 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                     )
                     .unwrap();
             }
+            if let Some((key, index)) = match entry.kind {
+                Kind::SmartBlur => Some(("mode", 2)),
+                Kind::ShapeBlur => Some(("shape", 4)),
+                Kind::Glass | Kind::Texturizer => Some(("texture", 3)),
+                _ => None,
+            } {
+                app.processing_dialog
+                    .as_mut()
+                    .unwrap()
+                    .operation
+                    .set_value(key, palette_core::processing::Value::Choice(index))
+                    .unwrap();
+            }
             let parameters: Vec<_> = if entry.kind == Kind::ReduceNoise
                 || entry.parameters.iter().any(|p| p.key == "center_x")
                 || matches!(
@@ -4353,6 +4766,36 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                         | Kind::Crosshatch
                         | Kind::DarkStrokes
                         | Kind::Spatter
+                        | Kind::SprayedStrokes
+                        | Kind::SumiE
+                        | Kind::BasRelief
+                        | Kind::ChalkCharcoal
+                        | Kind::Charcoal
+                        | Kind::GraphicPen
+                        | Kind::NotePaper
+                        | Kind::Stamp
+                        | Kind::Chrome
+                        | Kind::ConteCrayon
+                        | Kind::Plaster
+                        | Kind::Reticulation
+                        | Kind::TornEdges
+                        | Kind::WaterPaper
+                        | Kind::Fresco
+                        | Kind::NeonGlow
+                        | Kind::PaletteKnife
+                        | Kind::PlasticWrap
+                        | Kind::RoughPastels
+                        | Kind::Sponge
+                        | Kind::Underpainting
+                        | Kind::Watercolor
+                        | Kind::DiffuseGlow
+                        | Kind::Glass
+                        | Kind::OceanRipple
+                        | Kind::Texturizer
+                        | Kind::ShapeBlur
+                        | Kind::SmartBlur
+                        | Kind::SharpenEdges
+                        | Kind::SmartSharpen
                 ) {
                 (0..entry.parameters.len()).collect()
             } else {
@@ -4647,6 +5090,36 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         Kind::Crosshatch,
         Kind::DarkStrokes,
         Kind::Spatter,
+        Kind::SprayedStrokes,
+        Kind::SumiE,
+        Kind::BasRelief,
+        Kind::ChalkCharcoal,
+        Kind::Charcoal,
+        Kind::GraphicPen,
+        Kind::NotePaper,
+        Kind::Stamp,
+        Kind::Chrome,
+        Kind::ConteCrayon,
+        Kind::Plaster,
+        Kind::Reticulation,
+        Kind::TornEdges,
+        Kind::WaterPaper,
+        Kind::Fresco,
+        Kind::NeonGlow,
+        Kind::PaletteKnife,
+        Kind::PlasticWrap,
+        Kind::RoughPastels,
+        Kind::Sponge,
+        Kind::Underpainting,
+        Kind::Watercolor,
+        Kind::DiffuseGlow,
+        Kind::Glass,
+        Kind::OceanRipple,
+        Kind::Texturizer,
+        Kind::ShapeBlur,
+        Kind::SmartBlur,
+        Kind::SharpenEdges,
+        Kind::SmartSharpen,
     ] {
         app.cancel_processing();
         let filter = label_position(&mut app, &ctx, "Filter");
@@ -4714,10 +5187,10 @@ fn filter_gallery_is_first_disabled_and_unimplemented_conventional_filters_canno
         let filter = label_position(&mut app, &ctx, "Filter");
         click_ui(&mut app, &ctx, filter);
     }
-    let artistic = label_position(&mut app, &ctx, "Artistic");
-    click_ui(&mut app, &ctx, artistic);
-    let watercolor = label_position(&mut app, &ctx, "Watercolor…");
-    click_ui(&mut app, &ctx, watercolor);
+    let blur = label_position(&mut app, &ctx, "Blur");
+    click_ui(&mut app, &ctx, blur);
+    let lens = label_position(&mut app, &ctx, "Lens Blur…");
+    click_ui(&mut app, &ctx, lens);
     assert!(app.current().document == before);
     assert!(app.processing_dialog.is_none());
 }

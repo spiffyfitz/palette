@@ -200,10 +200,27 @@ impl PaletteApp {
         } else {
             kind.default_operation()
         };
+        if instance.is_none() && operation.kind() == Kind::DiffuseGlow {
+            let [r, g, b, _] = self.background.to_srgba_unmultiplied();
+            operation
+                .set_value("color", Value::Color([r, g, b]))
+                .expect("glow color");
+        }
         if instance.is_none()
             && matches!(
                 operation.kind(),
                 Kind::Clouds
+                    | Kind::NeonGlow
+                    | Kind::ConteCrayon
+                    | Kind::Plaster
+                    | Kind::Reticulation
+                    | Kind::TornEdges
+                    | Kind::BasRelief
+                    | Kind::ChalkCharcoal
+                    | Kind::Charcoal
+                    | Kind::GraphicPen
+                    | Kind::NotePaper
+                    | Kind::Stamp
                     | Kind::GradientMap
                     | Kind::DifferenceClouds
                     | Kind::Fibers

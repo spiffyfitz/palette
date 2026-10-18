@@ -54,6 +54,36 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
+        Filter::Chrome { .. }
+        | Filter::ConteCrayon { .. }
+        | Filter::Plaster { .. }
+        | Filter::Reticulation { .. }
+        | Filter::TornEdges { .. }
+        | Filter::Fresco { .. }
+        | Filter::NeonGlow { .. }
+        | Filter::PaletteKnife { .. }
+        | Filter::PlasticWrap { .. }
+        | Filter::RoughPastels { .. }
+        | Filter::Sponge { .. }
+        | Filter::Underpainting { .. }
+        | Filter::DiffuseGlow { .. }
+        | Filter::Glass { .. }
+        | Filter::OceanRipple { .. }
+        | Filter::Texturizer { .. }
+        | Filter::ShapeBlur { .. }
+        | Filter::SmartBlur { .. }
+        | Filter::SharpenEdges
+        | Filter::SmartSharpen { .. }
+        | Filter::Watercolor { .. }
+        | Filter::WaterPaper { .. } => return pixel,
+        Filter::SprayedStrokes { .. }
+        | Filter::SumiE { .. }
+        | Filter::BasRelief { .. }
+        | Filter::ChalkCharcoal { .. }
+        | Filter::Charcoal { .. }
+        | Filter::GraphicPen { .. }
+        | Filter::NotePaper { .. }
+        | Filter::Stamp { .. } => return pixel,
         Filter::ColoredPencil { .. }
         | Filter::DryBrush { .. }
         | Filter::PaintDaubs { .. }

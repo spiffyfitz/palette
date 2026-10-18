@@ -119,7 +119,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 85 implemented operations.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 115 implemented operations.
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
@@ -134,8 +134,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 79 of 121 implemented, 42 remaining; Filter Gallery and layer styles counted separately.
-- [ ] Remaining conventional filter catalog, including further distortions, artistic/brush-stroke/sketch filters, textures and custom convolution.
+- [x] Registry-generated filter inventory: 109 of 121 implemented, 12 remaining; Filter Gallery and layer styles counted separately.
+- [ ] Remaining conventional filter catalog, including further distortions, blur, stylize, textures and custom convolution.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
 
@@ -144,5 +144,15 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 - [x] Colored Pencil, Dry Brush, three Paint Daubs geometries, Smudge Stick, Angled Strokes, Crosshatch, Dark Strokes and Spatter; editable source-preserving controls, saved paper color/seeds and bounded neighborhoods.
 
+- [x] All eight current Brush Strokes entries, including directional seeded Sprayed Strokes and wet-color Sumi-e.
+- [x] Bas Relief, Chalk & Charcoal, Charcoal, Graphic Pen, Note Paper and Stamp; saved ink/paper colors, four stroke axes, editable lighting and source-alpha preservation.
+
+- [x] All 14 current Sketch entries, including Chrome, Conté Crayon, Plaster, Reticulation, Torn Edges and Water Paper; live settings, original-alpha/source preservation and native project round trips.
+- [x] Generated Canvas/Brick/Burlap/Sandstone surfaces with stored size, relief, light angle, inversion and seed; no proprietary texture assets.
+
 ## Phase 6
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.
+
+- [x] All 15 current Artistic entries, including Fresco, Neon Glow, Palette Knife, Plastic Wrap, Rough Pastels, Sponge, Underpainting and Watercolor; editable material/lighting/color controls, original-alpha/source preservation and native round trips.
+
+- [x] All five Sharpen and six Texture entries, plus Diffuse Glow, Glass, Ocean Ripple, Shape Blur and three-mode Smart Blur; source-preserving live stacks, alpha-correct warps/aperture blur, saved materials/colors/iterations and three additional mouse origins.
