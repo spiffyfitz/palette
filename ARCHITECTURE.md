@@ -324,3 +324,36 @@ Extrude, Lens Flare and Lighting Effects share normalized source-local origins a
 Native v6 FilterRecord descriptors optionally reference LUT/map assets. The writer removes large inline data from its cloned filter descriptors, stores map tiles through existing pointer deduplication and LUT floats as little-endian binary triples, and deduplicates shared LUT storage. The reader validates variant/reference/size consistency before decompression, restores shared tables/map tiles and validates finite table/domain values before use. Legacy descriptors default to no extra assets; unknown variants are rejected by older readers. History's unique allocation accounting and prepared-layer cache budgeting include embedded filter data.
 
 Processing drafts own their import receiver; workers load bounded assets outside the UI thread and request repaint on completion. Tab/layer/draft changes drop the receiver, preventing stale results from entering a new editor. Apply is blocked while import is pending. Errors retain the previous asset; first-frame/page notices reach the status bar. Curve and kernel popups mutate the same transactional draft and ticket as parameter sliders, so previews remain live and one Apply is one undoable document change. [Wire format](docs/FILE_FORMATS.md) and [validation](docs/EDITABLE_FILTERS_VALIDATION.md).
+
+
+### Spatially varying blur and procedural/video extensions
+
+`processing::gallery` evaluates bounded field-pin interpolation and rotated iris/band focus masks through six Gaussian scales, retaining at most two evaluated scales and one output. It also precomputes quadratic path stations/shutter trajectories and normalized elliptical spin trajectories; all spatial taps and transition mixes are premultiplied. Fixed pin/handle arrays are validated even when inactive. Preview scaling visits every pin radius; normalized coordinates and angles stay unchanged.
+
+`processing::generators` owns original deterministic Flame/Picture Frame/Tree algorithms. Analytic coverage and seeded texture create RGBA content without source mutation. The tree emits bounded recursive branch capsules and leaf clusters before one final layer-opacity mix. `processing::video` reconstructs retained interlace fields and implements point-local YIQ gamut limiting and RGB/HSB/HSL channel conversion. Registry metadata supplies all parameter domains; new enum variants retain native v6 framing and ordinary mask/history/cache behavior. Origins and geometry guides use the existing transactional placement path. [Algorithms, limits and validation](docs/GALLERY_VIDEO_RENDER_VALIDATION.md); [external coverage boundary](docs/PHOTOSHOP_FILTER_AUDIT.md).
+
+
+### Local neural processing
+
+`palette-neural` is a workspace crate containing checksum-pinned bundled Mosaic, DnCNN-3 and ECCV16 models and Tract 0.23.9 CPU inference. It has no network, subprocess, Python, external-service or user-model-loading API. A process-wide cancellable mutex bounds inference to one graph at a time and retains one compiled plan plus one exact input/output pair per profile (~1.8 MiB combined for cached tensors, in addition to weights and graph activations). A shared CPU pool is limited to at most four math threads, leaving a core free when available. Cancellation is checked between operators; planning and individual operators are not preempted. Failed/cancelled graph states are discarded.
+
+Core adapts straight RGBA to premultiplied area-averaged RGB over neutral gray, fits the content into a 224² edge-extended working image without aspect distortion, evaluates the bundled network, resamples color to source dimensions and restores source alpha exactly. Strength blends colors before the existing per-filter masks, subsequent filters, layer mask, opacity and effects. Source pixels remain unmodified. The typed `NeuralStyle::MosaicV1` identity must retain the same weights/algorithm contract; future models need new identities. The model is embedded, so reopening a native project requires no downloads and never silently falls back to a flat image. Existing preview/main-render workers handle scheduling; inference never runs on the UI thread.
+
+The isolated `tools/neural-probe` remains development evidence for a candidate learned Super Zoom network. Genuine enlargement still needs evaluated geometry and mask-coordinate work. Other first-batch models are pending. [Status and integration requirements](docs/NEURAL_FILTERS_FIRST_SIX.md).
+
+JPEG restoration evaluates source-resolution encoded studio-range luminance in 192² tiles with a discarded 20-pixel halo (152² interiors), repeats source edges, applies the inferred Y delta while retaining alpha/chroma, and supports the existing filter masks and stack order. One source/restored pair is retained under a conservative 128 MiB budget for strength edits; partial cancelled results are excluded. `JpegModel::Dncnn3V1` pins the graph and pixel contract. Main render tickets fence obsolete `(session, generation, epoch)` targets, requeue cancelled tabs when revisited and cancel on application drop. [Validation and limitations](docs/JPEG_RESTORATION_VALIDATION.md).
+
+Colorize uses normalized D65 Lab luminance at `[1,1,256,256]` and predicts a/b at `[1,2,64,64]`. Only large convolution kernels have fp16 storage; constant casts restore float32 before computation. Source RGB is premultiplied over neutral gray before square inference resampling, preventing hidden RGB contamination. Half-pixel chroma reconstruction reuses original per-pixel Lab L and exact alpha, blends original/inferred chroma with Strength/Saturation, then explicitly clips RGB gamut. Zero strength is exact source identity; zero saturation bypasses inference. The immutable `ColorizeModel::Eccv16Fp16V1` contract and graph hash are retained in native v6. [Independent evidence and limits](docs/COLORIZE_VALIDATION.md).
+
+Face-guided Skin Smoothing adds fixed batch-one BlazeFace 128² and Face Mesh
+192² profiles. The shared inference adapter validates each output tensor's
+shape, flattens outputs in pinned graph order, and retains one plan/exact-input
+pair per profile under the existing bounded CPU executor/lock. In core,
+weighted anchor suppression, letterbox/rotated-crop mapping and canonical
+landmark contours create coverage with protected eye/lip/brow holes. Learned
+geometry guides an explicitly conventional separable bilateral smoother in
+at most eight 384² patches. Adding a feathered patch color delta retains
+source geometry, high-frequency detail and alpha. A separate 128 MiB bounded
+source/geometry/patch cache accelerates parameter edits without storing
+partial jobs. `SkinModel::FaceMeshV1` pins model and pixel contracts in v6;
+no source raster is replaced. [Exact geometry, references and limits](docs/SKIN_SMOOTHING_VALIDATION.md).

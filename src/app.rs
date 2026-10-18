@@ -25,7 +25,16 @@ use palette_core::{
     io,
     raster::Raster,
 };
-use std::{collections::HashMap, path::PathBuf, sync::mpsc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
 
 const PANEL: Color32 = Color32::from_rgb(39, 39, 47);
 pub const WORKSPACE: Color32 = Color32::from_rgb(30, 30, 39);
@@ -53,6 +62,7 @@ fn texture_image(raster: &Raster, max_side: usize) -> ColorImage {
 }
 
 pub struct RenderRequest {
+    ticket: u64,
     id: u64,
     generation: u64,
     epoch: u64,
@@ -130,6 +140,8 @@ pub struct PaletteApp {
     pending_files: usize,
     render_tx: mpsc::SyncSender<RenderRequest>,
     render_rx: mpsc::Receiver<RenderResult>,
+    render_ticket: Arc<AtomicU64>,
+    render_target: Option<(u64, u64, u64)>,
     file_tx: mpsc::Sender<FileResult>,
     file_rx: mpsc::Receiver<FileResult>,
     thumbnails: HashMap<(u64, u64), (u64, TextureHandle)>,
@@ -224,9 +236,15 @@ impl PaletteApp {
         let (render_tx, requests) = mpsc::sync_channel::<RenderRequest>(1);
         let (results, render_rx) = mpsc::channel();
         let repaint = ctx.clone();
+        let render_ticket = Arc::new(AtomicU64::new(0));
+        let worker_ticket = render_ticket.clone();
         std::thread::spawn(move || {
             let mut renderer = composite::Renderer::default();
             while let Ok(request) = requests.recv() {
+                let cancelled = || worker_ticket.load(Ordering::Relaxed) != request.ticket;
+                if cancelled() {
+                    continue;
+                }
                 let mut document = request.document;
                 let selection = request.selection.map(|operation| {
                     let result = operation
@@ -235,9 +253,11 @@ impl PaletteApp {
                         .map(|_| document.clone());
                     (operation, result)
                 });
-                let frame = renderer
-                    .render_frame(&document)
-                    .expect("validated render request");
+                let frame = renderer.render_frame_cancel(&document, &cancelled);
+                if cancelled() {
+                    continue;
+                }
+                let frame = frame.expect("validated render request");
                 let pixels = frame.pixels;
                 let thumbnails = frame
                     .thumbnails
@@ -299,6 +319,8 @@ impl PaletteApp {
             pending_files: 0,
             render_tx,
             render_rx,
+            render_ticket,
+            render_target: None,
             file_tx,
             file_rx,
             thumbnails: HashMap::new(),
@@ -701,11 +723,27 @@ impl PaletteApp {
     }
 
     fn request_render(&mut self, ctx: &Context) {
+        let s = self.current();
+        let target = (s.id, s.generation, s.render_epoch);
+        if self.render_target != Some(target) {
+            self.render_target = Some(target);
+            self.render_ticket.fetch_add(1, Ordering::Relaxed);
+            // A tab's cancelled request must be eligible again when revisited.
+            // Complete cached frames remain usable across tab switches.
+            for session in &mut self.sessions {
+                if session.requested == Some(session.generation)
+                    && session.rendered_generation != Some(session.generation)
+                {
+                    session.requested = None;
+                }
+            }
+        }
         let session = self.current();
         if session.requested == Some(session.generation) {
             return;
         }
         let request = RenderRequest {
+            ticket: self.render_ticket.load(Ordering::Relaxed),
             id: session.id,
             generation: session.generation,
             epoch: session.render_epoch,
@@ -1049,3 +1087,12 @@ impl PaletteApp {
 
 #[cfg(test)]
 mod tests;
+
+impl Drop for PaletteApp {
+    fn drop(&mut self) {
+        self.render_ticket.fetch_add(1, Ordering::Relaxed);
+        self.processing_worker
+            .ticket
+            .fetch_add(1, Ordering::Relaxed);
+    }
+}

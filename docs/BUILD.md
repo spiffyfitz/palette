@@ -36,7 +36,7 @@ Debug capture scenes select actual interface states for repeatable visual review
 .\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
 ```
 
-Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 165 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 183 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 If Windows reports that `palette.exe` is locked by a running session, leave that session open and build/test separately with `--target-dir target/transform-milestone`. This milestone used that fallback initially; the ordinary target build also succeeded after the lock cleared.
 
@@ -95,3 +95,62 @@ Optical/texture follow-up: Windows native regression covers 152 states, includin
 Stylize/render follow-up: 160 Windows native regression states include eight new previews and updated Blur/Stylize/Render menus. Lens Blur/Lighting Effects were also reviewed at 780×520. Run `cargo run -p palette-core --example processing_extended_benchmark --locked -- --stylize` for this batch. [Validation](STYLIZE_RENDER_VALIDATION.md) records 312 ordinary tests, per-filter limits and actual CPU measurements. No new dependencies/native libraries.
 
 Editable-catalog follow-up: 166 native Windows regression states include four filters, two popup editors and updated Adjustments/Distort/Other menus. Curve/kernel popups were also reviewed at 780×520. Run `cargo run -p palette-core --example processing_extended_benchmark --locked -- --editable` for defaults. [Validation](EDITABLE_FILTERS_VALIDATION.md) records 324 ordinary tests, embedded-asset/import tests and limits. No new dependencies/native libraries.
+
+Expanded-catalog diagnostics: `cargo run -p palette-core --example processing_extended_benchmark --locked -- --completion` measures the eleven new filters. The native suite now covers 179 states including Blur Gallery/Video menus and the new editors. [Validation and coverage limits](GALLERY_VIDEO_RENDER_VALIDATION.md). No new dependencies or native libraries.
+
+Expanded-catalog validation completed on Windows: fmt, strict workspace Clippy, 337 ordinary tests, native build/launch, and both ignored screenshot functions (179 states, 225.09 s). See docs/GALLERY_VIDEO_RENDER_VALIDATION.md for exact commands and limits; no macOS/Linux runtime claim.
+
+
+## Offline neural processing
+
+The main workspace includes `palette-neural`: Rust CPU inference plus the bundled
+Mosaic style network. No Python, ONNX Runtime DLL, model download, account or
+network connection is needed to use the compiled application. The normal build
+embeds `crates/palette-neural/models/mosaic-9.onnx`; retain its exact bytes and
+BSD notice when packaging. First model planning occurs lazily in a worker.
+`cargo test --workspace --locked --offline` works after Cargo dependencies have
+been fetched, using the checked-in independent reference fixture. Python/ONNX
+Runtime are optional development tools for regenerating that fixture only.
+
+Debug captures `processing-style-transfer` and `neural-menu` exercise the real
+local filter toolbar and branch. See [neural status and validation](NEURAL_FILTERS_FIRST_SIX.md).
+
+Local learned-style CPU benchmark:
+`cargo run -p palette-core --example processing_extended_benchmark --locked -- --neural`.
+This evaluates only the bundled style at 1280 × 720 and 3840 × 2160, with a fresh
+prepared-layer cache and shared process-wide model plan. See neural validation
+for exact measurements and limitations.
+
+
+JPEG Artifacts Removal is also compiled into Palette. Its model and MIT notice
+are under `crates/palette-neural/models/`; no Python or model installation is
+required by users. `tools/export-jpeg-model.py` is a local development-only
+export/reference tool. The new `processing-jpeg-artifacts` native scene and
+`cargo run -p palette-core --example jpeg_benchmark --locked --offline`
+benchmark are documented in [JPEG validation](JPEG_RESTORATION_VALIDATION.md).
+
+Colorize also runs entirely in Palette, using the bundled 64.5 MB compact
+ECCV16 graph and its BSD-2-Clause notice. Neither Python nor a separate model
+installation is required by users. `tools/export-colorize-model.py` is a local
+development-only export/reference tool. Debug scene `processing-colorize`
+shows the live toolbar and a credited public-domain photo fixture. Measure
+CPU inference/reconstruction with
+`cargo run -p palette-core --example colorize_benchmark --locked --offline`.
+See [Colorize validation](COLORIZE_VALIDATION.md) for reference errors,
+timings, licenses and the limits of inferred colors.
+
+Face-guided Skin Smoothing embeds two additional Apache-2.0 geometry graphs,
+about 2.94 MB total, with their full license/attribution under
+`crates/palette-neural/models/`. No new system/native library is needed. Debug
+scene `processing-skin-smoothing` exercises the real live toolbar on a credited
+NASA fixture. `tools/skin-reference.py` is a local development-only independent
+ONNX Runtime/NumPy reference generator; it is not needed to build or run Palette.
+Run `cargo run -p palette-core --example skin_benchmark --locked --offline`
+for CPU diagnostics. [Contracts and validation](SKIN_SMOOTHING_VALIDATION.md).
+
+On memory-constrained Windows hosts, use `-j 1` with Cargo build/test/Clippy.
+Building the many model-linked integration tests in parallel exhausted the
+Windows commit/page-file limit during this milestone; the log reported LLVM
+out-of-memory and metadata mapping errors. Serial compilation avoids that
+concurrent linker/compiler peak without changing the application or system
+page-file settings. RustRover can pass `-j 1` in its Cargo run configuration.

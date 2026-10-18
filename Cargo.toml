@@ -7,7 +7,7 @@ description = "A native Paint-style raster editor with a nondestructive document
 license = "MIT"
 
 [workspace]
-members = ["crates/palette-core"]
+members = ["crates/palette-core", "crates/palette-neural"]
 resolver = "3"
 
 [dependencies]

@@ -4096,7 +4096,23 @@ fn optical_filters_preview_save_undo_remove_and_preserve_materials_modes_and_glo
 #[test]
 fn editable_catalog_filters_preview_apply_save_undo_remove_and_preserve_sources() {
     use palette_core::processing::{Kind, ParameterType, Value};
-    for kind in [Kind::ColorLookup, Kind::Displace, Kind::Shear, Kind::Custom] {
+    for kind in [
+        Kind::FieldBlur,
+        Kind::IrisBlur,
+        Kind::TiltShift,
+        Kind::PathBlur,
+        Kind::SpinBlur,
+        Kind::Flame,
+        Kind::PictureFrame,
+        Kind::Tree,
+        Kind::NtscColors,
+        Kind::Deinterlace,
+        Kind::HsbHsl,
+        Kind::ColorLookup,
+        Kind::Displace,
+        Kind::Shear,
+        Kind::Custom,
+    ] {
         let ctx = Context::default();
         let mut app = test_app(&ctx);
         app.current_mut().document = processing_document();
@@ -4107,6 +4123,18 @@ fn editable_catalog_filters_preview_apply_save_undo_remove_and_preserve_sources(
         wait_for_processing(&mut app, &ctx);
         let before = app.processing_dialog.as_ref().unwrap().operation.clone();
         let choice = match kind {
+            Kind::FieldBlur => Some(("Selected pin", "Pin 2", "Pin 3", "pin", 2)),
+            Kind::PathBlur => Some(("Path handle", "Bend", "End", "point", 2)),
+            Kind::PictureFrame => Some(("Style", "Wood", "Ornate", "style", 3)),
+            Kind::Tree => Some(("Tree form", "Deciduous", "Conifer", "form", 1)),
+            Kind::Deinterlace => Some((
+                "Remove field",
+                "Odd (rows 1, 3, …)",
+                "Even (rows 2, 4, …)",
+                "field",
+                1,
+            )),
+            Kind::HsbHsl => Some(("Output channels", "HSL", "HSB", "output", 1)),
             Kind::Displace => Some(("Map fitting", "Stretch", "Tile", "fit", 1)),
             Kind::Shear => Some(("Interpolation", "Smooth", "Linear", "interpolation", 0)),
             Kind::Custom => Some(("Edges", "Repeat", "Wrap", "edges", 0)),
@@ -4116,10 +4144,12 @@ fn editable_catalog_filters_preview_apply_save_undo_remove_and_preserve_sources(
             let current = kind.descriptor().parameters
                 [app.processing_dialog.as_ref().unwrap().parameter]
                 .label;
-            let selected = label_position(&mut app, &ctx, current);
-            click_ui(&mut app, &ctx, selected);
-            let param = label_position(&mut app, &ctx, label);
-            click_ui(&mut app, &ctx, param);
+            if current != label {
+                let selected = label_position(&mut app, &ctx, current);
+                click_ui(&mut app, &ctx, selected);
+                let param = label_position(&mut app, &ctx, label);
+                click_ui(&mut app, &ctx, param);
+            }
             let selected = label_position(&mut app, &ctx, old);
             click_ui(&mut app, &ctx, selected);
             let option = label_position(&mut app, &ctx, new);
@@ -4160,6 +4190,19 @@ fn editable_catalog_filters_preview_apply_save_undo_remove_and_preserve_sources(
                     .value(p.key),
                 before.value(p.key),
                 "{kind:?}"
+            );
+        }
+        if kind == Kind::NtscColors {
+            let toggle = scoped_label_bounds(&mut app, &ctx, "7.5 IRE", true).center();
+            click_ui(&mut app, &ctx, toggle);
+            wait_for_processing(&mut app, &ctx);
+            assert_eq!(
+                app.processing_dialog
+                    .as_ref()
+                    .unwrap()
+                    .operation
+                    .value("setup"),
+                Some(Value::Boolean(true))
             );
         }
         let changed = app.processing_dialog.as_ref().unwrap().operation.clone();
@@ -4461,6 +4504,13 @@ fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_o
         let original = app.current().document.clone();
         for kind in [
             Kind::Twirl,
+            Kind::FieldBlur,
+            Kind::IrisBlur,
+            Kind::TiltShift,
+            Kind::PathBlur,
+            Kind::SpinBlur,
+            Kind::Flame,
+            Kind::Tree,
             Kind::Wave,
             Kind::Pinch,
             Kind::Spherize,
@@ -5284,6 +5334,17 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                         | Kind::Displace
                         | Kind::Shear
                         | Kind::Custom
+                        | Kind::FieldBlur
+                        | Kind::IrisBlur
+                        | Kind::TiltShift
+                        | Kind::PathBlur
+                        | Kind::SpinBlur
+                        | Kind::Flame
+                        | Kind::PictureFrame
+                        | Kind::Tree
+                        | Kind::NtscColors
+                        | Kind::Deinterlace
+                        | Kind::HsbHsl
                 ) {
                 (0..entry.parameters.len()).collect()
             } else {
@@ -5620,6 +5681,17 @@ fn new_filter_menu_entries_open_live_editors_and_noise_boolean_is_editable() {
         Kind::Displace,
         Kind::Shear,
         Kind::Custom,
+        Kind::FieldBlur,
+        Kind::IrisBlur,
+        Kind::TiltShift,
+        Kind::PathBlur,
+        Kind::SpinBlur,
+        Kind::Flame,
+        Kind::PictureFrame,
+        Kind::Tree,
+        Kind::NtscColors,
+        Kind::Deinterlace,
+        Kind::HsbHsl,
     ] {
         app.cancel_processing();
         let filter = label_position(&mut app, &ctx, "Filter");
@@ -5899,3 +5971,255 @@ fn idle_percentage_roundtrips_do_not_restart_filter_previews() {
         assert_eq!(draft.ready, Some(ticket));
     }
 }
+
+#[test]
+fn local_style_transfer_menu_previews_cancel_apply_reopen_and_remove_without_changing_source() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    app.current_mut().document = processing_document();
+    let before = app.current().document.clone();
+    let filter = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, filter);
+    let branch = label_position(&mut app, &ctx, "Neural Filters");
+    frame(&mut app, &ctx, vec![Event::PointerMoved(branch)]);
+    let style = label_position(&mut app, &ctx, "Style Transfer…");
+    click_ui(&mut app, &ctx, style);
+    assert_eq!(
+        app.processing_dialog.as_ref().unwrap().operation.kind(),
+        Kind::StyleTransfer
+    );
+    wait_for_processing(&mut app, &ctx);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    assert!(app.current().document == before);
+    assert_eq!(app.current().history.revision, 0);
+    // Change the actual strength slider, and observe a fresh canvas preview.
+    let label = scoped_label_bounds(&mut app, &ctx, "Strength", true);
+    click_ui(&mut app, &ctx, pos2(label.right() + 125., label.center().y));
+    wait_for_processing(&mut app, &ctx);
+    assert_ne!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("strength"),
+        Some(Value::Number(1.))
+    );
+    assert!(app.current().document == before);
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.current().document == before);
+    app.open_processing(Kind::StyleTransfer, None);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    assert_eq!(app.current().history.revision, 1);
+    assert!(app.current().document.active().source == before.active().source);
+    let saved = app.current().document.clone();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("local-style.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+    let id = saved.active().filters[0].id;
+    app.open_processing(Kind::StyleTransfer, Some(id));
+    wait_for_processing(&mut app, &ctx);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.current().document.active().filters.is_empty());
+    assert!(app.current().document.layers == before.layers);
+}
+
+#[test]
+fn cancelled_main_render_targets_are_requeued_when_tabs_are_revisited_and_drop_cancels_work() {
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    let (tx, rx) = mpsc::sync_channel(1);
+    app.render_tx = tx;
+    app.request_render(&ctx);
+    let first = rx.recv().unwrap();
+    assert_eq!(app.current().requested, Some(first.generation));
+    assert!(label_bounds(&mut app, &ctx, "Rendering…").is_positive());
+    app.new_document();
+    app.request_render(&ctx);
+    let second = rx.recv().unwrap();
+    assert_ne!(first.id, second.id);
+    assert!(second.ticket > first.ticket);
+    assert_eq!(app.sessions[0].requested, None);
+    app.active = 0;
+    app.request_render(&ctx);
+    let revisited = rx.recv().unwrap();
+    assert_eq!(revisited.id, first.id);
+    assert_eq!(revisited.generation, first.generation);
+    assert!(revisited.ticket > second.ticket);
+    app.current_mut()
+        .command("New generation", |d| d.active_mut().opacity = 0.5);
+    app.request_render(&ctx);
+    let edited = rx.recv().unwrap();
+    assert!(edited.ticket > revisited.ticket);
+    assert_ne!(edited.generation, revisited.generation);
+    let ticket = app.render_ticket.clone();
+    let before = ticket.load(Ordering::Relaxed);
+    drop(app);
+    assert!(ticket.load(Ordering::Relaxed) > before);
+}
+
+#[test]
+fn jpeg_restoration_menu_previews_strength_cancel_apply_undo_save_and_remove_locally() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    let image = image::load_from_memory(include_bytes!(
+        "../../crates/palette-core/tests/fixtures/neural/jpeg-input.png"
+    ))
+    .unwrap()
+    .to_rgba8();
+    app.current_mut().document = Document::from_raster(
+        Raster::from_rgba(image.width(), image.height(), image.as_raw()).unwrap(),
+    );
+    let before = app.current().document.clone();
+    let menu = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, menu);
+    let branch = label_position(&mut app, &ctx, "Neural Filters");
+    click_ui(&mut app, &ctx, branch);
+    let entry = label_position(&mut app, &ctx, "JPEG Artifacts Removal…");
+    click_ui(&mut app, &ctx, entry);
+    wait_for_processing(&mut app, &ctx);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    assert!(app.current().document == before);
+    let label = scoped_label_bounds(&mut app, &ctx, "Strength", true);
+    click_ui(&mut app, &ctx, pos2(label.right() + 125., label.center().y));
+    wait_for_processing(&mut app, &ctx);
+    assert_ne!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("strength"),
+        Some(Value::Number(1.))
+    );
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.current().document == before);
+    app.open_processing(Kind::JpegArtifactsRemoval, None);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    let saved = app.current().document.clone();
+    assert_eq!(app.current().history.revision, 1);
+    assert!(saved.active().source == before.active().source);
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("jpeg.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+    app.open_processing(
+        Kind::JpegArtifactsRemoval,
+        Some(saved.active().filters[0].id),
+    );
+    wait_for_processing(&mut app, &ctx);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.current().document.active().filters.is_empty());
+    assert!(app.current().document.layers == before.layers);
+}
+
+#[test]
+fn colorize_menu_strength_and_saturation_preview_cancel_apply_persist_and_remove_locally() {
+    use palette_core::processing::{Kind, Value};
+    let ctx = Context::default();
+    let mut app = test_app(&ctx);
+    let image = image::load_from_memory(include_bytes!(
+        "../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-gray.png"
+    ))
+    .unwrap()
+    .to_rgba8();
+    app.current_mut().document = Document::from_raster(
+        Raster::from_rgba(image.width(), image.height(), image.as_raw()).unwrap(),
+    );
+    let before = app.current().document.clone();
+    let menu = label_position(&mut app, &ctx, "Filter");
+    click_ui(&mut app, &ctx, menu);
+    let branch = label_position(&mut app, &ctx, "Neural Filters");
+    click_ui(&mut app, &ctx, branch);
+    let entry = label_position(&mut app, &ctx, "Colorize…");
+    click_ui(&mut app, &ctx, entry);
+    wait_for_processing(&mut app, &ctx);
+    assert!(app.current().document == before);
+    let preview = app.processing_preview().unwrap().id();
+    assert!(canvas_uses_texture(&mut app, &ctx, preview));
+    let strength = label_bounds(&mut app, &ctx, "Strength");
+    click_ui(
+        &mut app,
+        &ctx,
+        pos2(strength.right() + 125., strength.center().y),
+    );
+    wait_for_processing(&mut app, &ctx);
+    assert_ne!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("strength"),
+        Some(Value::Number(1.))
+    );
+    let selector = label_position(&mut app, &ctx, "Strength");
+    click_ui(&mut app, &ctx, selector);
+    let saturation = label_position(&mut app, &ctx, "Color saturation");
+    click_ui(&mut app, &ctx, saturation);
+    let saturation = label_bounds(&mut app, &ctx, "Color saturation");
+    click_ui(
+        &mut app,
+        &ctx,
+        pos2(saturation.right() + 125., saturation.center().y),
+    );
+    wait_for_processing(&mut app, &ctx);
+    assert_ne!(
+        app.processing_dialog
+            .as_ref()
+            .unwrap()
+            .operation
+            .value("saturation"),
+        Some(Value::Number(1.))
+    );
+    assert!(app.current().document == before);
+    let cancel = label_position(&mut app, &ctx, "Cancel");
+    click_ui(&mut app, &ctx, cancel);
+    assert!(app.current().document == before);
+    app.open_processing(Kind::Colorize, None);
+    wait_for_processing(&mut app, &ctx);
+    let apply = label_position(&mut app, &ctx, "Apply");
+    click_ui(&mut app, &ctx, apply);
+    let saved = app.current().document.clone();
+    assert_eq!(app.current().history.revision, 1);
+    assert!(saved.active().source == before.active().source);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("colorize.palette");
+    io::save_project(&path, &saved).unwrap();
+    assert!(io::open(&path).unwrap() == saved);
+    app.undo_current();
+    assert!(app.current().document == before);
+    app.redo_current();
+    assert!(app.current().document == saved);
+    app.open_processing(Kind::Colorize, Some(saved.active().filters[0].id));
+    wait_for_processing(&mut app, &ctx);
+    let more = label_position(&mut app, &ctx, "…");
+    click_ui(&mut app, &ctx, more);
+    let remove = label_position(&mut app, &ctx, "Remove");
+    click_ui(&mut app, &ctx, remove);
+    assert!(app.current().document.active().filters.is_empty());
+    assert!(app.current().document.layers == before.layers);
+}
+mod skin;

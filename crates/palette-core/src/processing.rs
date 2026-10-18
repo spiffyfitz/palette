@@ -5,6 +5,7 @@ mod adjustments;
 mod artistic;
 mod cellular;
 mod cinematic;
+mod colorize;
 mod conventional;
 mod creative;
 mod cutout;
@@ -12,35 +13,62 @@ mod distort;
 mod drawing;
 pub mod editable;
 mod extended;
+mod gallery;
 mod gaussian;
+mod generators;
 mod layer;
 mod media;
 pub mod menu;
 mod neighborhood;
+mod neural;
 mod optical;
 mod painting;
 mod pixelate;
 mod point;
+mod restoration;
 mod retouch;
 mod round;
 mod sketch;
+mod skin;
 mod studio;
 mod stylize;
+mod video;
 use crate::document::{
-    ApertureShape, DaubStyle, DepthSource, DiffuseMode, Effect, ExtrudeShape, Filter, FilterEdges,
-    FlareStyle, GlassSurface, GrainStyle, HalftoneStyle, LightKind, MapFit, MezzotintStyle,
-    NoiseDistribution, ShearInterpolation, SmartBlurMode, StrokeDirection, StrokePosition,
-    SurfaceTexture, TileFill, WindMethod, ZigZagStyle,
+    ApertureShape, BlurPin, ChannelSpace, ColorizeModel, DaubStyle, DepthSource, DiffuseMode,
+    Effect, ExtrudeShape, FieldInterpolation, Filter, FilterEdges, FlareStyle, FrameStyle,
+    GlassSurface, GrainStyle, HalftoneStyle, JpegModel, LightKind, MapFit, MezzotintStyle,
+    NeuralStyle, NoiseDistribution, ShearInterpolation, SkinModel, SmartBlurMode, StrokeDirection,
+    StrokePosition, SurfaceTexture, TileFill, TreeForm, VideoField, WindMethod, ZigZagStyle,
 };
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
 pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_cancel};
 pub use neighborhood::{box_blur_cancel, median_cancel};
+pub use palette_neural::face::{ID as SKIN_ID, LICENSE as SKIN_LICENSE, NOTICE as SKIN_NOTICE};
+pub use palette_neural::{
+    COLORIZE_ID, COLORIZE_LICENSE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID, MOSAIC_LICENSE,
+};
 pub(crate) use point::point_filter;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    SkinSmoothing,
+    Colorize,
+    JpegArtifactsRemoval,
+    StyleTransfer,
+    FieldBlur,
+    IrisBlur,
+    TiltShift,
+    PathBlur,
+    SpinBlur,
+    Flame,
+    PictureFrame,
+    Tree,
+    NtscColors,
+    Deinterlace,
+    HsbHsl,
+
     ColorLookup,
     Displace,
     Shear,
@@ -2049,6 +2077,258 @@ pub const REGISTRY: &[Descriptor] = &[
             number("k24", "Kernel 5,5", -64.0, 64.0, 0.01),
         ],
     },
+    Descriptor {
+        kind: Kind::FieldBlur,
+        label: "Field Blur",
+        category: "Blur Gallery",
+        parameters: &[
+            Parameter {
+                key: "pin",
+                label: "Selected pin",
+                kind: ParameterType::Choice(&[
+                    "Pin 1", "Pin 2", "Pin 3", "Pin 4", "Pin 5", "Pin 6", "Pin 7", "Pin 8",
+                ]),
+            },
+            number("count", "Active pins", 1., 8., 1.),
+            number("radius", "Blur (px)", 0., 128., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::IrisBlur,
+        label: "Iris Blur",
+        category: "Blur Gallery",
+        parameters: &[
+            number("radius", "Blur (px)", 0., 128., 0.1),
+            number("width", "Width (px)", 0., 2048., 0.1),
+            number("height", "Height (px)", 0., 2048., 0.1),
+            number("angle", "Angle (°)", -180., 180., 0.1),
+            number("feather", "Feather", 0., 1., 0.01),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::TiltShift,
+        label: "Tilt-Shift",
+        category: "Blur Gallery",
+        parameters: &[
+            number("radius", "Blur (px)", 0., 128., 0.1),
+            number("width", "Focus (px)", 0., 2048., 0.1),
+            number("transition", "Transition (px)", 0., 2048., 0.1),
+            number("angle", "Angle (°)", -180., 180., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::PathBlur,
+        label: "Path Blur",
+        category: "Blur Gallery",
+        parameters: &[
+            Parameter {
+                key: "point",
+                label: "Path handle",
+                kind: ParameterType::Choice(&["Start", "Bend", "End"]),
+            },
+            number("distance", "Distance (px)", 0., 256., 0.1),
+            number("taper", "Taper", 0., 1., 0.01),
+            Parameter {
+                key: "centered",
+                label: "Centered blur",
+                kind: ParameterType::Boolean,
+            },
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::SpinBlur,
+        label: "Spin Blur",
+        category: "Blur Gallery",
+        parameters: &[
+            number("angle", "Blur angle (°)", 0., 360., 0.1),
+            number("width", "Width (px)", 0., 2048., 0.1),
+            number("height", "Height (px)", 0., 2048., 0.1),
+            number("feather", "Feather", 0., 1., 0.01),
+            number("rotation", "Ellipse angle (°)", -180., 180., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::Flame,
+        label: "Flame",
+        category: "Render",
+        parameters: &[
+            number("width", "Width (px)", 0., 2048., 0.1),
+            number("height", "Height (px)", 0., 2048., 0.1),
+            number("turbulence", "Turbulence", 0., 1., 0.01),
+            number("detail", "Detail", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "color",
+                label: "Flame color",
+                kind: ParameterType::Color,
+            },
+            number("opacity", "Opacity", 0., 1., 0.01),
+            number("angle", "Angle (°)", -180., 180., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::PictureFrame,
+        label: "Picture Frame",
+        category: "Render",
+        parameters: &[
+            number("width", "Width (px)", 0., 512., 0.1),
+            number("margin", "Inset (px)", 0., 512., 0.1),
+            number("bevel", "Bevel (px)", 0., 128., 0.1),
+            Parameter {
+                key: "style",
+                label: "Style",
+                kind: ParameterType::Choice(&["Plain", "Beveled", "Wood", "Ornate"]),
+            },
+            Parameter {
+                key: "color",
+                label: "Frame color",
+                kind: ParameterType::Color,
+            },
+            number("opacity", "Opacity", 0., 1., 0.01),
+        ],
+    },
+    Descriptor {
+        kind: Kind::Tree,
+        label: "Tree",
+        category: "Render",
+        parameters: &[
+            number("height", "Height (px)", 0., 2048., 0.1),
+            number("width", "Crown width (px)", 0., 2048., 0.1),
+            number("branching", "Branch levels", 2., 9., 1.),
+            number("foliage", "Foliage", 0., 1., 0.01),
+            number("seed", "Seed", 0., 65535., 1.),
+            Parameter {
+                key: "form",
+                label: "Tree form",
+                kind: ParameterType::Choice(&["Deciduous", "Conifer", "Bare"]),
+            },
+            Parameter {
+                key: "leaf_color",
+                label: "Leaf color",
+                kind: ParameterType::Color,
+            },
+            Parameter {
+                key: "bark_color",
+                label: "Bark color",
+                kind: ParameterType::Color,
+            },
+            number("opacity", "Opacity", 0., 1., 0.01),
+            number("angle", "Angle (°)", -180., 180., 0.1),
+            CENTER_X,
+            CENTER_Y,
+        ],
+    },
+    Descriptor {
+        kind: Kind::NtscColors,
+        label: "NTSC Colors",
+        category: "Video",
+        parameters: &[Parameter {
+            key: "setup",
+            label: "7.5 IRE black setup",
+            kind: ParameterType::Boolean,
+        }],
+    },
+    Descriptor {
+        kind: Kind::Deinterlace,
+        label: "De-Interlace",
+        category: "Video",
+        parameters: &[
+            Parameter {
+                key: "field",
+                label: "Remove field",
+                kind: ParameterType::Choice(&["Odd (rows 1, 3, …)", "Even (rows 2, 4, …)"]),
+            },
+            Parameter {
+                key: "interpolation",
+                label: "Fill method",
+                kind: ParameterType::Choice(&["Duplicate", "Interpolate"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::HsbHsl,
+        label: "HSB/HSL",
+        category: "Other",
+        parameters: &[
+            Parameter {
+                key: "input",
+                label: "Input channels",
+                kind: ParameterType::Choice(&["RGB", "HSB", "HSL"]),
+            },
+            Parameter {
+                key: "output",
+                label: "Output channels",
+                kind: ParameterType::Choice(&["RGB", "HSB", "HSL"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::StyleTransfer,
+        label: "Style Transfer",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            Parameter {
+                key: "style",
+                label: "Bundled style",
+                kind: ParameterType::Choice(&["Mosaic (local)"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::JpegArtifactsRemoval,
+        label: "JPEG Artifacts Removal",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            Parameter {
+                key: "model",
+                label: "Bundled model",
+                kind: ParameterType::Choice(&["DnCNN-3 (local luminance)"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Colorize,
+        label: "Colorize",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("saturation", "Color saturation", 0., 2., 0.01),
+            Parameter {
+                key: "model",
+                label: "Bundled model",
+                kind: ParameterType::Choice(&["ECCV16 compact (local)"]),
+            },
+        ],
+    },
+    Descriptor {
+        kind: Kind::SkinSmoothing,
+        label: "Skin Smoothing",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("blur", "Blur", 0., 1., 0.01),
+            number("range", "Smoothness", 0., 1., 0.01),
+            Parameter {
+                key: "model",
+                label: "Face geometry",
+                kind: ParameterType::Choice(&["Face Mesh (local)"]),
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2061,6 +2341,104 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::SkinSmoothing => Operation::Filter(Filter::SkinSmoothing {
+                model: SkinModel::FaceMeshV1,
+                strength: 0.7,
+                blur: 0.4,
+                range: 0.5,
+            }),
+            Self::Colorize => Operation::Filter(Filter::Colorize {
+                model: ColorizeModel::Eccv16Fp16V1,
+                strength: 1.,
+                saturation: 1.,
+            }),
+            Self::JpegArtifactsRemoval => Operation::Filter(Filter::JpegArtifactsRemoval {
+                model: JpegModel::Dncnn3V1,
+                strength: 1.,
+            }),
+            Self::StyleTransfer => Operation::Filter(Filter::StyleTransfer {
+                style: NeuralStyle::MosaicV1,
+                strength: 1.,
+            }),
+            Self::FieldBlur => Operation::Filter(Filter::FieldBlur {
+                pins: std::array::from_fn(|i| BlurPin {
+                    center: [0.15 + (i % 4) as f32 * 0.23, 0.35 + (i / 4) as f32 * 0.3],
+                    radius: if i == 0 { 0. } else { 16. },
+                }),
+                pin: 1,
+                count: 2,
+            }),
+            Self::IrisBlur => Operation::Filter(Filter::IrisBlur {
+                radius: 16.,
+                width: 180.,
+                height: 120.,
+                angle: 0.,
+                feather: 0.5,
+                center: [0.5; 2],
+            }),
+            Self::TiltShift => Operation::Filter(Filter::TiltShift {
+                radius: 16.,
+                width: 60.,
+                transition: 100.,
+                angle: 0.,
+                center: [0.5; 2],
+            }),
+            Self::PathBlur => Operation::Filter(Filter::PathBlur {
+                distance: 30.,
+                taper: 0.5,
+                centered: true,
+                path: [[0.2, 0.6], [0.5, 0.3], [0.8, 0.6]],
+                point: 1,
+            }),
+            Self::SpinBlur => Operation::Filter(Filter::SpinBlur {
+                angle: 15.,
+                width: 180.,
+                height: 120.,
+                feather: 0.5,
+                rotation: 0.,
+                center: [0.5; 2],
+            }),
+            Self::Flame => Operation::Filter(Filter::Flame {
+                width: 240.,
+                height: 280.,
+                turbulence: 0.6,
+                detail: 0.5,
+                seed: 17,
+                color: [255, 100, 20],
+                opacity: 1.,
+                angle: 0.,
+                center: [0.5, 0.9],
+            }),
+            Self::PictureFrame => Operation::Filter(Filter::PictureFrame {
+                width: 24.,
+                margin: 8.,
+                bevel: 6.,
+                style: FrameStyle::Wood,
+                color: [150, 95, 45],
+                opacity: 1.,
+            }),
+            Self::Tree => Operation::Filter(Filter::Tree {
+                height: 380.,
+                width: 280.,
+                branching: 7,
+                foliage: 0.8,
+                seed: 17,
+                form: TreeForm::Deciduous,
+                leaf_color: [65, 135, 48],
+                bark_color: [100, 68, 40],
+                opacity: 1.,
+                angle: 0.,
+                center: [0.5, 0.9],
+            }),
+            Self::NtscColors => Operation::Filter(Filter::NtscColors { setup: false }),
+            Self::Deinterlace => Operation::Filter(Filter::Deinterlace {
+                field: VideoField::Odd,
+                interpolation: FieldInterpolation::Interpolate,
+            }),
+            Self::HsbHsl => Operation::Filter(Filter::HsbHsl {
+                input: ChannelSpace::Rgb,
+                output: ChannelSpace::Hsl,
+            }),
             Self::ColorLookup => Operation::Filter(Filter::ColorLookup {
                 amount: 1.,
                 lut: Some(editable::warm_lut()),
@@ -2744,6 +3122,21 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::SkinSmoothing { .. }) => Kind::SkinSmoothing,
+            Self::Filter(Filter::Colorize { .. }) => Kind::Colorize,
+            Self::Filter(Filter::JpegArtifactsRemoval { .. }) => Kind::JpegArtifactsRemoval,
+            Self::Filter(Filter::StyleTransfer { .. }) => Kind::StyleTransfer,
+            Self::Filter(Filter::FieldBlur { .. }) => Kind::FieldBlur,
+            Self::Filter(Filter::IrisBlur { .. }) => Kind::IrisBlur,
+            Self::Filter(Filter::TiltShift { .. }) => Kind::TiltShift,
+            Self::Filter(Filter::PathBlur { .. }) => Kind::PathBlur,
+            Self::Filter(Filter::SpinBlur { .. }) => Kind::SpinBlur,
+            Self::Filter(Filter::Flame { .. }) => Kind::Flame,
+            Self::Filter(Filter::PictureFrame { .. }) => Kind::PictureFrame,
+            Self::Filter(Filter::Tree { .. }) => Kind::Tree,
+            Self::Filter(Filter::NtscColors { .. }) => Kind::NtscColors,
+            Self::Filter(Filter::Deinterlace { .. }) => Kind::Deinterlace,
+            Self::Filter(Filter::HsbHsl { .. }) => Kind::HsbHsl,
             Self::Filter(Filter::ColorLookup { .. }) => Kind::ColorLookup,
             Self::Filter(Filter::Displace { .. }) => Kind::Displace,
             Self::Filter(Filter::Shear { .. }) => Kind::Shear,
@@ -2894,7 +3287,156 @@ impl Operation {
             }
         }
 
+        if let Self::Filter(f) = self
+            && let Some(v) = gallery::value(f, key)
+        {
+            return Some(v);
+        }
         match (self, key) {
+            (Self::Filter(Filter::SkinSmoothing { strength, .. }), "strength") => {
+                Some(Value::Number(*strength))
+            }
+            (Self::Filter(Filter::SkinSmoothing { blur, .. }), "blur") => {
+                Some(Value::Number(*blur))
+            }
+            (Self::Filter(Filter::SkinSmoothing { range, .. }), "range") => {
+                Some(Value::Number(*range))
+            }
+            (Self::Filter(Filter::SkinSmoothing { model, .. }), "model") => Some(Value::Choice(
+                SkinModel::ALL.iter().position(|v| v == model).unwrap(),
+            )),
+            (Self::Filter(Filter::Colorize { strength, .. }), "strength") => {
+                Some(Value::Number(*strength))
+            }
+            (Self::Filter(Filter::Colorize { saturation, .. }), "saturation") => {
+                Some(Value::Number(*saturation))
+            }
+            (Self::Filter(Filter::Colorize { model, .. }), "model") => Some(Value::Choice(
+                ColorizeModel::ALL
+                    .iter()
+                    .position(|v| v == model)
+                    .expect("bundled colorizer"),
+            )),
+            (Self::Filter(Filter::JpegArtifactsRemoval { strength, .. }), "strength") => {
+                Some(Value::Number(*strength))
+            }
+            (Self::Filter(Filter::JpegArtifactsRemoval { model, .. }), "model") => {
+                Some(Value::Choice(
+                    JpegModel::ALL
+                        .iter()
+                        .position(|v| v == model)
+                        .expect("bundled model"),
+                ))
+            }
+            (Self::Filter(Filter::StyleTransfer { strength, .. }), "strength") => {
+                Some(Value::Number(*strength))
+            }
+            (Self::Filter(Filter::StyleTransfer { style, .. }), "style") => Some(Value::Choice(
+                NeuralStyle::ALL
+                    .iter()
+                    .position(|v| v == style)
+                    .expect("bundled style"),
+            )),
+            (Self::Filter(Filter::IrisBlur { radius: v, .. }), "radius") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::IrisBlur { width: v, .. }), "width") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::IrisBlur { height: v, .. }), "height") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::IrisBlur { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::IrisBlur { feather: v, .. }), "feather") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::TiltShift { radius: v, .. }), "radius") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::TiltShift { width: v, .. }), "width") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::TiltShift { transition: v, .. }), "transition") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::TiltShift { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::PathBlur { distance: v, .. }), "distance") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PathBlur { taper: v, .. }), "taper") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::PathBlur { centered: v, .. }), "centered") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::SpinBlur { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::SpinBlur { width: v, .. }), "width") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::SpinBlur { height: v, .. }), "height") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::SpinBlur { feather: v, .. }), "feather") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::SpinBlur { rotation: v, .. }), "rotation") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Flame { width: v, .. }), "width") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Flame { height: v, .. }), "height") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Flame { turbulence: v, .. }), "turbulence") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Flame { detail: v, .. }), "detail") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Flame { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Flame { color: v, .. }), "color") => Some(Value::Color(*v)),
+            (Self::Filter(Filter::Flame { opacity: v, .. }), "opacity") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Flame { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::PictureFrame { width: v, .. }), "width") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PictureFrame { margin: v, .. }), "margin") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PictureFrame { bevel: v, .. }), "bevel") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::PictureFrame { style: v, .. }), "style") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::PictureFrame { color: v, .. }), "color") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::PictureFrame { opacity: v, .. }), "opacity") => {
+                Some(Value::Number(*v))
+            }
+            (Self::Filter(Filter::Tree { height: v, .. }), "height") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tree { width: v, .. }), "width") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tree { branching: v, .. }), "branching") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Tree { foliage: v, .. }), "foliage") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tree { seed: v, .. }), "seed") => {
+                Some(Value::Number(f32::from(*v)))
+            }
+            (Self::Filter(Filter::Tree { form: v, .. }), "form") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::Tree { leaf_color: v, .. }), "leaf_color") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::Tree { bark_color: v, .. }), "bark_color") => {
+                Some(Value::Color(*v))
+            }
+            (Self::Filter(Filter::Tree { opacity: v, .. }), "opacity") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::Tree { angle: v, .. }), "angle") => Some(Value::Number(*v)),
+            (Self::Filter(Filter::NtscColors { setup: v, .. }), "setup") => {
+                Some(Value::Boolean(*v))
+            }
+            (Self::Filter(Filter::Deinterlace { field: v, .. }), "field") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (
+                Self::Filter(Filter::Deinterlace {
+                    interpolation: v, ..
+                }),
+                "interpolation",
+            ) => Some(Value::Choice(*v as usize)),
+            (Self::Filter(Filter::HsbHsl { input: v, .. }), "input") => {
+                Some(Value::Choice(*v as usize))
+            }
+            (Self::Filter(Filter::HsbHsl { output: v, .. }), "output") => {
+                Some(Value::Choice(*v as usize))
+            }
+
             (Self::Filter(Filter::ColorLookup { amount: v, .. }), "amount") => {
                 Some(Value::Number(*v))
             }
@@ -4055,7 +4597,215 @@ impl Operation {
         {
             return Ok(());
         }
+        if let Self::Filter(f) = self
+            && gallery::set(f, key, value)?
+        {
+            return Ok(());
+        }
         match (self, key, value) {
+            (
+                Self::Filter(Filter::SkinSmoothing { strength, .. }),
+                "strength",
+                Value::Number(n),
+            ) => *strength = n,
+            (Self::Filter(Filter::SkinSmoothing { blur, .. }), "blur", Value::Number(n)) => {
+                *blur = n
+            }
+            (Self::Filter(Filter::SkinSmoothing { range, .. }), "range", Value::Number(n)) => {
+                *range = n
+            }
+            (Self::Filter(Filter::SkinSmoothing { model, .. }), "model", Value::Choice(n)) => {
+                *model = SkinModel::ALL[n]
+            }
+            (Self::Filter(Filter::Colorize { strength, .. }), "strength", Value::Number(n)) => {
+                *strength = n
+            }
+            (Self::Filter(Filter::Colorize { saturation, .. }), "saturation", Value::Number(n)) => {
+                *saturation = n
+            }
+            (Self::Filter(Filter::Colorize { model, .. }), "model", Value::Choice(n)) => {
+                *model = ColorizeModel::ALL[n]
+            }
+            (
+                Self::Filter(Filter::JpegArtifactsRemoval { strength, .. }),
+                "strength",
+                Value::Number(n),
+            ) => *strength = n,
+            (
+                Self::Filter(Filter::JpegArtifactsRemoval { model, .. }),
+                "model",
+                Value::Choice(n),
+            ) => *model = JpegModel::ALL[n],
+            (
+                Self::Filter(Filter::StyleTransfer { strength, .. }),
+                "strength",
+                Value::Number(n),
+            ) => *strength = n,
+            (Self::Filter(Filter::StyleTransfer { style, .. }), "style", Value::Choice(n)) => {
+                *style = NeuralStyle::ALL[n]
+            }
+            (Self::Filter(Filter::IrisBlur { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::IrisBlur { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::IrisBlur { height: v, .. }), "height", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::IrisBlur { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::IrisBlur { feather: v, .. }), "feather", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::TiltShift { radius: v, .. }), "radius", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::TiltShift { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::TiltShift { transition: v, .. }),
+                "transition",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::TiltShift { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PathBlur { distance: v, .. }), "distance", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PathBlur { taper: v, .. }), "taper", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PathBlur { centered: v, .. }), "centered", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::SpinBlur { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::SpinBlur { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::SpinBlur { height: v, .. }), "height", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::SpinBlur { feather: v, .. }), "feather", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::SpinBlur { rotation: v, .. }), "rotation", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { height: v, .. }), "height", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { turbulence: v, .. }), "turbulence", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { detail: v, .. }), "detail", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Flame { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { opacity: v, .. }), "opacity", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Flame { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PictureFrame { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PictureFrame { margin: v, .. }), "margin", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PictureFrame { bevel: v, .. }), "bevel", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::PictureFrame { style: v, .. }), "style", Value::Choice(n)) => {
+                *v = FrameStyle::ALL[n];
+            }
+            (Self::Filter(Filter::PictureFrame { color: v, .. }), "color", Value::Color(n)) => {
+                *v = n;
+            }
+            (
+                Self::Filter(Filter::PictureFrame { opacity: v, .. }),
+                "opacity",
+                Value::Number(n),
+            ) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { height: v, .. }), "height", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { width: v, .. }), "width", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { branching: v, .. }), "branching", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u8;
+            }
+            (Self::Filter(Filter::Tree { foliage: v, .. }), "foliage", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { seed: v, .. }), "seed", Value::Number(n)) => {
+                if n.fract() != 0. {
+                    return Err("Parameter requires a whole number".into());
+                }
+                *v = n as u16;
+            }
+            (Self::Filter(Filter::Tree { form: v, .. }), "form", Value::Choice(n)) => {
+                *v = TreeForm::ALL[n];
+            }
+            (Self::Filter(Filter::Tree { leaf_color: v, .. }), "leaf_color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { bark_color: v, .. }), "bark_color", Value::Color(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { opacity: v, .. }), "opacity", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Tree { angle: v, .. }), "angle", Value::Number(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::NtscColors { setup: v, .. }), "setup", Value::Boolean(n)) => {
+                *v = n;
+            }
+            (Self::Filter(Filter::Deinterlace { field: v, .. }), "field", Value::Choice(n)) => {
+                *v = VideoField::ALL[n];
+            }
+            (
+                Self::Filter(Filter::Deinterlace {
+                    interpolation: v, ..
+                }),
+                "interpolation",
+                Value::Choice(n),
+            ) => {
+                *v = FieldInterpolation::ALL[n];
+            }
+            (Self::Filter(Filter::HsbHsl { input: v, .. }), "input", Value::Choice(n)) => {
+                *v = ChannelSpace::ALL[n];
+            }
+            (Self::Filter(Filter::HsbHsl { output: v, .. }), "output", Value::Choice(n)) => {
+                *v = ChannelSpace::ALL[n];
+            }
+
             (Self::Filter(Filter::ColorLookup { amount: v, .. }), "amount", Value::Number(n)) => {
                 *v = n;
             }
@@ -6014,6 +6764,7 @@ impl Operation {
         }
         if let Self::Filter(f) = self {
             editable::validate_assets(f)?;
+            gallery::validate(f)?;
         }
         let mut copy = self.clone();
         for p in self.kind().descriptor().parameters {
@@ -6024,7 +6775,16 @@ impl Operation {
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
+        if let Self::Filter(Filter::FieldBlur { pins, .. }) = &mut result {
+            for p in pins {
+                p.radius *= scale;
+            }
+            return result;
+        }
         for key in [
+            "transition",
+            "margin",
+            "bevel",
             "horizontal",
             "vertical",
             "depth",

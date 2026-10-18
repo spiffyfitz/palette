@@ -133,6 +133,21 @@ impl PaletteApp {
                 | "processing-shear"
                 | "processing-custom"
                 | "processing-custom-kernel"
+                | "processing-field-blur"
+                | "processing-iris-blur"
+                | "processing-tilt-shift"
+                | "processing-path-blur"
+                | "processing-spin-blur"
+                | "processing-flame"
+                | "processing-picture-frame"
+                | "processing-tree"
+                | "processing-ntsc"
+                | "processing-deinterlace"
+                | "processing-hsb-hsl"
+                | "processing-style-transfer"
+                | "processing-jpeg-artifacts"
+                | "processing-colorize"
+                | "processing-skin-smoothing"
                 | "processing-shear-curve",
             ) => {
                 use palette_core::processing::{Kind, Operation};
@@ -254,6 +269,21 @@ impl PaletteApp {
                             | "processing-shear"
                             | "processing-custom"
                             | "processing-custom-kernel"
+                            | "processing-field-blur"
+                            | "processing-iris-blur"
+                            | "processing-tilt-shift"
+                            | "processing-path-blur"
+                            | "processing-spin-blur"
+                            | "processing-flame"
+                            | "processing-picture-frame"
+                            | "processing-tree"
+                            | "processing-ntsc"
+                            | "processing-deinterlace"
+                            | "processing-hsb-hsl"
+                            | "processing-style-transfer"
+                            | "processing-jpeg-artifacts"
+                            | "processing-colorize"
+                            | "processing-skin-smoothing"
                             | "processing-shear-curve"
                     )
                 );
@@ -443,9 +473,40 @@ impl PaletteApp {
                         Some("processing-shear") => Kind::Shear,
                         Some("processing-custom" | "processing-custom-kernel") => Kind::Custom,
                         Some("processing-shear-curve") => Kind::Shear,
+                        Some("processing-field-blur") => Kind::FieldBlur,
+                        Some("processing-iris-blur") => Kind::IrisBlur,
+                        Some("processing-tilt-shift") => Kind::TiltShift,
+                        Some("processing-path-blur") => Kind::PathBlur,
+                        Some("processing-spin-blur") => Kind::SpinBlur,
+                        Some("processing-flame") => Kind::Flame,
+                        Some("processing-picture-frame") => Kind::PictureFrame,
+                        Some("processing-tree") => Kind::Tree,
+                        Some("processing-ntsc") => Kind::NtscColors,
+                        Some("processing-deinterlace") => Kind::Deinterlace,
+                        Some("processing-hsb-hsl") => Kind::HsbHsl,
+                        Some("processing-style-transfer") => Kind::StyleTransfer,
+                        Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
+                        Some("processing-colorize") => Kind::Colorize,
+                        Some("processing-skin-smoothing") => Kind::SkinSmoothing,
 
                         _ => Kind::GaussianBlur,
                     };
+                    if kind == Kind::Colorize {
+                        let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-gray.png")).expect("public-domain colorize fixture").to_rgba8();
+                        let layer = self.current_mut().document.active_mut();
+                        layer.source =
+                            Raster::from_rgba(image.width(), image.height(), image.as_raw())
+                                .expect("colorize raster");
+                        layer.offset = [280, 169];
+                    }
+                    if kind == Kind::SkinSmoothing {
+                        let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).expect("public-domain portrait fixture").to_rgba8();
+                        let layer = self.current_mut().document.active_mut();
+                        layer.source =
+                            Raster::from_rgba(image.width(), image.height(), image.as_raw())
+                                .expect("portrait raster");
+                        layer.offset = [280, 169];
+                    }
                     self.open_processing(kind, None);
                     if let Some(d) = &mut self.processing_dialog {
                         let edit = match kind {

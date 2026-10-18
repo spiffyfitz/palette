@@ -100,6 +100,15 @@ pub struct RenderFrame {
 impl Renderer {
     /// Render a canvas and small spatial-layer thumbnails in the same job.
     pub fn render_frame(&mut self, document: &Document) -> Result<RenderFrame, String> {
+        self.render_frame_cancel(document, &|| false)
+    }
+    /// Cancellable frame job; obsolete neural/filter jobs release the renderer
+    /// between rows/stages/operators without publishing incomplete thumbnails.
+    pub fn render_frame_cancel(
+        &mut self,
+        document: &Document,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<RenderFrame, String> {
         let mut thumbnails = vec![];
         let pixels = self.compose(
             document,
@@ -109,7 +118,7 @@ impl Renderer {
                 width: document.width,
                 height: document.height,
             },
-            &|| false,
+            cancel,
             Some(&mut thumbnails),
         )?;
         Ok(RenderFrame { pixels, thumbnails })

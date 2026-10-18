@@ -141,7 +141,20 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
-                Filter::Chrome { .. }
+                Filter::SkinSmoothing { strength, .. }
+                | Filter::Colorize { strength, .. }
+                | Filter::StyleTransfer { strength, .. }
+                | Filter::JpegArtifactsRemoval { strength, .. } => strength > 0.,
+                Filter::FieldBlur { .. }
+                | Filter::IrisBlur { .. }
+                | Filter::TiltShift { .. }
+                | Filter::PathBlur { .. }
+                | Filter::SpinBlur { .. }
+                | Filter::Flame { .. }
+                | Filter::PictureFrame { .. }
+                | Filter::Tree { .. }
+                | Filter::Deinterlace { .. }
+                | Filter::Chrome { .. }
                 | Filter::ConteCrayon { .. }
                 | Filter::Plaster { .. }
                 | Filter::Reticulation { .. }
@@ -275,6 +288,40 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::SkinSmoothing {
+                model,
+                strength,
+                blur,
+                range,
+            } => {
+                pixels = super::skin::evaluate(&pixels, model, strength, blur, range, cancel)?;
+            }
+            Filter::Colorize {
+                model,
+                strength,
+                saturation,
+            } => {
+                pixels = super::colorize::evaluate(&pixels, model, strength, saturation, cancel)?;
+            }
+            Filter::JpegArtifactsRemoval { model, strength } => {
+                pixels = super::restoration::evaluate(&pixels, model, strength, cancel)?;
+            }
+            Filter::StyleTransfer { style, strength } => {
+                pixels = super::neural::style_transfer(&pixels, style, strength, cancel)?;
+            }
+            Filter::FieldBlur { .. }
+            | Filter::IrisBlur { .. }
+            | Filter::TiltShift { .. }
+            | Filter::PathBlur { .. }
+            | Filter::SpinBlur { .. } => {
+                pixels = super::gallery::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Flame { .. } | Filter::PictureFrame { .. } | Filter::Tree { .. } => {
+                pixels = super::generators::evaluate(&pixels, &filter.filter, cancel)?
+            }
+            Filter::Deinterlace { .. } => {
+                pixels = super::video::deinterlace(&pixels, &filter.filter, cancel)?
+            }
             Filter::Displace { .. } | Filter::Shear { .. } | Filter::Custom { .. } => {
                 pixels = super::editable::evaluate(&pixels, &filter.filter, cancel)?
             }

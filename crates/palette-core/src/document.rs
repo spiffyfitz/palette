@@ -277,9 +277,209 @@ impl ShearInterpolation {
     pub const ALL: [Self; 2] = [Self::Linear, Self::Smooth];
 }
 
+/// A normalized source-local field-blur control point.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct BlurPin {
+    pub center: [f32; 2],
+    pub radius: f32,
+}
+/// Stable named processing options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FrameStyle {
+    Plain,
+    Beveled,
+    Wood,
+    Ornate,
+}
+impl FrameStyle {
+    /// Stable control order.
+    pub const ALL: [Self; 4] = [Self::Plain, Self::Beveled, Self::Wood, Self::Ornate];
+}
+/// Stable named processing options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TreeForm {
+    Deciduous,
+    Conifer,
+    Bare,
+}
+impl TreeForm {
+    /// Stable control order.
+    pub const ALL: [Self; 3] = [Self::Deciduous, Self::Conifer, Self::Bare];
+}
+/// Stable named processing options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum VideoField {
+    Odd,
+    Even,
+}
+impl VideoField {
+    /// Stable control order.
+    pub const ALL: [Self; 2] = [Self::Odd, Self::Even];
+}
+/// Stable named processing options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FieldInterpolation {
+    Duplicate,
+    Interpolate,
+}
+impl FieldInterpolation {
+    /// Stable control order.
+    pub const ALL: [Self; 2] = [Self::Duplicate, Self::Interpolate];
+}
+/// Stable named processing options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ChannelSpace {
+    Rgb,
+    Hsb,
+    Hsl,
+}
+impl ChannelSpace {
+    /// Stable control order.
+    pub const ALL: [Self; 3] = [Self::Rgb, Self::Hsb, Self::Hsl];
+}
+
+/// Immutable bundled neural profiles; new weights require a distinct variant
+/// so saved projects never silently change models when Palette is upgraded.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NeuralStyle {
+    MosaicV1,
+}
+impl NeuralStyle {
+    /// Stable parameter control order.
+    pub const ALL: [Self; 1] = [Self::MosaicV1];
+}
+
+/// Bundled restoration identities; new weights/geometry require a new variant.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum JpegModel {
+    Dncnn3V1,
+}
+impl JpegModel {
+    /// Stable parameter control order.
+    pub const ALL: [Self; 1] = [Self::Dncnn3V1];
+}
+
+/// Immutable bundled automatic colorization profiles.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ColorizeModel {
+    Eccv16Fp16V1,
+}
+impl ColorizeModel {
+    /// Stable parameter control order; new weights need a new profile identity.
+    pub const ALL: [Self; 1] = [Self::Eccv16Fp16V1];
+}
+
+/// Immutable bundled face-geometry and conventional smoothing contract.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SkinModel {
+    FaceMeshV1,
+}
+impl SkinModel {
+    /// Stable control order; changed geometry/weights require a new profile.
+    pub const ALL: [Self; 1] = [Self::FaceMeshV1];
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Learned facial geometry guides conventional smoothing; source is intact.
+    SkinSmoothing {
+        model: SkinModel,
+        strength: f32,
+        blur: f32,
+        range: f32,
+    },
+    Colorize {
+        model: ColorizeModel,
+        strength: f32,
+        saturation: f32,
+    },
+    JpegArtifactsRemoval {
+        model: JpegModel,
+        strength: f32,
+    },
+    StyleTransfer {
+        style: NeuralStyle,
+        strength: f32,
+    },
+    FieldBlur {
+        pins: [BlurPin; 8],
+        pin: u8,
+        count: u8,
+    },
+    IrisBlur {
+        radius: f32,
+        width: f32,
+        height: f32,
+        angle: f32,
+        feather: f32,
+        center: [f32; 2],
+    },
+    TiltShift {
+        radius: f32,
+        width: f32,
+        transition: f32,
+        angle: f32,
+        center: [f32; 2],
+    },
+    PathBlur {
+        distance: f32,
+        taper: f32,
+        centered: bool,
+        path: [[f32; 2]; 3],
+        point: u8,
+    },
+    SpinBlur {
+        angle: f32,
+        width: f32,
+        height: f32,
+        feather: f32,
+        rotation: f32,
+        center: [f32; 2],
+    },
+    Flame {
+        width: f32,
+        height: f32,
+        turbulence: f32,
+        detail: f32,
+        seed: u16,
+        color: [u8; 3],
+        opacity: f32,
+        angle: f32,
+        center: [f32; 2],
+    },
+    PictureFrame {
+        width: f32,
+        margin: f32,
+        bevel: f32,
+        style: FrameStyle,
+        color: [u8; 3],
+        opacity: f32,
+    },
+    Tree {
+        height: f32,
+        width: f32,
+        branching: u8,
+        foliage: f32,
+        seed: u16,
+        form: TreeForm,
+        leaf_color: [u8; 3],
+        bark_color: [u8; 3],
+        opacity: f32,
+        angle: f32,
+        center: [f32; 2],
+    },
+    NtscColors {
+        setup: bool,
+    },
+    Deinterlace {
+        field: VideoField,
+        interpolation: FieldInterpolation,
+    },
+    HsbHsl {
+        input: ChannelSpace,
+        output: ChannelSpace,
+    },
     ColorLookup {
         amount: f32,
         lut: Option<Lut3D>,
@@ -1050,7 +1250,14 @@ impl Filter {
     /// pixel; one is the last, including one-pixel axes (which map to zero).
     pub fn center(&self) -> Option<[f32; 2]> {
         match self {
-            Self::DiffuseGlow { center, .. }
+            Self::FieldBlur { pins, pin, .. } => pins.get(*pin as usize).map(|p| p.center),
+            Self::PathBlur { path, point, .. } => path.get(*point as usize).copied(),
+            Self::IrisBlur { center, .. }
+            | Self::TiltShift { center, .. }
+            | Self::SpinBlur { center, .. }
+            | Self::Flame { center, .. }
+            | Self::Tree { center, .. }
+            | Self::DiffuseGlow { center, .. }
             | Self::Glass { center, .. }
             | Self::OceanRipple { center, .. }
             | Self::Extrude { center, .. }
@@ -1071,7 +1278,14 @@ impl Filter {
     }
     pub(crate) fn center_mut(&mut self) -> Option<&mut [f32; 2]> {
         match self {
-            Self::DiffuseGlow { center, .. }
+            Self::FieldBlur { pins, pin, .. } => pins.get_mut(*pin as usize).map(|p| &mut p.center),
+            Self::PathBlur { path, point, .. } => path.get_mut(*point as usize),
+            Self::IrisBlur { center, .. }
+            | Self::TiltShift { center, .. }
+            | Self::SpinBlur { center, .. }
+            | Self::Flame { center, .. }
+            | Self::Tree { center, .. }
+            | Self::DiffuseGlow { center, .. }
             | Self::Glass { center, .. }
             | Self::OceanRipple { center, .. }
             | Self::Extrude { center, .. }

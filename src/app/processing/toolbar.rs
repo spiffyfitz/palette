@@ -312,6 +312,57 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if d.operation.kind() == Kind::SkinSmoothing {
+                    ui.set_max_width(420.);
+                    ui.label("Face-guided Skin Smoothing · runs locally");
+                    ui.label("Learned face geometry; conventional edge-preserving smoothing");
+                    ui.label("Protects eyes, lips and brows; up to eight detected faces");
+                    ui.label("Blur controls face-relative radius; Smoothness controls edge tolerance");
+                    ui.small("No detected face: source unchanged. Facial hair and occlusions may need a filter mask.");
+                    ui.small(palette_core::processing::SKIN_ID);
+                    ui.collapsing("Model license and attribution", |ui| {
+                        ui.set_max_width(380.);
+                        egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
+                            ui.add(egui::Label::new(palette_core::processing::SKIN_NOTICE).wrap());
+                            ui.add(egui::Label::new(palette_core::processing::SKIN_LICENSE).wrap());
+                        });
+                    });
+                }
+                if d.operation.kind() == Kind::Colorize {
+                    ui.label("ECCV16 · bundled model · runs locally");
+                    ui.label("256 px color inference; source detail and alpha retained");
+                    ui.label("Predicted colors may differ from the original scene");
+                    ui.small(palette_core::processing::COLORIZE_ID);
+                    ui.collapsing("Model license", |ui| {
+                        ui.set_max_width(380.);
+                        egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
+                            ui.add(egui::Label::new(palette_core::processing::COLORIZE_LICENSE).wrap());
+                        });
+                    });
+                }
+                if d.operation.kind() == Kind::JpegArtifactsRemoval {
+                    ui.label("DnCNN-3 · bundled model · runs locally");
+                    ui.label("Full-resolution luminance restoration; alpha retained");
+                    ui.label("Color compression artifacts are not reconstructed");
+                    ui.small(palette_core::processing::JPEG_ID);
+                    ui.collapsing("Model license", |ui| {
+                        ui.set_max_width(380.);
+                        egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
+                            ui.add(egui::Label::new(palette_core::processing::JPEG_LICENSE).wrap());
+                        });
+                    });
+                }
+                if d.operation.kind() == Kind::StyleTransfer {
+                    ui.label("Mosaic · bundled model · runs locally");
+                    ui.label("224 px working image; source size and alpha preserved");
+                    ui.small(palette_core::processing::MOSAIC_ID);
+                    ui.collapsing("Model license", |ui| {
+                        ui.set_max_width(380.);
+                        egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
+                            ui.add(egui::Label::new(palette_core::processing::MOSAIC_LICENSE).wrap());
+                        });
+                    });
+                }
                 match &d.operation {
                     Operation::Filter(Filter::ColorLookup {lut:Some(l),..})=>{ui.label(format!("{} ({}³)",l.name,l.size));},
                     Operation::Filter(Filter::Displace {map:Some(m),map_name,..})=>{ui.label(format!("{} ({} × {})",map_name,m.width(),m.height()));},
@@ -436,7 +487,22 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::Chrome
+                        Kind::SkinSmoothing
+                            | Kind::Colorize
+                            | Kind::JpegArtifactsRemoval
+                            | Kind::StyleTransfer
+                            | Kind::Chrome
+                            | Kind::FieldBlur
+                            | Kind::IrisBlur
+                            | Kind::TiltShift
+                            | Kind::PathBlur
+                            | Kind::SpinBlur
+                            | Kind::Flame
+                            | Kind::PictureFrame
+                            | Kind::Tree
+                            | Kind::NtscColors
+                            | Kind::Deinterlace
+                            | Kind::HsbHsl
                             | Kind::ConteCrayon
                             | Kind::Plaster
                             | Kind::Reticulation
@@ -594,7 +660,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     selected != before
                 }
                 (ParameterType::Boolean, Value::Boolean(mut value)) => {
-                    let label = if compact && p.key == "preserve_luminosity" {
+                    let label = if d.operation.kind() == Kind::NtscColors {
+                        "7.5 IRE"
+                    } else if compact && p.key == "preserve_luminosity" {
                         "On"
                     } else {
                         p.label

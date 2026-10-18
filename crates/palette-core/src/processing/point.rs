@@ -58,10 +58,28 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     {
         return super::editable::lookup(pixel, lut, *amount);
     }
+    if matches!(filter, Filter::NtscColors { .. } | Filter::HsbHsl { .. }) {
+        return super::video::point(pixel, filter);
+    }
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
-        Filter::Chrome { .. }
+        Filter::SkinSmoothing { .. }
+        | Filter::Colorize { .. }
+        | Filter::JpegArtifactsRemoval { .. }
+        | Filter::StyleTransfer { .. }
+        | Filter::FieldBlur { .. }
+        | Filter::IrisBlur { .. }
+        | Filter::TiltShift { .. }
+        | Filter::PathBlur { .. }
+        | Filter::SpinBlur { .. }
+        | Filter::Flame { .. }
+        | Filter::PictureFrame { .. }
+        | Filter::Tree { .. }
+        | Filter::Deinterlace { .. }
+        | Filter::NtscColors { .. }
+        | Filter::HsbHsl { .. }
+        | Filter::Chrome { .. }
         | Filter::ConteCrayon { .. }
         | Filter::Plaster { .. }
         | Filter::Reticulation { .. }

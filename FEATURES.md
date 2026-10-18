@@ -119,7 +119,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 127 implemented operations.
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 142 implemented operations (136 filters and six styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
@@ -134,10 +134,10 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 121 of 121 implemented, 0 remaining; Filter Gallery and layer styles counted separately.
+- [x] Registry-generated filter inventory: 136 of 136 catalog entries implemented (132 conventional plus four counterparts using local learned models); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
-- [ ] General dirty regions, per-stage/tile caches, cancellation of main full-resolution jobs and GPU compositor.
+- [ ] General dirty regions, per-stage/tile caches and GPU compositor.
 
 - [x] Color Balance, Photo Filter, Channel Mixer, two-stop Gradient Map, nine-range Selective Color and local Shadows/Highlights; removable live adjustment stacks.
 - [x] Fixed Blur/Blur More, alpha-safe local tone guides, saved gradient colors and idle percentage-preview regression.
@@ -160,3 +160,24 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] All ten current Stylize, eleven Blur and five Render entries, with independent Extrude/Oil Paint/Tiles/Trace Contour/Wind, aperture/depth Lens Blur, four Lens Flare styles and Point/Spot/Directional Lighting Effects; live nondestructive settings, three additional mouse origins and contextual inactive controls.
 
 - [x] Strict 3D `.cube` import, bounded raster displacement-map import, per-draft background jobs, embedded binary filter assets, shared LUT/map accounting in history/cache, draggable shear curve and editable 5×5 kernel popup; live previews, Apply/Cancel, independent native reopening and malformed-asset tests.
+
+- [x] Five Blur Gallery filters with movable focus/path controls; original Flame/Tree/Picture Frame renderers; Video field/chroma operations and HSB/HSL conversion.
+- [x] Dated Adobe coverage audit separating the 132 conventional filters from exclusions and unavailable AI functionality.
+- [ ] Remaining Neural/AI filters and broader quality/platform validation (Mosaic Style Transfer is locally implemented). See docs/PHOTOSHOP_FILTER_AUDIT.md.
+
+- [ ] Substance-based Parametric Filters: version-specific effect inventory, original/licensed materials and independently validated implementations.
+
+- [x] Isolated Rust feasibility probe: checksum-pinned learned style transfer and 3× luminance super resolution execute successfully. This is a development tool, not an app feature.
+- [ ] First six Neural Filter counterparts: model selection/terms, numerical and image-quality references, alpha/geometry adapters, runtime scheduling, native/UI integration. See docs/NEURAL_FILTERS_FIRST_SIX.md.
+
+- [x] Bundled offline Mosaic Style Transfer: local Rust inference, immutable model profile, exact checksum, independent CPU reference, cancellable operators, source/alpha preservation, strength/cache, native roundtrip and compact live toolbar.
+- [ ] Remaining three first-batch neural counterparts and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
+
+- [x] Bundled local JPEG Artifacts Removal: full-resolution overlapping DnCNN-3 tiles, alpha/chroma preservation, cached strength edits, masks and native/UI transactions.
+- [x] Main render tickets cancel obsolete generations/tab targets and resubmit cancelled tabs when revisited; app drop cancels render/preview work.
+
+- [x] Bundled local Colorize: compact ECCV16 chrominance inference, Lab/source-alpha adapter, live strength/saturation controls, mask/native preservation, independent photo and numerical references.
+- [x] Local face-guided Skin Smoothing: bundled BlazeFace/Face Mesh geometry,
+  conventional smoothing with protected features, live Strength/Blur/Smoothness,
+  alpha/masks/native/undo preservation and independent model/photo references.
+- [ ] Smart Portrait, Skin Smoothing and Super Zoom remain in the first-six neural batch; later six and Filter Gallery remain deferred.

@@ -241,6 +241,7 @@ impl PaletteApp {
                                 });
                         });
                         let scene = match category.label {
+                            "Neural Filters" => Some("neural-menu"),
                             "Adjustments" => Some("adjustments-menu"),
                             "Blur" => Some("blur-menu"),
                             "Noise" => Some("noise-menu"),
@@ -253,6 +254,8 @@ impl PaletteApp {
                             "Brush Strokes" => Some("brush-strokes-menu"),
                             "Sketch" => Some("sketch-menu"),
                             "Render" => Some("render-menu"),
+                            "Blur Gallery" => Some("blur-gallery-menu"),
+                            "Video" => Some("video-menu"),
                             "Texture" => Some("texture-menu"),
                             _ => None,
                         };
@@ -262,6 +265,7 @@ impl PaletteApp {
                     }
                 });
                 for scene in [
+                    "neural-menu",
                     "filter-menu",
                     "adjustments-menu",
                     "noise-menu",
@@ -275,6 +279,8 @@ impl PaletteApp {
                     "brush-strokes-menu",
                     "sketch-menu",
                     "render-menu",
+                    "blur-gallery-menu",
+                    "video-menu",
                     "texture-menu",
                 ] {
                     self.capture_popup(scene, &filter_menu.response);
@@ -897,7 +903,15 @@ impl PaletteApp {
                     self.current_mut().fit = true;
                     self.current_mut().pan = Vec2::ZERO;
                 }
-                ui.add(egui::Label::new(&self.message).truncate());
+                let session = self.current();
+                if session.requested == Some(session.generation)
+                    && session.rendered_generation != Some(session.generation)
+                {
+                    ui.add(egui::Spinner::new().size(12.));
+                    ui.add(egui::Label::new("Rendering…").truncate());
+                } else {
+                    ui.add(egui::Label::new(&self.message).truncate());
+                }
             });
         });
     }

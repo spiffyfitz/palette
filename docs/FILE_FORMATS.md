@@ -184,3 +184,55 @@ New filters: `ColorLookup` (amount, lut), `Displace` (horizontal, vertical, fit,
 A FilterRecord now optionally has `map: RasterRecord` or `lut: LutRecord`. In the manifest's cloned Filter value, the corresponding large `map`/`lut` payload is null. Displace requires exactly one map record and no LUT record; ColorLookup requires exactly one LUT record and no map record. Other filters reject extra asset records. Map records reuse source tile descriptors and 65536-byte RGBA assets, with dimensions limited to 1024×1024. LUT records store name, size, domain_min/domain_max and one asset index. Its asset is exactly size³×12 bytes of little-endian f32 RGB triples, red-fastest. Size is 2–33; values must be finite and within −16–16; each finite domain is increasing and bounded to −16–16. Names are at most 128 non-control characters. Table values are validated after decoding; references/lengths/dimensions are preflighted before decompression.
 
 Shared map tiles and LUT tables are stored once and restored with shared backing; LUT names/domains can differ while sharing the same value table. Existing 4 MiB manifest, 512 MiB total decoded assets and 1 GiB file limits still apply. Imported source paths are not required or stored as dependencies. v6 header/asset framing and v1–v5 migrations remain unchanged; older builds reject unfamiliar filter variants rather than silently losing data. All **127 registered operations** (121 filters, six styles) retain nondefault settings, sources, masks, ordering, region/full equality and separately baked Paint appearance. [Validation](EDITABLE_FILTERS_VALIDATION.md).
+
+
+## Additional version 6 photographic, procedural and Video filters
+
+New variants: FieldBlur (eight BlurPin {center, radius} values, selected pin and active count); IrisBlur (radius, width, height, angle, feather, center); TiltShift (radius, width, transition, angle, center); PathBlur (distance, taper, centered, three normalized path coordinates, selected point); SpinBlur (angle, width, height, feather, rotation, center); Flame (dimensions, turbulence, detail, seed, RGB color, opacity, angle, center); PictureFrame (width, margin, bevel, style, color, opacity); Tree (dimensions, branching, foliage, seed, form, leaf/bark colors, opacity, angle, center); NtscColors (setup); Deinterlace (field, interpolation); HsbHsl (input, output). New named options: FrameStyle {Plain, Beveled, Wood, Ornate}; TreeForm {Deciduous, Conifer, Bare}; VideoField {Odd, Even}; FieldInterpolation {Duplicate, Interpolate}; ChannelSpace {Rgb, Hsb, Hsl}.
+
+Pin and point indices are zero-based; video field names refer to one-based image rows. FieldBlur count is 1–8, selected pin must be active, every stored pin radius is finite 0–128 and every center is normalized 0–1. Every PathBlur coordinate is validated even when its handle is not selected. Pixel extents, angles, colors and remaining domains use the typed registry. All data fits the existing bounded JSON metadata; no new assets or framing/version migration. Earlier application builds reject unfamiliar variants. The shared all-catalog native/mask/region/Paint checks now cover 138 operations (132 filters, six styles). [Validation](GALLERY_VIDEO_RENDER_VALIDATION.md).
+
+
+## Bundled local neural profile
+
+Version 6 metadata now permits `StyleTransfer { style: "MosaicV1", strength: 0..1 }`.
+`MosaicV1` identifies the immutable `onnx-mosaic-9-fa646ded-v1` profile and SHA-256
+`fa646dedade881243f8d5a2ceb7de2b93675b21fc24f7482894ac4851a9a0a47`.
+The model bytes are embedded in Palette, not repeated in each project. The same
+profile/algorithm must be retained by future readers; new weights need new IDs.
+No pixel, mask, asset framing or prior variant changed, so no version migration
+is needed. Older Palette builds reject this unfamiliar variant explicitly.
+Strength and model identity remain editable after save/reopen, and the existing
+native source/mask pipeline stays lossless. Flat or Paint export bakes appearance
+under the existing unsupported-feature warning, without discarding the native
+original. No network or external inference service is involved in reopening.
+
+
+Version 6 also permits `JpegArtifactsRemoval { model: "Dncnn3V1", strength: 0..1 }`.
+The immutable model profile is `dncnn3-6e7dcb19-v1`, with exact graph hash
+`6e7dcb19f0f37aac698e846f0364bc01e0939d0582a8f3e974d8be8fd3388f24`.
+Original pixels, dimensions, alpha, mask coverage and filter order are retained;
+no new assets, framing or previous variants changed. The weights are bundled in
+Palette, so opening the native project requires no download or external runtime.
+Older builds reject the unfamiliar variant. Incompatible flat/Paint exports use
+the existing native-backup and baked-appearance workflow. [Model contract](JPEG_RESTORATION_VALIDATION.md).
+
+
+Native v6 also permits `Colorize { model: "Eccv16Fp16V1", strength: 0..1,
+saturation: 0..2 }`. Profile `eccv16-f16-5ce703af-v1` pins graph SHA-256
+`5ce703afdc738da5a435d23369c617004abea7be54342568b3ddd0fd96ac8938`, compact
+kernel storage, Lab normalization, direct chroma reconstruction and gamut
+handling. Weights are bundled in Palette, not repeated in native projects.
+Original source pixels, masks, geometry and complete editable parameters survive
+roundtrip. No existing variant/asset/framing changed; older builds reject the
+new variant explicitly. A new weight or pixel contract requires a new profile.
+See [Colorize validation](COLORIZE_VALIDATION.md).
+
+Native v6 also permits `SkinSmoothing { model: "FaceMeshV1", strength, blur,
+range }`, all numbers finite in 0..1. The model identifier pins bundled face
+geometry and conventional smoothing conventions. Parameters are face-relative
+and unchanged when building reduced previews. Source/masks/layer properties
+and filter order remain separate assets/metadata. Old variants and container
+framing are unchanged; older applications reject this new enum variant rather
+than silently losing it. Paint and flat-image exports bake supported appearance
+using the existing native-backup policy. [Exact scope](SKIN_SMOOTHING_VALIDATION.md).
