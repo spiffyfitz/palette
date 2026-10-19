@@ -9,7 +9,7 @@ This review follows the original phases. Functional source code and passing Wind
 | 2 — core painting | Live strokes, eraser, fill, shapes/polygon/curve, text, clipboard, selections, transforms and history work | Brush variants/tablet/mask painting, text metric parity, property gesture coalescing and persistent vectors remain explicit deferrals |
 | 3 — file compatibility | Real still AVIF codec/options; `.palette` v5 streamed shared assets, v1/v2/v3/v4 migration, backing color and opaque metadata; genuine two-layer `.paint` subset import/export; import layer, recents and recovery | User confirms Paint opening/appearance; edit/save-back, broader variants/platforms and metadata/color/conformance remain |
 | 4 — advanced layers/selections | 19 blend modes; Wand/freeform/edge-aware brush, live feather previews, canvas toolbars, coverage combination and basic layer-mask properties | Merges, polygon selection, morphology and mask painting/view/apply/link workflows |
-| 5 — filters/styles | 139 live filters (133 conventional, six limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
+| 5 — filters/styles | 140 live filters (133 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
 | 6 — platform polish | CI configuration and Windows native captures | Actual platform matrix, performance benchmarks on dense 4K/8K, accessibility, packaging and signing |
 
 ## Phase 3 acceptance status
@@ -78,3 +78,9 @@ The external audit also records the unimplemented Substance-based Parametric Fil
 Local-only neural milestone: [first-six status](docs/NEURAL_FILTERS_FIRST_SIX.md). Mosaic Style Transfer now runs inside Palette with bundled weights and Rust CPU inference, editable parameters, live preview, masks and native preservation. User images never leave the process. JPEG Artifacts Removal now uses full-resolution DnCNN-3 tiles, a bounded restoration cache and cancellation of obsolete main renders. Colorize now infers local chrominance while retaining original source luminance/alpha. Face-guided Skin Smoothing now uses learned geometry with conventional smoothing. Cropped Super Zoom now runs a real 3x network. Smart Portrait and enlarged editable Super Zoom documents still require validated models/pipelines or output-geometry work; whole-image PNG enlargement is available from the Super Zoom options; Depth Blur now has a local learned-depth/Gaussian-defocus implementation, while the other five later-group families and Filter Gallery remain deferred. No conventional substitute is counted as a neural implementation.
 
 Current Phase 5 follow-up: conventional [Color Transfer](docs/COLOR_TRANSFER_VALIDATION.md) adds portable reference-image Lab statistics, live controls and source-preserving native persistence. The catalog is now 139 filters (133 conventional and six limited model-based counterparts). Learned Color Transfer and the other audited parity gates remain incomplete.
+
+Latest Phase 5 follow-up: [Makeup Transfer](docs/MAKEUP_TRANSFER_VALIDATION.md)
+adds a reference-portrait lip/upper-lid workflow using existing local face models
+and conventional Lab matching. The catalog is 140 filters: 133 conventional and
+seven limited model-based counterparts. Four audited families still lack a
+counterpart; partial capabilities and quality gates prevent Photoshop parity.

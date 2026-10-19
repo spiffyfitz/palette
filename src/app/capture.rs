@@ -150,6 +150,8 @@ impl PaletteApp {
                 | "processing-skin-smoothing"
                 | "processing-color-transfer"
                 | "processing-color-transfer-reference"
+                | "processing-makeup"
+                | "processing-makeup-reference"
                 | "processing-depth-blur"
                 | "processing-depth-map"
                 | "processing-super-zoom"
@@ -292,6 +294,8 @@ impl PaletteApp {
                             | "processing-skin-smoothing"
                             | "processing-color-transfer"
                             | "processing-color-transfer-reference"
+                            | "processing-makeup"
+                            | "processing-makeup-reference"
                             | "processing-depth-blur"
                             | "processing-depth-map"
                             | "processing-super-zoom"
@@ -500,6 +504,9 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
+                        Some("processing-makeup" | "processing-makeup-reference") => {
+                            Kind::MakeupTransfer
+                        }
                         Some(
                             "processing-color-transfer" | "processing-color-transfer-reference",
                         ) => Kind::ColorTransfer,
@@ -521,6 +528,7 @@ impl PaletteApp {
                     if matches!(
                         kind,
                         Kind::SkinSmoothing
+                            | Kind::MakeupTransfer
                             | Kind::SuperZoom
                             | Kind::DepthBlur
                             | Kind::ColorTransfer

@@ -19,6 +19,7 @@ mod gallery;
 mod gaussian;
 mod generators;
 mod layer;
+pub mod makeup;
 mod media;
 pub mod menu;
 mod neighborhood;
@@ -59,6 +60,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    MakeupTransfer,
     ColorTransfer,
     DepthBlur,
     SuperZoom,
@@ -2397,6 +2399,23 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
+    Descriptor {
+        kind: Kind::MakeupTransfer,
+        label: "Makeup Transfer",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("lips", "Lips", 0., 1., 0.01),
+            number("eyes", "Eyes", 0., 1., 0.01),
+            number("feather", "Edge softness", 0., 1., 0.01),
+            number("luminance", "Luminance", 0., 1., 0.01),
+            Parameter {
+                key: "model",
+                label: "Method",
+                kind: ParameterType::Choice(&["Face landmarks + Lab"]),
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2409,6 +2428,15 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::MakeupTransfer => Operation::Filter(Filter::MakeupTransfer {
+                model: crate::document::MakeupModel::FaceMeshLabV1,
+                reference: makeup::rose_reference(),
+                strength: 0.75,
+                lips: 1.,
+                eyes: 0.7,
+                feather: 0.5,
+                luminance: 0.,
+            }),
             Self::ColorTransfer => Operation::Filter(Filter::ColorTransfer {
                 method: crate::document::ColorTransferMethod::LabStatisticsV1,
                 reference: color_transfer::warm_reference(),
@@ -3213,6 +3241,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::MakeupTransfer { .. }) => Kind::MakeupTransfer,
             Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
             Self::Filter(Filter::DepthBlur { .. }) => Kind::DepthBlur,
             Self::Filter(Filter::SuperZoom { .. }) => Kind::SuperZoom,
@@ -3366,6 +3395,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = makeup::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = color_transfer::value(f, key)
         {
@@ -4720,6 +4754,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && color_transfer::set(f, key, value)
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && makeup::set(f, key, value)
         {
             return Ok(());
         }

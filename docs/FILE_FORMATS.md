@@ -254,3 +254,11 @@ uses `serde_json/float_roundtrip` for exact float64 preservation and validates
 profile names, dimensions and bounded finite statistics before use. The model
 does not contain a filesystem reference or a learned graph. No container framing
 changed; older readers reject the unknown enum. [Exact contract](COLOR_TRANSFER_VALIDATION.md).
+
+Native v6 additionally permits `MakeupTransfer` with `MakeupModel::FaceMeshLabV1`,
+finite Strength/Lips/Eyes/Feather/Luminance in 0..1 and an embedded
+`MakeupReference` (sanitized name, dimensions, and relative lip/eye Lab offsets).
+The bounded float64 profile fully specifies the reference for this method; no
+photo, path or landmarks are stored. Existing float-roundtrip parsing preserves
+its values exactly. No binary framing or asset migration occurs; older readers
+reject the unknown enum. [Contract](MAKEUP_TRANSFER_VALIDATION.md).

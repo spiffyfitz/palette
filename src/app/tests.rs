@@ -5257,7 +5257,7 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                     .unwrap();
             }
             let parameters: Vec<_> = if entry.kind == Kind::ReduceNoise
-                || entry.kind == Kind::ColorTransfer
+                || matches!(entry.kind, Kind::ColorTransfer | Kind::MakeupTransfer)
                 || entry.parameters.iter().any(|p| p.key == "center_x")
                 || matches!(
                     entry.kind,
@@ -6229,3 +6229,5 @@ mod color_transfer;
 mod depth;
 mod skin;
 mod zoom;
+
+mod makeup;

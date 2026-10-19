@@ -398,3 +398,10 @@ parsing. No new binary asset/framing or per-document model was added. Import
 jobs own cancellation flags; dropping a draft prevents its statistics/result
 from being applied later. Pixel transfer, filter masking and layer styles retain
 normal pipeline order, with source alpha unchanged. [Contract and evidence](docs/COLOR_TRANSFER_VALIDATION.md).
+
+Makeup Transfer reuses the existing Skin Smoothing face detector, rotated crop,
+468-point mesh and signed-distance helpers inside the processing module. No UI
+type enters the document or raster code. It measures alpha-weighted lip/upper-lid
+Lab offsets from an inner-face baseline; target offsets and geometry are cached
+under a separate 128 MiB source budget. Reference profiles store only bounded
+colour offsets and metadata; source-region masks update with source contents.

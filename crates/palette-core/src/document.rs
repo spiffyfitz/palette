@@ -412,9 +412,36 @@ pub enum ColorTransferMethod {
     LabStatisticsV1,
 }
 
+/// Portable makeup colour offsets relative to the reference face's skin.
+/// These Lab offsets contain no reference pixels, path or identity descriptor.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MakeupReference {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub lips: [f64; 3],
+    pub eyes: [f64; 3],
+}
+
+/// Fixed face geometry and conventional regional colour-transfer contract.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MakeupModel {
+    FaceMeshLabV1,
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Learned facial landmarks guide conventional lip and upper-lid matching.
+    MakeupTransfer {
+        model: MakeupModel,
+        reference: MakeupReference,
+        strength: f32,
+        lips: f32,
+        eyes: f32,
+        feather: f32,
+        luminance: f32,
+    },
     /// Global reference-based color matching; this is not neural inference.
     ColorTransfer {
         method: ColorTransferMethod,

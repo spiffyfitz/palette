@@ -142,6 +142,12 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
         f.enabled
             && match f.filter {
                 Filter::ColorTransfer { strength, .. } => strength > 0.,
+                Filter::MakeupTransfer {
+                    strength,
+                    lips,
+                    eyes,
+                    ..
+                } => strength > 0. && (lips > 0. || eyes > 0.),
                 Filter::DepthBlur {
                     radius, show_depth, ..
                 } => radius > 0. || show_depth,
@@ -293,6 +299,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::MakeupTransfer { .. } => {
+                pixels = super::makeup::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::ColorTransfer { .. } => {
                 pixels = super::color_transfer::evaluate(&pixels, &filter.filter, cancel)?
             }

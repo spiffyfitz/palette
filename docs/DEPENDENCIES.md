@@ -83,3 +83,9 @@ It reuses existing Rust Lab conversion and image codecs. The existing `serde_jso
 dependency enables its `float_roundtrip` feature so native reference profiles
 preserve float64 moments exactly. Independent NumPy/scikit-image/Pillow checks
 run only in the development environment. [Contract and references](COLOR_TRANSFER_VALIDATION.md).
+
+Makeup Transfer reuses the already bundled Apache-2.0 BlazeFace/FaceMesh graphs
+and their existing full license/NOTICE, also exposed in its information menu.
+The face-topology indices and Lab processing use the existing licensed sources.
+No new graph, crate, system library, external runtime or runtime download was
+added. Its NumPy/scikit-image reference is development-only and runs locally.
