@@ -387,3 +387,14 @@ scale images. Interpolation uses premultiplied RGBA and restores original alpha.
 The 128 MiB source/depth cache is independent of UI parameters. It is not an
 occlusion-aware optical simulation. Native v6 stores model/parameters, never a
 baked source replacement. [Model, pixel and reference contract](docs/DEPTH_BLUR_VALIDATION.md).
+
+Statistical Color Transfer is a conventional global neighborhood operation:
+coverage-weighted Welford Lab moments depend on the entire evaluated source, so
+regional compositing must still prepare the whole layer. Its 128 MiB bounded
+source/moment cache excludes parameters/reference profiles from the key because
+neither changes source moments. The compact reference profile is the complete
+sufficient input to v1; native JSON retains float64 moments with exact roundtrip
+parsing. No new binary asset/framing or per-document model was added. Import
+jobs own cancellation flags; dropping a draft prevents its statistics/result
+from being applied later. Pixel transfer, filter masking and layer styles retain
+normal pipeline order, with source alpha unchanged. [Contract and evidence](docs/COLOR_TRANSFER_VALIDATION.md).

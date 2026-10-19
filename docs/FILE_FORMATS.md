@@ -244,3 +244,13 @@ remain unchanged. Model weights are bundled in Palette; parameters are unchanged
 in reduced previews. No framing/asset migration occurs, and older builds reject
 the new enum variant. Sources remain lossless and the existing flat/Paint
 compatibility policy applies. [Exact contract](SUPER_ZOOM_VALIDATION.md).
+
+Native v6 also permits `ColorTransfer` with `method: "LabStatisticsV1"`, Strength,
+Luminance and Contrast in finite 0..1 and Saturation in finite 0..2. Its embedded
+`ColorReference` contains a sanitized name, original dimensions and three float64
+Lab means/deviations. This is sufficient to reproduce this statistical method;
+the full reference image is not embedded or required on reopen. Native parsing
+uses `serde_json/float_roundtrip` for exact float64 preservation and validates
+profile names, dimensions and bounded finite statistics before use. The model
+does not contain a filesystem reference or a learned graph. No container framing
+changed; older readers reject the unknown enum. [Exact contract](COLOR_TRANSFER_VALIDATION.md).

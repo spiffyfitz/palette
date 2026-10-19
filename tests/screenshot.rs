@@ -197,6 +197,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-jpeg-artifacts",
         "processing-colorize",
         "processing-skin-smoothing",
+        "processing-color-transfer",
+        "processing-color-transfer-reference",
         "processing-depth-blur",
         "processing-depth-map",
         "processing-super-zoom",

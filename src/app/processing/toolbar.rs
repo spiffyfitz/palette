@@ -82,7 +82,19 @@ impl PaletteApp {
         let shadow = draft
             .as_ref()
             .is_some_and(|d| matches!(d.operation.kind(), Kind::DropShadow | Kind::InnerShadow));
-        let compact = self.canvas_rect.width() < if shadow { 1050. } else { 700. };
+        // Color Transfer also reserves space for its direct reference-photo
+        // picker; switch before the full bar reaches the canvas boundaries.
+        let reference_photo = draft
+            .as_ref()
+            .is_some_and(|d| d.operation.kind() == Kind::ColorTransfer);
+        let compact = self.canvas_rect.width()
+            < if shadow {
+                1050.
+            } else if reference_photo {
+                820.
+            } else {
+                700.
+            };
         let mut intent = None;
         let mut changed = false;
         if let Some(d) = &mut draft {
@@ -218,6 +230,32 @@ fn editor_controls(
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
+        if let Operation::Filter(Filter::ColorTransfer { reference, .. }) = &d.operation {
+            let tooltip = format!(
+                "Load a reference photo to use its color grade\nCurrent reference: {} ({} × {})",
+                reference.name, reference.width, reference.height
+            );
+            let response = ui
+                .push_id("color-transfer-reference-photo", |ui| {
+                    if compact {
+                        icons::button(
+                            ui,
+                            Icon::Open,
+                            &tooltip,
+                            false,
+                            d.import.is_none(),
+                            Vec2::splat(24.),
+                        )
+                    } else {
+                        ui.add_enabled(d.import.is_none(), egui::Button::new("Reference photo…"))
+                            .on_hover_text(&tooltip)
+                    }
+                })
+                .inner;
+            if response.clicked() {
+                *intent = Some(Intent::Import);
+            }
+        }
         let movable=!matches!(d.operation,Operation::Filter(Filter::LightingEffects {kind:palette_core::document::LightKind::Directional,..} | Filter::DepthBlur {pick_focus:false,..}));
         if matches!(&d.operation, Operation::Filter(f) if f.center().is_some())
             && icons::button(
@@ -316,6 +354,14 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if let Operation::Filter(Filter::ColorTransfer {reference,..})=&d.operation {
+                    ui.set_max_width(380.);
+                    ui.add(egui::Label::new(format!("Reference profile: {} ({} × {})",reference.name,reference.width,reference.height)).wrap());
+                    ui.label("Global Lab statistics · conventional processing · runs locally");
+                    ui.label("Strength controls the transfer; Luminance transfers brightness; Contrast matches channel variation; Saturation adjusts transferred color.");
+                    ui.small("The built-in warm palette is an original default. Load an image to use its colors. Alpha and source pixels stay intact; all reference statistics are saved in the project, so the reference file is not needed later.");
+                    ui.small("Global matching has no semantic regions or learned appearance model. Luminance is retained in Lab before gamut clipping; extreme colors can still change displayed brightness.");
+                }
                 if d.operation.kind() == Kind::DepthBlur {
                     ui.set_max_width(380.);
                     ui.label("Learned relative depth · runs locally");
@@ -424,7 +470,7 @@ fn editor_controls(
                     Operation::Filter(Filter::Displace {map:Some(m),map_name,..})=>{ui.label(format!("{} ({} × {})",map_name,m.width(),m.height()));},
                     _=>{},
                 }
-                if matches!(d.operation.kind(),Kind::ColorLookup|Kind::Displace) && ui.add_enabled(d.import.is_none(),egui::Button::new(if d.operation.kind()==Kind::ColorLookup {"Load 3D LUT…"} else {"Load displacement map…"})).clicked() {*intent=Some(Intent::Import);ui.close();}
+                if matches!(d.operation.kind(),Kind::ColorLookup|Kind::Displace|Kind::ColorTransfer) && ui.add_enabled(d.import.is_none(),egui::Button::new(match d.operation.kind(){Kind::ColorLookup=>"Load 3D LUT…",Kind::ColorTransfer=>"Load reference image…",_=>"Load displacement map…"})).clicked() {*intent=Some(Intent::Import);ui.close();}
                 if let Some(notice)=&d.import_notice {ui.label(notice);}
                 if d.operation.kind()==Kind::Custom {let sub=ui.menu_button("Edit kernel…",|ui|{changed|=editors::kernel(ui,&mut d.operation);});app.capture_submenu("processing-custom-kernel",ui,&sub.response);}
                 if d.operation.kind()==Kind::Shear {let sub=ui.menu_button("Edit shear curve…",|ui|{changed|=editors::curve(ui,&mut d.operation);});app.capture_submenu("processing-shear-curve",ui,&sub.response);}
@@ -447,6 +493,7 @@ fn editor_controls(
             app.capture_popup("processing-custom-kernel",&menu.response);
             app.capture_popup("processing-shear-curve",&menu.response);
             app.capture_popup("processing-super-zoom-options",&menu.response);
+            app.capture_popup("processing-color-transfer-reference",&menu.response);
         });
         changed
     })
@@ -562,7 +609,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::DepthBlur
+                        Kind::ColorTransfer
+                            | Kind::DepthBlur
                             | Kind::SuperZoom
                             | Kind::SkinSmoothing
                             | Kind::Colorize

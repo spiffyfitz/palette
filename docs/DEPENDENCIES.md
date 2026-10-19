@@ -77,3 +77,9 @@ Depth Blur embeds the official unmodified MiDaS v2.1 small ONNX artifact
 the exact release URL, SHA-256, paper citation and full license, available offline
 in the app. The existing SPDX expression already includes MIT; no Cargo or native
 runtime dependency was added. [Contract and references](DEPTH_BLUR_VALIDATION.md).
+
+Statistical Color Transfer adds no crate, native library or pretrained model.
+It reuses existing Rust Lab conversion and image codecs. The existing `serde_json`
+dependency enables its `float_roundtrip` feature so native reference profiles
+preserve float64 moments exactly. Independent NumPy/scikit-image/Pillow checks
+run only in the development environment. [Contract and references](COLOR_TRANSFER_VALIDATION.md).

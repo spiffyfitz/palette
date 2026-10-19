@@ -5257,6 +5257,7 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                     .unwrap();
             }
             let parameters: Vec<_> = if entry.kind == Kind::ReduceNoise
+                || entry.kind == Kind::ColorTransfer
                 || entry.parameters.iter().any(|p| p.key == "center_x")
                 || matches!(
                     entry.kind,
@@ -6224,6 +6225,7 @@ fn colorize_menu_strength_and_saturation_preview_cancel_apply_persist_and_remove
     assert!(app.current().document.active().filters.is_empty());
     assert!(app.current().document.layers == before.layers);
 }
+mod color_transfer;
 mod depth;
 mod skin;
 mod zoom;

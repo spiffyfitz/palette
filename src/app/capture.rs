@@ -148,6 +148,8 @@ impl PaletteApp {
                 | "processing-jpeg-artifacts"
                 | "processing-colorize"
                 | "processing-skin-smoothing"
+                | "processing-color-transfer"
+                | "processing-color-transfer-reference"
                 | "processing-depth-blur"
                 | "processing-depth-map"
                 | "processing-super-zoom"
@@ -288,6 +290,8 @@ impl PaletteApp {
                             | "processing-jpeg-artifacts"
                             | "processing-colorize"
                             | "processing-skin-smoothing"
+                            | "processing-color-transfer"
+                            | "processing-color-transfer-reference"
                             | "processing-depth-blur"
                             | "processing-depth-map"
                             | "processing-super-zoom"
@@ -496,6 +500,9 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
+                        Some(
+                            "processing-color-transfer" | "processing-color-transfer-reference",
+                        ) => Kind::ColorTransfer,
                         Some("processing-depth-blur" | "processing-depth-map") => Kind::DepthBlur,
                         Some("processing-super-zoom" | "processing-super-zoom-options") => {
                             Kind::SuperZoom
@@ -513,7 +520,10 @@ impl PaletteApp {
                     }
                     if matches!(
                         kind,
-                        Kind::SkinSmoothing | Kind::SuperZoom | Kind::DepthBlur
+                        Kind::SkinSmoothing
+                            | Kind::SuperZoom
+                            | Kind::DepthBlur
+                            | Kind::ColorTransfer
                     ) {
                         let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).expect("public-domain portrait fixture").to_rgba8();
                         let layer = self.current_mut().document.active_mut();

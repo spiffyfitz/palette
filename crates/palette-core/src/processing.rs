@@ -5,6 +5,7 @@ mod adjustments;
 mod artistic;
 mod cellular;
 mod cinematic;
+pub mod color_transfer;
 mod colorize;
 mod conventional;
 mod creative;
@@ -58,6 +59,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    ColorTransfer,
     DepthBlur,
     SuperZoom,
     SkinSmoothing,
@@ -2379,6 +2381,22 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
+    Descriptor {
+        kind: Kind::ColorTransfer,
+        label: "Color Transfer",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("luminosity", "Luminance", 0., 1., 0.01),
+            number("contrast", "Contrast", 0., 1., 0.01),
+            number("saturation", "Saturation", 0., 2., 0.01),
+            Parameter {
+                key: "method",
+                label: "Method",
+                kind: ParameterType::Choice(&["Lab statistics"]),
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2391,6 +2409,14 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::ColorTransfer => Operation::Filter(Filter::ColorTransfer {
+                method: crate::document::ColorTransferMethod::LabStatisticsV1,
+                reference: color_transfer::warm_reference(),
+                strength: 1.,
+                luminosity: 0.,
+                contrast: 1.,
+                saturation: 1.,
+            }),
             Self::DepthBlur => Operation::Filter(Filter::DepthBlur {
                 model: crate::document::DepthModel::MidasSmallV1,
                 radius: 16.,
@@ -3187,6 +3213,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
             Self::Filter(Filter::DepthBlur { .. }) => Kind::DepthBlur,
             Self::Filter(Filter::SuperZoom { .. }) => Kind::SuperZoom,
             Self::Filter(Filter::SkinSmoothing { .. }) => Kind::SkinSmoothing,
@@ -3339,6 +3366,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = color_transfer::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = depth::value(f, key)
         {
@@ -4683,6 +4715,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && depth::set(f, key, value)
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && color_transfer::set(f, key, value)
         {
             return Ok(());
         }

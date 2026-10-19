@@ -141,6 +141,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::ColorTransfer { strength, .. } => strength > 0.,
                 Filter::DepthBlur {
                     radius, show_depth, ..
                 } => radius > 0. || show_depth,
@@ -292,6 +293,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::ColorTransfer { .. } => {
+                pixels = super::color_transfer::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::DepthBlur { .. } => {
                 pixels = super::depth::evaluate(&pixels, &filter.filter, cancel)?
             }

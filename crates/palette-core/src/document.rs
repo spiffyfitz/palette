@@ -395,9 +395,35 @@ pub enum DepthModel {
     MidasSmallV1,
 }
 
+/// Sufficient statistics for a reference image in encoded-sRGB/D65 CIE Lab.
+/// Keeping this bounded profile makes the filter independent of external files.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ColorReference {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub mean: [f64; 3],
+    pub deviation: [f64; 3],
+}
+
+/// Versioned statistical color-transfer contract, independent of learned models.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ColorTransferMethod {
+    LabStatisticsV1,
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Global reference-based color matching; this is not neural inference.
+    ColorTransfer {
+        method: ColorTransferMethod,
+        reference: ColorReference,
+        strength: f32,
+        luminosity: f32,
+        contrast: f32,
+        saturation: f32,
+    },
     /// Learned relative depth guides an independently implemented Gaussian blur.
     DepthBlur {
         model: DepthModel,
