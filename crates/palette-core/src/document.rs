@@ -389,9 +389,25 @@ impl ZoomModel {
     pub const ALL: [Self; 1] = [Self::Espcn3xCropV1];
 }
 
+/// Immutable learned inverse-depth model and adapter contract.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DepthModel {
+    MidasSmallV1,
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Learned relative depth guides an independently implemented Gaussian blur.
+    DepthBlur {
+        model: DepthModel,
+        radius: f32,
+        focus: f32,
+        range: f32,
+        pick_focus: bool,
+        center: [f32; 2],
+        show_depth: bool,
+    },
     /// Learned magnification clipped to source dimensions, not viewport zoom.
     SuperZoom {
         model: ZoomModel,
@@ -1269,7 +1285,8 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get(*pin as usize).map(|p| p.center),
             Self::PathBlur { path, point, .. } => path.get(*point as usize).copied(),
-            Self::SuperZoom { center, .. }
+            Self::DepthBlur { center, .. }
+            | Self::SuperZoom { center, .. }
             | Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }
@@ -1298,7 +1315,8 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get_mut(*pin as usize).map(|p| &mut p.center),
             Self::PathBlur { path, point, .. } => path.get_mut(*point as usize),
-            Self::SuperZoom { center, .. }
+            Self::DepthBlur { center, .. }
+            | Self::SuperZoom { center, .. }
             | Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }

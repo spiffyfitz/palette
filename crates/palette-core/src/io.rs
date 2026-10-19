@@ -247,6 +247,52 @@ pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
     })
 }
 
+/// Export the entire visible composite at 1–3× using local learned enlargement.
+/// This is an explicit flattened PNG export, never a project save. Cancellation
+/// is checked after encoding as well, before atomic replacement of the target.
+pub fn export_super_zoom_png(
+    path: &Path,
+    document: &Document,
+    scale: f32,
+    enhancement: f32,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(), FileError> {
+    if extension(path) != "png" {
+        return Err(FileError::Invalid(
+            "Whole-image Super Zoom export requires a .png filename".into(),
+        ));
+    }
+    document.validate().map_err(FileError::Invalid)?;
+    crate::processing::super_zoom_dimensions(document.width, document.height, scale)
+        .map_err(FileError::Invalid)?;
+    if !enhancement.is_finite() || !(0. ..=1.).contains(&enhancement) {
+        return Err(FileError::Invalid(
+            "Super Zoom enhancement must be between 0 and 1".into(),
+        ));
+    }
+    let raster = composite::Renderer::default()
+        .render_cancel(document, cancel)
+        .map_err(FileError::Invalid)?;
+    let output = crate::processing::super_zoom_enlarge_cancel(&raster, scale, enhancement, cancel)
+        .map_err(FileError::Invalid)?;
+    atomic_write(path, |file| {
+        if cancel() {
+            return Err(FileError::Invalid("Processing cancelled".into()));
+        }
+        use image::ImageEncoder;
+        image::codecs::png::PngEncoder::new(file).write_image(
+            &output.rgba(),
+            output.width(),
+            output.height(),
+            image::ExtendedColorType::Rgba8,
+        )?;
+        if cancel() {
+            return Err(FileError::Invalid("Processing cancelled".into()));
+        }
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4505,6 +4505,7 @@ fn distortion_origins_drag_live_at_fractional_zoom_and_dpi_then_cancel_or_save_o
         for kind in [
             Kind::Twirl,
             Kind::SuperZoom,
+            Kind::DepthBlur,
             Kind::FieldBlur,
             Kind::IrisBlur,
             Kind::TiltShift,
@@ -6223,5 +6224,6 @@ fn colorize_menu_strength_and_saturation_preview_cancel_apply_persist_and_remove
     assert!(app.current().document.active().filters.is_empty());
     assert!(app.current().document.layers == before.layers);
 }
+mod depth;
 mod skin;
 mod zoom;

@@ -61,6 +61,32 @@ pub(super) struct Dialog {
     pub(super) import_notice: Option<String>,
 }
 impl Dialog {
+    /// Whole-image export replaces this draft's crop, then enlarges the visible
+    /// composite. Other committed layers, filters, masks and styles stay active.
+    pub(super) fn enlargement(&self) -> Result<(Document, f32, f32), String> {
+        let Operation::Filter(Filter::SuperZoom {
+            zoom, enhancement, ..
+        }) = &self.operation
+        else {
+            return Err("Whole-image enlargement requires Super Zoom".into());
+        };
+        let mut doc = self.original.clone();
+        if doc.active_layer != self.layer {
+            return Err("Processing layer changed".into());
+        }
+        if let Some(id) = self.instance {
+            let index = doc
+                .active()
+                .filters
+                .iter()
+                .position(|f| f.id == id)
+                .ok_or("Filter no longer exists")?;
+            doc.active_mut().filters.remove(index);
+        }
+        palette_core::processing::super_zoom_dimensions(doc.width, doc.height, *zoom)?;
+        doc.validate()?;
+        Ok((doc, *zoom, *enhancement))
+    }
     fn document(&self) -> Result<Document, String> {
         let mut doc = self.original.clone();
         if doc.active_layer != self.layer {
@@ -183,6 +209,66 @@ pub(super) enum Action {
     Mask(u64, MaskAction),
 }
 impl PaletteApp {
+    pub(super) fn export_whole_zoom(&mut self, ctx: &Context) {
+        if self.zoom_export.is_some() || self.busy {
+            return;
+        }
+        let Some(d) = &self.processing_dialog else {
+            return;
+        };
+        let (document, scale, enhancement) = match d.enlargement() {
+            Ok(request) => request,
+            Err(error) => {
+                self.error = Some(error);
+                return;
+            }
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Export enlarged whole image — project stays editable")
+            .add_filter("PNG image", &["png"])
+            .set_file_name(format!("{}-enlarged.png", self.current().name))
+            .save_file()
+        else {
+            return;
+        };
+        self.start_zoom_export(path, document, scale, enhancement, ctx);
+    }
+
+    pub(super) fn start_zoom_export(
+        &mut self,
+        path: PathBuf,
+        document: Document,
+        scale: f32,
+        enhancement: f32,
+        ctx: &Context,
+    ) {
+        if self.zoom_export.is_some() || self.pending_files >= 4 {
+            return;
+        }
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.zoom_export = Some(cancel.clone());
+        self.pending_files += 1;
+        self.busy = true;
+        self.message =
+            "Enlarging whole image locally; File → Cancel Super Zoom export stops this job".into();
+        let tx = self.file_tx.clone();
+        let repaint = ctx.clone();
+        std::thread::spawn(move || {
+            let result = io::export_super_zoom_png(&path, &document, scale, enhancement, &|| {
+                cancel.load(Ordering::Relaxed)
+            })
+            .map_err(|e| e.to_string());
+            let _ = tx.send(FileResult::ZoomExported(path, result));
+            repaint.request_repaint();
+        });
+    }
+
+    pub(super) fn cancel_zoom_export(&mut self) {
+        if let Some(cancel) = &self.zoom_export {
+            cancel.store(true, Ordering::Relaxed);
+            self.message = "Cancelling Super Zoom export…".into();
+        }
+    }
     pub(crate) fn open_processing(&mut self, kind: Kind, instance: Option<u64>) {
         if !self.close_pending_none() {
             return;

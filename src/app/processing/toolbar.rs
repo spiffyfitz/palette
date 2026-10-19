@@ -3,6 +3,8 @@
 use super::*;
 
 enum Intent {
+    ExportZoom,
+    CancelZoomExport,
     Close,
     Import,
     Add(Kind),
@@ -177,6 +179,8 @@ impl PaletteApp {
         self.processing_toolbar = Some(toolbar);
         if let Some(intent) = intent {
             match intent {
+                Intent::ExportZoom => self.export_whole_zoom(ctx),
+                Intent::CancelZoomExport => self.cancel_zoom_export(),
                 Intent::Close => {
                     self.cancel_processing();
                     self.processing_toolbar = None;
@@ -214,7 +218,7 @@ fn editor_controls(
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
-        let movable=!matches!(d.operation,Operation::Filter(Filter::LightingEffects {kind:palette_core::document::LightKind::Directional,..}));
+        let movable=!matches!(d.operation,Operation::Filter(Filter::LightingEffects {kind:palette_core::document::LightKind::Directional,..} | Filter::DepthBlur {pick_focus:false,..}));
         if matches!(&d.operation, Operation::Filter(f) if f.center().is_some())
             && icons::button(
                 ui, Icon::Move,
@@ -312,13 +316,48 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if d.operation.kind() == Kind::DepthBlur {
+                    ui.set_max_width(380.);
+                    ui.label("Learned relative depth · runs locally");
+                    ui.label("Click or drag on the image to focus. Disable Click to focus to set Focal depth manually.");
+                    ui.label("Focal depth: 0 = far, 100% = near. Focal range sets the sharp depth band. Blur radius uses image pixels.");
+                    ui.small("Show depth map previews the inferred depth. This is relative depth with a Gaussian blur, not measured distance or an occlusion-aware lens simulation. Fine edges and unusual scenes can be misestimated.");
+                    ui.small(palette_core::processing::DEPTH_ID);
+                    ui.collapsing("Model license and attribution", |ui| {
+                        egui::ScrollArea::vertical().max_height(200.).show(ui,|ui| {
+                            ui.add(egui::Label::new(palette_core::processing::DEPTH_NOTICE).wrap());
+                        });
+                    });
+                }
                 if d.operation.kind() == Kind::SuperZoom {
                     ui.set_max_width(420.);
+                    egui::ScrollArea::vertical()
+                        .max_height((ui.ctx().content_rect().height() - 180.).max(100.))
+                        .show(ui, |ui| {
                     ui.label("Local learned magnification · cropped output");
                     ui.label("Keeps canvas dimensions; this does not enlarge the document");
                     ui.label("Origin selects the source point placed at the canvas center");
                     ui.label("Enhancement adjusts learned luminance; color and alpha are resampled");
-                    ui.small("Fixed 3× network; 1–3× magnification. Larger-document output, face-specific restoration and denoising controls remain unavailable.");
+                    ui.small("Fixed 3× network; 1–3× magnification. Face-specific restoration and denoising controls remain unavailable.");
+                    ui.separator();
+                    ui.label("Whole-image export uses Zoom and Enhancement above; origin is ignored.");
+                    ui.small("Exports all visible layers as one PNG, replacing this crop with full-image enlargement. Other committed processing stays active. The canvas preview shows the crop, not this export. Save .palette separately to preserve editing.");
+                    if let Some(Value::Number(scale)) = d.operation.value("zoom") {
+                        match palette_core::processing::super_zoom_dimensions(d.original.width, d.original.height, scale) {
+                            Ok([w,h]) => {
+                                ui.label(format!("Output: {w} × {h} pixels"));
+                                if ui.add_enabled(!app.busy, egui::Button::new("Export enlarged whole image as PNG…")).clicked() {
+                                    *intent = Some(Intent::ExportZoom);
+                                    ui.close();
+                                }
+                            }
+                            Err(error) => { ui.label(error); }
+                        }
+                    }
+                    if app.zoom_export.is_some() && ui.button("Cancel Super Zoom export").clicked() {
+                        *intent = Some(Intent::CancelZoomExport);
+                        ui.close();
+                    }
                     ui.small(palette_core::processing::ZOOM_ID);
                     ui.collapsing("Model license and attribution", |ui| {
                         egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
@@ -326,6 +365,7 @@ fn editor_controls(
                             ui.add(egui::Label::new(palette_core::processing::SKIN_LICENSE).wrap());
                             ui.add(egui::Label::new(palette_core::processing::MOSAIC_LICENSE).wrap());
                         });
+                    });
                     });
                 }
                 if d.operation.kind() == Kind::SkinSmoothing {
@@ -406,6 +446,7 @@ fn editor_controls(
             });
             app.capture_popup("processing-custom-kernel",&menu.response);
             app.capture_popup("processing-shear-curve",&menu.response);
+            app.capture_popup("processing-super-zoom-options",&menu.response);
         });
         changed
     })
@@ -424,7 +465,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
     let selector = egui::ComboBox::from_id_salt("processing-parameter")
         .selected_text(
             if compact
-                && d.operation.kind() == Kind::SuperZoom
+                && matches!(d.operation.kind(), Kind::SuperZoom | Kind::DepthBlur)
                 && parameters[d.parameter].key == "model"
             {
                 "Model"
@@ -457,6 +498,15 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             })
         ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
         let context_active = match d.operation {
+            Operation::Filter(Filter::DepthBlur { pick_focus, .. }) => {
+                if p.key == "focus" {
+                    !pick_focus
+                } else if matches!(p.key, "center_x" | "center_y") {
+                    pick_focus
+                } else {
+                    true
+                }
+            }
             Operation::Filter(Filter::LightingEffects { kind, .. }) => match kind {
                 palette_core::document::LightKind::Directional => {
                     !matches!(p.key, "radius" | "center_x" | "center_y")
@@ -512,7 +562,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::SuperZoom
+                        Kind::DepthBlur
+                            | Kind::SuperZoom
                             | Kind::SkinSmoothing
                             | Kind::Colorize
                             | Kind::JpegArtifactsRemoval
@@ -668,6 +719,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         .truncate()
                         .selected_text(if compact && d.operation.kind() == Kind::SuperZoom {
                             "ESPCN 3×"
+                        } else if compact && d.operation.kind() == Kind::DepthBlur {
+                            "MiDaS"
                         } else if compact && p.key == "to_polar" {
                             if selected == 0 {
                                 "To Polar"
@@ -692,7 +745,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 (ParameterType::Boolean, Value::Boolean(mut value)) => {
                     let label = if d.operation.kind() == Kind::NtscColors {
                         "7.5 IRE"
-                    } else if compact && p.key == "preserve_luminosity" {
+                    } else if compact
+                        && (p.key == "preserve_luminosity" || d.operation.kind() == Kind::DepthBlur)
+                    {
                         "On"
                     } else {
                         p.label

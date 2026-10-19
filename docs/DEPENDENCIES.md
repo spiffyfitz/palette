@@ -71,3 +71,9 @@ Apache-2.0 model-distribution terms and PyTorch BSD-3-Clause attribution. Full
 Apache/BSD notices are already retained with the assets and shown in the app.
 No Cargo dependency or system library was added. The existing inference-crate
 SPDX expression covers these assets. [Contract and references](SUPER_ZOOM_VALIDATION.md).
+
+Depth Blur embeds the official unmodified MiDaS v2.1 small ONNX artifact
+(66,764,249 bytes), distributed by Intel ISL under MIT. `NOTICE-Depth.txt` retains
+the exact release URL, SHA-256, paper citation and full license, available offline
+in the app. The existing SPDX expression already includes MIT; no Cargo or native
+runtime dependency was added. [Contract and references](DEPTH_BLUR_VALIDATION.md).

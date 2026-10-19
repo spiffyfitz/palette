@@ -83,6 +83,7 @@ struct RenderResult {
     )>,
 }
 enum FileResult {
+    ZoomExported(PathBuf, Result<(), String>),
     Imported {
         session: u64,
         generation: u64,
@@ -138,6 +139,7 @@ pub struct PaletteApp {
     allow_quit: bool,
     busy: bool,
     pending_files: usize,
+    zoom_export: Option<Arc<std::sync::atomic::AtomicBool>>,
     render_tx: mpsc::SyncSender<RenderRequest>,
     render_rx: mpsc::Receiver<RenderResult>,
     render_ticket: Arc<AtomicU64>,
@@ -317,6 +319,7 @@ impl PaletteApp {
             allow_quit: false,
             busy: false,
             pending_files: 0,
+            zoom_export: None,
             render_tx,
             render_rx,
             render_ticket,
@@ -630,6 +633,18 @@ impl PaletteApp {
             self.pending_files = self.pending_files.saturating_sub(1);
             self.busy = self.pending_files != 0;
             match result {
+                FileResult::ZoomExported(path, result) => {
+                    self.zoom_export = None;
+                    match result {
+                        Ok(()) => {
+                            self.message = format!("Exported enlarged image {}", path.display())
+                        }
+                        Err(error) if error == "Processing cancelled" => {
+                            self.message = "Super Zoom export cancelled".into()
+                        }
+                        Err(error) => self.error = Some(error),
+                    }
+                }
                 result @ (FileResult::Imported { .. } | FileResult::Recovered(..)) => {
                     self.handle_auxiliary_file_result(result, ctx)
                 }
@@ -1090,6 +1105,7 @@ mod tests;
 
 impl Drop for PaletteApp {
     fn drop(&mut self) {
+        self.cancel_zoom_export();
         self.render_ticket.fetch_add(1, Ordering::Relaxed);
         self.processing_worker
             .ticket

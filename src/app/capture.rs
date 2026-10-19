@@ -148,7 +148,10 @@ impl PaletteApp {
                 | "processing-jpeg-artifacts"
                 | "processing-colorize"
                 | "processing-skin-smoothing"
+                | "processing-depth-blur"
+                | "processing-depth-map"
                 | "processing-super-zoom"
+                | "processing-super-zoom-options"
                 | "processing-shear-curve",
             ) => {
                 use palette_core::processing::{Kind, Operation};
@@ -285,7 +288,10 @@ impl PaletteApp {
                             | "processing-jpeg-artifacts"
                             | "processing-colorize"
                             | "processing-skin-smoothing"
+                            | "processing-depth-blur"
+                            | "processing-depth-map"
                             | "processing-super-zoom"
+                            | "processing-super-zoom-options"
                             | "processing-shear-curve"
                     )
                 );
@@ -490,7 +496,10 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
-                        Some("processing-super-zoom") => Kind::SuperZoom,
+                        Some("processing-depth-blur" | "processing-depth-map") => Kind::DepthBlur,
+                        Some("processing-super-zoom" | "processing-super-zoom-options") => {
+                            Kind::SuperZoom
+                        }
 
                         _ => Kind::GaussianBlur,
                     };
@@ -502,7 +511,10 @@ impl PaletteApp {
                                 .expect("colorize raster");
                         layer.offset = [280, 169];
                     }
-                    if matches!(kind, Kind::SkinSmoothing | Kind::SuperZoom) {
+                    if matches!(
+                        kind,
+                        Kind::SkinSmoothing | Kind::SuperZoom | Kind::DepthBlur
+                    ) {
                         let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).expect("public-domain portrait fixture").to_rgba8();
                         let layer = self.current_mut().document.active_mut();
                         layer.source =
@@ -512,6 +524,16 @@ impl PaletteApp {
                     }
                     self.open_processing(kind, None);
                     if let Some(d) = &mut self.processing_dialog {
+                        if kind == Kind::DepthBlur
+                            && self.capture.scene.as_deref() == Some("processing-depth-map")
+                        {
+                            d.operation
+                                .set_value(
+                                    "show_depth",
+                                    palette_core::processing::Value::Boolean(true),
+                                )
+                                .expect("capture depth map");
+                        }
                         if kind == Kind::SuperZoom {
                             d.operation
                                 .set_value(

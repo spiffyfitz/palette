@@ -65,6 +65,12 @@ impl PaletteApp {
                         self.save(&ctx, true, true);
                         ui.close();
                     }
+                    if self.zoom_export.is_some()
+                        && menu_item(ui, "Cancel Super Zoom export", "", None, true).clicked()
+                    {
+                        self.cancel_zoom_export();
+                        ui.close();
+                    }
                     ui.separator();
                     if menu_item(
                         ui,

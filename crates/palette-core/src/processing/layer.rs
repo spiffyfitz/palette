@@ -141,6 +141,9 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::DepthBlur {
+                    radius, show_depth, ..
+                } => radius > 0. || show_depth,
                 Filter::SuperZoom { .. } => true,
                 Filter::SkinSmoothing { strength, .. }
                 | Filter::Colorize { strength, .. }
@@ -289,6 +292,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::DepthBlur { .. } => {
+                pixels = super::depth::evaluate(&pixels, &filter.filter, cancel)?
+            }
             Filter::SuperZoom {
                 model,
                 zoom,

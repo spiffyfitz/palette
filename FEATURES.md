@@ -119,7 +119,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 143 implemented operations (137 filters and six styles).
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 144 implemented operations (138 filters and six styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
@@ -134,7 +134,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 137 of 137 catalog entries implemented (132 conventional plus five limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
+- [x] Registry-generated filter inventory: 138 of 138 catalog entries implemented (132 conventional plus six limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches and GPU compositor.
@@ -149,9 +149,6 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 - [x] All 14 current Sketch entries, including Chrome, Conté Crayon, Plaster, Reticulation, Torn Edges and Water Paper; live settings, original-alpha/source preservation and native project round trips.
 - [x] Generated Canvas/Brick/Burlap/Sandstone surfaces with stored size, relief, light angle, inversion and seed; no proprietary texture assets.
-
-## Phase 6
-- [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.
 
 - [x] All 15 current Artistic entries, including Fresco, Neon Glow, Palette Knife, Plastic Wrap, Rough Pastels, Sponge, Underpainting and Watercolor; editable material/lighting/color controls, original-alpha/source preservation and native round trips.
 
@@ -171,7 +168,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [ ] First six Neural Filter counterparts: model selection/terms, numerical and image-quality references, alpha/geometry adapters, runtime scheduling, native/UI integration. See docs/NEURAL_FILTERS_FIRST_SIX.md.
 
 - [x] Bundled offline Mosaic Style Transfer: local Rust inference, immutable model profile, exact checksum, independent CPU reference, cancellable operators, source/alpha preservation, strength/cache, native roundtrip and compact live toolbar.
-- [ ] Remaining three first-batch neural counterparts and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
+- [ ] Smart Portrait, remaining first-batch capability gaps and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
 
 - [x] Bundled local JPEG Artifacts Removal: full-resolution overlapping DnCNN-3 tiles, alpha/chroma preservation, cached strength edits, masks and native/UI transactions.
 - [x] Main render tickets cancel obsolete generations/tab targets and resubmit cancelled tabs when revisited; app drop cancels render/preview work.
@@ -183,8 +180,18 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Local Super Zoom cropped-output slice: real 3× inference with safe tiled
   halos, 1–3× magnification, Enhancement, draggable source center, geometric
   alpha, masks/native/undo and independent full-image seam references.
-- [ ] Super Zoom whole-image enlargement/new-document output and related
-  painting/selection/mask coordinate mapping.
+- [x] Whole-image Super Zoom PNG export: 1–3× larger output, all visible layers,
+  local background inference, cancellation and atomic replacement; source project stays editable.
+- [ ] Enlarged editable Super Zoom documents and related painting/selection/mask coordinate mapping.
 - [ ] Full Photoshop filter parity: tracked separately from catalog counts in
   docs/PHOTOSHOP_FILTER_AUDIT.md; partial implementations do not satisfy it.
-- [ ] Smart Portrait, Skin Smoothing and Super Zoom remain in the first-six neural batch; later six and Filter Gallery remain deferred.
+- [ ] Smart Portrait and remaining limitations of the five partial first-six counterparts; five other later-group families and Filter Gallery remain deferred.
+
+- [x] Local Depth Blur: bundled inverse-depth model, click/manual focus, focal
+  range/radius, depth-map view, live editable stack/masks/native/history and
+  independent model/photo references. Gaussian defocus is not optical or neural reblurring.
+
+## Phase 6
+
+
+- [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.

@@ -339,7 +339,7 @@ Processing drafts own their import receiver; workers load bounded assets outside
 
 Core adapts straight RGBA to premultiplied area-averaged RGB over neutral gray, fits the content into a 224² edge-extended working image without aspect distortion, evaluates the bundled network, resamples color to source dimensions and restores source alpha exactly. Strength blends colors before the existing per-filter masks, subsequent filters, layer mask, opacity and effects. Source pixels remain unmodified. The typed `NeuralStyle::MosaicV1` identity must retain the same weights/algorithm contract; future models need new identities. The model is embedded, so reopening a native project requires no downloads and never silently falls back to a flat image. Existing preview/main-render workers handle scheduling; inference never runs on the UI thread.
 
-The isolated `tools/neural-probe` remains development evidence for a candidate learned Super Zoom network. Genuine enlargement still needs evaluated geometry and mask-coordinate work. Other first-batch models are pending. [Status and integration requirements](docs/NEURAL_FILTERS_FIRST_SIX.md).
+The isolated `tools/neural-probe` remains development evidence for the learned Super Zoom network now integrated as a crop filter and explicit whole-image PNG export. Enlarged editable documents still need evaluated geometry and mask-coordinate work. Other first-batch gaps remain tracked in the [status and integration requirements](docs/NEURAL_FILTERS_FIRST_SIX.md).
 
 JPEG restoration evaluates source-resolution encoded studio-range luminance in 192² tiles with a discarded 20-pixel halo (152² interiors), repeats source edges, applies the inferred Y delta while retaining alpha/chroma, and supports the existing filter masks and stack order. One source/restored pair is retained under a conservative 128 MiB budget for strength edits; partial cancelled results are excluded. `JpegModel::Dncnn3V1` pins the graph and pixel contract. Main render tickets fence obsolete `(session, generation, epoch)` targets, requeue cancelled tabs when revisited and cancel on application drop. [Validation and limitations](docs/JPEG_RESTORATION_VALIDATION.md).
 
@@ -365,7 +365,25 @@ interiors support seam-safe bilinear field sampling. Tile-major traversal
 retains one network output; a separate 128 MiB source/baseline/learned-crop
 cache accelerates Enhancement changes. Premultiplied resampling determines
 color/alpha, and the learned matted-Y residual modifies straight RGB. Native
-`ZoomModel::Espcn3xCropV1` pins this limited contract. Full enlargement still
-requires evaluated output geometry plus corresponding paint/selection/mask
-maps; the crop implementation is not a substitute for that architecture.
+`ZoomModel::Espcn3xCropV1` pins this limited contract. A separate whole-image
+export adapter maps destination pixel centers into the complete visible
+composite, with independently rounded dimensions and repeated border samples.
+It shares bounded inference and the 128 MiB cache (keyed by geometry/output mode)
+but never changes the serialized crop contract. PNG export runs on a COW document
+snapshot, replaces the edited crop instance for export only, and checks cancellation
+after encoding before atomic replacement. Its separate file result does not mark
+the project saved or remove recovery data. File-menu cancellation and app drop
+signal the job; tab switches cannot redirect its snapshot. Enlarged editable
+documents still require evaluated output geometry and corresponding paint/selection/mask maps.
 [Independent references and limits](docs/SUPER_ZOOM_VALIDATION.md).
+
+Depth Blur retains source-sized geometry and a typed immutable MiDaS profile.
+Premultiplied square area sampling over gray feeds its fixed 256² input; the graph
+embeds RGB normalization. The 2%/98% normalized inverse-depth field is bilinearly
+sampled at source pixel centers. Click focus uses the same source-local map as
+manual X/Y origins; manual depth disables the picker. A sharp depth band plus
+smoothstep distance chooses between six Gaussian scales, retaining only adjacent
+scale images. Interpolation uses premultiplied RGBA and restores original alpha.
+The 128 MiB source/depth cache is independent of UI parameters. It is not an
+occlusion-aware optical simulation. Native v6 stores model/parameters, never a
+baked source replacement. [Model, pixel and reference contract](docs/DEPTH_BLUR_VALIDATION.md).

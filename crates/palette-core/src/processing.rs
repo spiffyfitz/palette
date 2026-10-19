@@ -9,6 +9,7 @@ mod colorize;
 mod conventional;
 mod creative;
 mod cutout;
+mod depth;
 mod distort;
 mod drawing;
 pub mod editable;
@@ -48,14 +49,16 @@ pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_ca
 pub use neighborhood::{box_blur_cancel, median_cancel};
 pub use palette_neural::face::{ID as SKIN_ID, LICENSE as SKIN_LICENSE, NOTICE as SKIN_NOTICE};
 pub use palette_neural::{
-    COLORIZE_ID, COLORIZE_LICENSE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID, MOSAIC_LICENSE, ZOOM_ID,
-    ZOOM_NOTICE,
+    COLORIZE_ID, COLORIZE_LICENSE, DEPTH_ID, DEPTH_NOTICE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID,
+    MOSAIC_LICENSE, ZOOM_ID, ZOOM_NOTICE,
 };
 pub(crate) use point::point_filter;
+pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    DepthBlur,
     SuperZoom,
     SkinSmoothing,
     Colorize,
@@ -2349,6 +2352,33 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
+    Descriptor {
+        kind: Kind::DepthBlur,
+        label: "Depth Blur",
+        category: "Neural Filters",
+        parameters: &[
+            number("radius", "Blur radius", 0., 64., 0.1),
+            Parameter {
+                key: "pick_focus",
+                label: "Click to focus",
+                kind: ParameterType::Boolean,
+            },
+            number("focus", "Focal depth", 0., 1., 0.01),
+            number("range", "Focal range", 0., 1., 0.01),
+            number("center_x", "Focus point X", 0., 1., 0.001),
+            number("center_y", "Focus point Y", 0., 1., 0.001),
+            Parameter {
+                key: "show_depth",
+                label: "Show depth map",
+                kind: ParameterType::Boolean,
+            },
+            Parameter {
+                key: "model",
+                label: "Depth model",
+                kind: ParameterType::Choice(&["MiDaS small (local)"]),
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2361,6 +2391,15 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::DepthBlur => Operation::Filter(Filter::DepthBlur {
+                model: crate::document::DepthModel::MidasSmallV1,
+                radius: 16.,
+                focus: 0.5,
+                range: 0.2,
+                pick_focus: true,
+                center: [0.5; 2],
+                show_depth: false,
+            }),
             Self::SuperZoom => Operation::Filter(Filter::SuperZoom {
                 model: ZoomModel::Espcn3xCropV1,
                 zoom: 3.,
@@ -3148,6 +3187,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::DepthBlur { .. }) => Kind::DepthBlur,
             Self::Filter(Filter::SuperZoom { .. }) => Kind::SuperZoom,
             Self::Filter(Filter::SkinSmoothing { .. }) => Kind::SkinSmoothing,
             Self::Filter(Filter::Colorize { .. }) => Kind::Colorize,
@@ -3299,6 +3339,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = depth::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(value) = adjustments::value(f, key)
         {
@@ -4633,6 +4678,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && gallery::set(f, key, value)?
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && depth::set(f, key, value)
         {
             return Ok(());
         }
