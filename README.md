@@ -39,7 +39,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Noise cleanup: Despeckle, Dust & Scratches and Reduce Noise (strength, detail protection, color cleanup and sharpening). Distort adds Pinch, Spherize and Ripple; Sharpen and Sharpen More are also functional. [Validation and limits](docs/RETOUCH_DISTORT_VALIDATION.md).
 - Polar Coordinates (both directions), ZigZag (three styles), seeded two-color Fibers and Glowing Edges. Twirl, Pinch, Spherize, Ripple, Wave, Radial Blur and both new distortions have movable origins: use the four-arrow placement button, then click/drag on the layer. Origin X/Y provide numeric percentages; … > Reset origin restores the default. Origins preview live and remain editable in saved projects. [Validation and exact scope](docs/ORIGIN_FILTERS_VALIDATION.md).
 - Artistic: Cutout and Film Grain; Brush Strokes: Accented Edges and Ink Outlines; Sketch: Photocopy and Dot/Line/Circle Halftone Pattern; Texture: Patchwork and seeded Craquelure. All are editable live filters. Sketch ink/paper colors capture drawing colors when added and remain saved parameters. [Algorithms and validation](docs/ARTISTIC_FILTERS_VALIDATION.md).
-- Pixelate now has working Color Halftone, Crystallize, Facet, Mezzotint and Pointillize alongside Mosaic/Fragment. Texture adds Stained Glass and Mosaic Tiles; Stylize adds Normal/Darken/Lighten/Anisotropic Diffuse. All remain editable live filters. [Validation](docs/PIXELATE_FILTERS_VALIDATION.md). The current catalog has **141 implemented filters (134 conventional plus seven limited local model-based counterparts)**; [generated inventory](docs/FILTER_INVENTORY.md).
+- Pixelate now has working Color Halftone, Crystallize, Facet, Mezzotint and Pointillize alongside Mosaic/Fragment. Texture adds Stained Glass and Mosaic Tiles; Stylize adds Normal/Darken/Lighten/Anisotropic Diffuse. All remain editable live filters. [Validation](docs/PIXELATE_FILTERS_VALIDATION.md). The current catalog has **142 implemented filters (135 conventional plus seven limited local model-based counterparts)**; [generated inventory](docs/FILTER_INVENTORY.md).
 - Adjustments now also includes Color Balance, Photo Filter, Channel Mixer, Gradient Map, Selective Color and Shadows/Highlights. Gradient Map captures drawing colors for new instances; all nine Selective Color ranges remain editable together. Blur and Blur More are functional fixed-kernel commands. [Algorithms, controls and validation](docs/ADJUSTMENT_FILTERS_VALIDATION.md).
 - Artistic adds Colored Pencil, Dry Brush, Paint Daubs and Smudge Stick; Brush Strokes adds Angled Strokes, Crosshatch, Dark Strokes and seeded Spatter. Editable paper color/brightness, pressure, texture, brush geometry and tonal stroke controls use the existing live toolbar. [Algorithms and validation](docs/PAINTING_FILTERS_VALIDATION.md).
 - Brush Strokes is complete for the current menu: Sprayed Strokes and Sumi-e join the six earlier entries. Sketch adds Bas Relief, Chalk & Charcoal, Charcoal, Graphic Pen, Note Paper and Stamp, with saved drawing colors, stroke directions and editable relief lighting. [Algorithms and validation](docs/DRAWING_FILTERS_VALIDATION.md).
@@ -87,7 +87,7 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. 194 reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. 197 reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
 
 See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE5_VALIDATION.md).
 
@@ -157,3 +157,10 @@ reference layer and follows its edits, masks and effects live. The compact
 parameter bar includes the reference picker, Strength, Luminance, Contrast and
 Saturation. This is conventional local Lab matching, not learned relighting.
 [Validation](docs/HARMONIZATION_VALIDATION.md).
+
+**Filter → Neural Filters → Photo Restoration** repairs thin scratches and wider,
+curved cracks, expands faded tones and reduces luminance/colour noise. Strength
+extends to 200%, with a 1–64 px repair radius, damage polarity, a detection overlay
+and optional local eye/brow/lip protection. Existing v1 saves retain their rendering.
+This conventional restoration preserves source pixels and does not reconstruct
+missing faces. [Current scope and verification](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md).

@@ -27,6 +27,7 @@ mod neighborhood;
 mod neural;
 mod optical;
 mod painting;
+mod photo_restoration;
 mod pixelate;
 mod point;
 mod restoration;
@@ -61,6 +62,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    PhotoRestoration,
     Harmonization,
     MakeupTransfer,
     ColorTransfer,
@@ -2441,6 +2443,39 @@ pub const REGISTRY: &[Descriptor] = &[
             number("saturation", "Saturation", 0., 2., 0.01),
         ],
     },
+    Descriptor {
+        kind: Kind::PhotoRestoration,
+        label: "Photo Restoration",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 2., 0.01),
+            number("enhancement", "Photo enhancement", 0., 1., 0.01),
+            number("scratches", "Scratch reduction", 0., 1., 0.01),
+            number("radius", "Repair radius", 1., 64., 1.),
+            number("noise", "Noise reduction", 0., 1., 0.01),
+            number("color_noise", "Color noise reduction", 0., 1., 0.01),
+            Parameter {
+                key: "show_damage",
+                label: "Show detected damage",
+                kind: ParameterType::Boolean,
+            },
+            Parameter {
+                key: "damage_type",
+                label: "Damage type",
+                kind: ParameterType::Choice(&["Bright cracks", "Dark scratches", "Both"]),
+            },
+            Parameter {
+                key: "method",
+                label: "Method",
+                kind: ParameterType::Choice(&["Thin scratches (legacy)", "Multiscale cracks"]),
+            },
+            Parameter {
+                key: "protect_faces",
+                label: "Protect facial details",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2453,6 +2488,18 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::PhotoRestoration => Operation::Filter(Filter::PhotoRestoration {
+                method: crate::document::PhotoRestorationMethod::MultiscaleV2,
+                damage_type: crate::document::PhotoDamageType::Bright,
+                protect_faces: true,
+                strength: 1.,
+                enhancement: 0.35,
+                scratches: 1.,
+                radius: 12,
+                noise: 0.2,
+                color_noise: 0.3,
+                show_damage: false,
+            }),
             Self::Harmonization => Operation::Filter(Filter::Harmonization {
                 reference_layer: None,
                 strength: 1.,
@@ -3276,6 +3323,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::PhotoRestoration { .. }) => Kind::PhotoRestoration,
             Self::Filter(Filter::Harmonization { .. }) => Kind::Harmonization,
             Self::Filter(Filter::MakeupTransfer { .. }) => Kind::MakeupTransfer,
             Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
@@ -3431,6 +3479,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = photo_restoration::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = harmonization::value(f, key)
         {
@@ -4796,6 +4849,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && color_transfer::set(f, key, value)
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && photo_restoration::set(f, key, value)
         {
             return Ok(());
         }
@@ -6979,6 +7037,7 @@ impl Operation {
             return Err("Input black must be below input white".into());
         }
         if let Self::Filter(f) = self {
+            photo_restoration::validate(f)?;
             editable::validate_assets(f)?;
             gallery::validate(f)?;
         }
@@ -6991,6 +7050,15 @@ impl Operation {
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
         let mut result = self.clone();
+        if let Self::Filter(Filter::PhotoRestoration { radius, method, .. }) = &mut result {
+            let max = if *method == crate::document::PhotoRestorationMethod::DirectionalV1 {
+                8.
+            } else {
+                64.
+            };
+            *radius = (f32::from(*radius) * scale).round().clamp(1., max) as u8;
+            return result;
+        }
         if let Self::Filter(Filter::FieldBlur { pins, .. }) = &mut result {
             for p in pins {
                 p.radius *= scale;

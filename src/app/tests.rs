@@ -5259,7 +5259,10 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
             let parameters: Vec<_> = if entry.kind == Kind::ReduceNoise
                 || matches!(
                     entry.kind,
-                    Kind::ColorTransfer | Kind::MakeupTransfer | Kind::Harmonization
+                    Kind::ColorTransfer
+                        | Kind::MakeupTransfer
+                        | Kind::Harmonization
+                        | Kind::PhotoRestoration
                 )
                 || entry.parameters.iter().any(|p| p.key == "center_x")
                 || matches!(
@@ -6236,3 +6239,4 @@ mod zoom;
 mod makeup;
 
 mod harmonization;
+mod photo_restoration;

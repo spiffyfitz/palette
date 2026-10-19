@@ -414,3 +414,19 @@ appearance to clipboard and local selection sampling. Paint baking retains
 nonvisible dependencies while isolating a rendered layer. Spatial Makeup Transfer
 stores an Arc-backed 512-square face atlas in existing native binary tile assets;
 metadata holds landmarks, pigment-plane coefficients and a canonical RGBA hash.
+
+Conventional Photo Restoration has an immutable DirectionalV1 parameter contract.
+A completed directional outlier map separates detection from clean-neighbour
+interpolation, followed by alpha-weighted edge-aware luminance/chroma cleanup and
+bounded histogram enhancement. It uses the existing cancellable prepared-layer
+worker/cache and shared mask/preview/history pipeline, with no new runtime or
+weights. The diagnostic damage overlay is an editable output mode.
+
+Photo Restoration MultiscaleV2 retains v1 as an immutable legacy method. A
+premultiplied guide, width/orientation samples, bounded connected components and
+fine-scratch fallback build a damage map. Overdrive unions the 100% map before
+expansion and optional existing face-landmark protection. Sparse harmonic fill
+uses fixed alpha-weighted boundaries and bounded symmetric sweeps; it allocates
+nodes only for detected pixels (two-million-node cap). Worker cancellation reaches
+detection, geometry and filling. Native framing is unchanged; this is conventional
+interpolation with optional learned geometry protection, not learned reconstruction.

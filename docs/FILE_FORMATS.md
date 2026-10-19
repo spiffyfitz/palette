@@ -277,3 +277,20 @@ contrast/saturation. Resolution is live and does not serialize sampled pixels.
 Cycles (including disabled links) are invalid; missing references are tolerated
 for reversible deletion and render as no-ops. [Spatial makeup](MAKEUP_SPATIAL_VALIDATION.md)
 and [Harmonization](HARMONIZATION_VALIDATION.md) describe contracts and tests.
+
+Photo Restoration serializes `PhotoRestoration` with immutable `DirectionalV1`,
+Strength/Photo enhancement/Scratch reduction/Noise reduction/Color noise reduction
+in 0–1, integer Repair radius in 1–8 and the Show detected damage boolean. There
+are no external assets or additional frames. All parameters are validated before
+save/render; native v6 framing is unchanged. Older readers reject the unknown
+variant. The diagnostic overlay remains enabled after saving when explicitly
+applied in that mode. [Scope](PHOTO_RESTORATION_VALIDATION.md).
+
+`MultiscaleV2` extends Photo Restoration to Strength 0–2 and nominal radius 1–64.
+`damage_type` is Bright/Dark/Both; missing fields default to Both. `protect_faces`
+defaults to false when absent, preserving old v1 saves. New v2 filters select
+Bright, enabled protection and radius 12. Method changes or controls beyond the
+v1 range opt into v2; decoding/saving alone does not. V1 retains its original
+0–1 Strength / 1–8 radius validation. Source assets are unchanged; v6 framing and
+asset layout need no migration. Older readers reject the unknown v2 method.
+[Contract and legacy hash](PHOTO_RESTORATION_CRACKS_VALIDATION.md).

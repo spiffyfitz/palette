@@ -97,3 +97,9 @@ Apache-2.0. Existing face weights are unchanged. Core directly uses the existing
 workspace sha2 0.10.9 crate for canonical source fingerprints; no new runtime
 model, native library, service or Python dependency was added. Harmonization
 uses existing Rust Lab/statistical processing.
+
+Photo Restoration MultiscaleV2 adds no dependencies or model weights. Detection
+and harmonic filling are independently implemented Rust. Optional facial-detail
+protection reuses the existing Apache-2.0 face geometry backend/shared cache and
+its compiled notices; it supplies masks only, not learned reconstruction. The
+algorithm remains conventional restoration with optional learned geometry guarding.

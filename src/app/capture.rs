@@ -154,6 +154,9 @@ impl PaletteApp {
                 | "processing-makeup-reference"
                 | "processing-makeup-spatial"
                 | "processing-harmonization"
+                | "processing-photo-restoration"
+                | "processing-photo-restoration-damage"
+                | "processing-photo-restoration-boost"
                 | "processing-depth-blur"
                 | "processing-depth-map"
                 | "processing-super-zoom"
@@ -300,6 +303,9 @@ impl PaletteApp {
                             | "processing-makeup-reference"
                             | "processing-makeup-spatial"
                             | "processing-harmonization"
+                            | "processing-photo-restoration"
+                            | "processing-photo-restoration-damage"
+                            | "processing-photo-restoration-boost"
                             | "processing-depth-blur"
                             | "processing-depth-map"
                             | "processing-super-zoom"
@@ -510,6 +516,11 @@ impl PaletteApp {
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
                         Some("processing-harmonization") => Kind::Harmonization,
                         Some(
+                            "processing-photo-restoration"
+                            | "processing-photo-restoration-damage"
+                            | "processing-photo-restoration-boost",
+                        ) => Kind::PhotoRestoration,
+                        Some(
                             "processing-makeup"
                             | "processing-makeup-reference"
                             | "processing-makeup-spatial",
@@ -535,6 +546,7 @@ impl PaletteApp {
                     if matches!(
                         kind,
                         Kind::SkinSmoothing
+                            | Kind::PhotoRestoration
                             | Kind::MakeupTransfer
                             | Kind::SuperZoom
                             | Kind::DepthBlur
@@ -571,7 +583,45 @@ impl PaletteApp {
                             Raster::from_rgba(p.width(), p.height(), p.as_raw()).unwrap();
                         doc.active_mut().offset = [280, 169];
                     }
+                    if kind == Kind::PhotoRestoration {
+                        // Original deterministic damage on a public-domain NASA
+                        // photo: no supplied user photograph becomes a fixture.
+                        let layer = self.current_mut().document.active_mut();
+                        for y in 0..layer.source.height() {
+                            for x in 0..layer.source.width() {
+                                let mut p = layer.source.get(x, y);
+                                for v in &mut p[..3] {
+                                    *v = (65. + f32::from(*v) * 0.58).round() as u8;
+                                }
+                                if ((78..=80).contains(&x) && (24..230).contains(&y))
+                                    || (x == y + 20 && y > 130 && y < 220)
+                                {
+                                    p[..3].fill(245);
+                                }
+                                layer.source.set(x, y, p);
+                            }
+                        }
+                    }
                     self.open_processing(kind, None);
+                    if self.capture.scene.as_deref() == Some("processing-photo-restoration-boost") {
+                        self.processing_dialog
+                            .as_mut()
+                            .unwrap()
+                            .operation
+                            .set_value("strength", palette_core::processing::Value::Number(2.))
+                            .unwrap();
+                    }
+                    if self.capture.scene.as_deref() == Some("processing-photo-restoration-damage")
+                    {
+                        let d = self.processing_dialog.as_mut().unwrap();
+                        d.operation
+                            .set_value(
+                                "show_damage",
+                                palette_core::processing::Value::Boolean(true),
+                            )
+                            .unwrap();
+                        d.parameter = 6;
+                    }
                     if self.capture.scene.as_deref() == Some("processing-makeup-spatial") {
                         let mut reference =
                             palette_core::processing::makeup::reference_from_raster(

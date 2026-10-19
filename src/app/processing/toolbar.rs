@@ -362,6 +362,13 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if d.operation.kind()==Kind::PhotoRestoration {
+                    ui.set_max_width(380.);
+                    ui.label(if d.operation.value("method")==Some(Value::Choice(0)){"Conventional local restoration · thin scratches (legacy)"}else{"Conventional local restoration · multiscale cracks"});
+                    ui.small("Protect facial details uses the existing local face landmarks to exclude eyes, brows and lips from crack repair. Disable it for damage crossing those details; it cannot identify every face in a damaged scan.");
+                    ui.collapsing("Face model license and attribution",|ui| { egui::ScrollArea::vertical().max_height(160.).show(ui,|ui| {ui.add(egui::Label::new(palette_core::processing::SKIN_NOTICE).wrap());ui.add(egui::Label::new(palette_core::processing::SKIN_LICENSE).wrap());});});
+                    ui.small("Strength 0–100% mixes the result; 100–200% increases crack sensitivity and search reach without extrapolating colours. Repair radius accepts 1–64 source pixels (up to 96 effective at boosted Strength). Multiscale cracks links curved/interrupted damage, then interpolates from clean boundaries. Bright cracks avoids dark facial detail; choose Dark scratches or Both when needed. Show detected damage previews the mask. Inspect it: real lines/highlights can resemble damage. Legacy projects retain Thin scratches until you change Method or exceed their old range. This does not reconstruct missing faces or large torn regions.");
+                }
                 if d.operation.kind()==Kind::Harmonization {
                     ui.set_max_width(380.);
                     ui.label("Choose a reference layer using the parameter selector.");
@@ -546,6 +553,18 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 "Model"
             } else if compact && parameters[d.parameter].key == "protect_occlusions" {
                 "Occlusions"
+            } else if compact && d.operation.kind() == Kind::PhotoRestoration {
+                match parameters[d.parameter].key {
+                    "enhancement" => "Enhancement",
+                    "scratches" => "Scratches",
+                    "radius" => "Radius",
+                    "noise" => "Noise",
+                    "color_noise" => "Color noise",
+                    "show_damage" => "Damage",
+                    "damage_type" => "Damage type",
+                    "protect_faces" => "Faces",
+                    _ => parameters[d.parameter].label,
+                }
             } else if compact && parameters[d.parameter].key == "reference_layer" {
                 "Reference"
             } else {
@@ -553,7 +572,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             },
         )
         .width(if compact { 102. } else { 124. })
-        .height(if d.operation.kind() == Kind::MakeupTransfer {
+        .height(if d.operation.kind() == Kind::PhotoRestoration {
+            360.
+        } else if d.operation.kind() == Kind::MakeupTransfer {
             300.
         } else {
             200.
@@ -780,6 +801,11 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         }
                     );
                     let percent = (d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
+                        || (d.operation.kind() == Kind::PhotoRestoration
+                            && matches!(
+                                p.key,
+                                "strength" | "enhancement" | "scratches" | "noise" | "color_noise"
+                            ))
                         || painting_percent
                         || adjustment_percent
                         || matches!(
@@ -896,7 +922,11 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     let label = if d.operation.kind() == Kind::NtscColors {
                         "7.5 IRE"
                     } else if compact
-                        && (p.key == "preserve_luminosity" || d.operation.kind() == Kind::DepthBlur)
+                        && (p.key == "preserve_luminosity"
+                            || matches!(
+                                d.operation.kind(),
+                                Kind::DepthBlur | Kind::PhotoRestoration
+                            ))
                     {
                         "On"
                     } else {

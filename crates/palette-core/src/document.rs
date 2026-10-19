@@ -443,9 +443,42 @@ pub enum MakeupModel {
     FaceMeshSpatialV2,
 }
 
+/// Immutable contract for conventional scanned-photo restoration.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PhotoRestorationMethod {
+    /// Directional damage detection, interpolation and edge-aware cleanup.
+    DirectionalV1,
+    /// Multiscale connected crack detection and asymmetric boundary repair.
+    MultiscaleV2,
+}
+
+/// Which contrast polarity to consider damage. Old saves retain both polarities.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PhotoDamageType {
+    Bright,
+    Dark,
+    #[default]
+    Both,
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Conventional scan restoration; no learned face reconstruction.
+    PhotoRestoration {
+        method: PhotoRestorationMethod,
+        #[serde(default)]
+        damage_type: PhotoDamageType,
+        #[serde(default)]
+        protect_faces: bool,
+        strength: f32,
+        enhancement: f32,
+        scratches: f32,
+        radius: u8,
+        noise: f32,
+        color_noise: f32,
+        show_damage: bool,
+    },
     /// Live reference-layer Lab matching, resolved by the document compositor.
     Harmonization {
         reference_layer: Option<u64>,

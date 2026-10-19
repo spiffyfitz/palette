@@ -159,6 +159,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::PhotoRestoration { strength, .. } => strength > 0.,
                 Filter::Harmonization {
                     reference_layer,
                     strength,
@@ -331,6 +332,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::PhotoRestoration { .. } => {
+                pixels = super::photo_restoration::evaluate(&pixels, &filter.filter, cancel)?;
+            }
             Filter::Harmonization {
                 reference_layer: None,
                 ..

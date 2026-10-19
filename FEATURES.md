@@ -119,7 +119,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 147 implemented operations (141 filters and six styles).
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 148 implemented operations (142 filters and six styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
@@ -134,7 +134,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 141 of 141 catalog entries implemented (134 conventional plus seven limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
+- [x] Registry-generated filter inventory: 142 of 142 catalog entries implemented (135 conventional plus seven limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches and GPU compositor.
@@ -205,9 +205,11 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
   cheeks, occlusion protection and binary asset/native preservation; legacy v1 retained.
 - [x] Live Harmonization: typed reference-layer picker, dependency rendering/cache,
   cycle rejection and shared clipboard/selection/Paint appearance.
+- [x] Photo Restoration: legacy thin-scratch preservation plus multiscale curved/wide
+  cracks, 0–200% Strength, 1–64 px radius, polarity, optional local facial-detail
+  protection, harmonic fill, damage overlay and editable native/mask/history
+  preservation. Learned face reconstruction remains absent.
 
 ## Phase 6
-
-
 
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.
