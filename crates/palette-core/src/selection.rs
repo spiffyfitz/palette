@@ -225,7 +225,7 @@ pub fn wand(doc: &Document, point: [u32; 2], options: Wand) -> Result<Coverage, 
     let rendered = options.sample_merged.then(|| composite::render(doc));
     let layer = doc.active();
     let prepared = (!options.sample_merged)
-        .then(|| crate::processing::prepare_layer(layer))
+        .then(|| composite::Renderer::default().layer(doc, layer.id, &|| false))
         .transpose()?;
     let sample = |x: u32, y: u32| {
         if let Some(r) = &rendered {

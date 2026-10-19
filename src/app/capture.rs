@@ -152,6 +152,8 @@ impl PaletteApp {
                 | "processing-color-transfer-reference"
                 | "processing-makeup"
                 | "processing-makeup-reference"
+                | "processing-makeup-spatial"
+                | "processing-harmonization"
                 | "processing-depth-blur"
                 | "processing-depth-map"
                 | "processing-super-zoom"
@@ -296,6 +298,8 @@ impl PaletteApp {
                             | "processing-color-transfer-reference"
                             | "processing-makeup"
                             | "processing-makeup-reference"
+                            | "processing-makeup-spatial"
+                            | "processing-harmonization"
                             | "processing-depth-blur"
                             | "processing-depth-map"
                             | "processing-super-zoom"
@@ -504,9 +508,12 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
-                        Some("processing-makeup" | "processing-makeup-reference") => {
-                            Kind::MakeupTransfer
-                        }
+                        Some("processing-harmonization") => Kind::Harmonization,
+                        Some(
+                            "processing-makeup"
+                            | "processing-makeup-reference"
+                            | "processing-makeup-spatial",
+                        ) => Kind::MakeupTransfer,
                         Some(
                             "processing-color-transfer" | "processing-color-transfer-reference",
                         ) => Kind::ColorTransfer,
@@ -540,7 +547,69 @@ impl PaletteApp {
                                 .expect("portrait raster");
                         layer.offset = [280, 169];
                     }
+                    if kind == Kind::Harmonization {
+                        let doc = &mut self.current_mut().document;
+                        doc.active_mut().name = "Reference background".into();
+                        for y in 0..594 {
+                            for x in 0..819 {
+                                doc.active_mut().source.set(
+                                    x,
+                                    y,
+                                    [
+                                        (110 + x * 90 / 819) as u8,
+                                        (70 + y * 90 / 594) as u8,
+                                        70,
+                                        255,
+                                    ],
+                                );
+                            }
+                        }
+                        doc.add_layer();
+                        doc.active_mut().name = "Foreground".into();
+                        let p=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).unwrap().to_rgba8();
+                        doc.active_mut().source =
+                            Raster::from_rgba(p.width(), p.height(), p.as_raw()).unwrap();
+                        doc.active_mut().offset = [280, 169];
+                    }
                     self.open_processing(kind, None);
+                    if self.capture.scene.as_deref() == Some("processing-makeup-spatial") {
+                        let mut reference =
+                            palette_core::processing::makeup::reference_from_raster(
+                                &self.current().document.active().source,
+                                "Original cyan/lilac pattern".into(),
+                                &|| false,
+                            )
+                            .unwrap();
+                        let t = std::sync::Arc::make_mut(reference.texture.as_mut().unwrap());
+                        t.source_key = [0; 32];
+                        let p = t.pixels.as_mut().unwrap();
+                        for y in 0..512 {
+                            for x in 0..512 {
+                                p.set(
+                                    x,
+                                    y,
+                                    match (x / 12) % 3 {
+                                        0 => [30, 220, 200, 255],
+                                        1 => [190, 70, 230, 255],
+                                        _ => [10, 10, 10, 255],
+                                    },
+                                );
+                            }
+                        }
+                        if let Some(d) = &mut self.processing_dialog
+                            && let palette_core::processing::Operation::Filter(
+                                Filter::MakeupTransfer {
+                                    reference: r,
+                                    protect_occlusions,
+                                    ..
+                                },
+                            ) = &mut d.operation
+                        {
+                            *r = reference;
+                            *protect_occlusions = false;
+                        }
+                    }
+
                     if let Some(d) = &mut self.processing_dialog {
                         if kind == Kind::DepthBlur
                             && self.capture.scene.as_deref() == Some("processing-depth-map")

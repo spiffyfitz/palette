@@ -199,6 +199,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-skin-smoothing",
         "processing-makeup",
         "processing-makeup-reference",
+        "processing-makeup-spatial",
+        "processing-harmonization",
         "processing-color-transfer",
         "processing-color-transfer-reference",
         "processing-depth-blur",

@@ -293,7 +293,7 @@ pub fn copy(document: &Document) -> Result<Raster, String> {
     };
     let mut output = Raster::new(rect.width, rect.height, [0; 4])?;
     let layer = document.active();
-    let prepared = crate::processing::prepare_layer(layer)?;
+    let prepared = crate::composite::Renderer::default().layer(document, layer.id, &|| false)?;
     for y in 0..rect.height {
         for x in 0..rect.width {
             let cx = x + rect.x;

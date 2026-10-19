@@ -53,7 +53,7 @@ fn valid_point(point: [f32; 2]) -> bool {
 pub struct Stroke {
     document: Document,
     merged: Option<Raster>,
-    local: Option<crate::processing::PreparedLayer>,
+    local: Option<std::sync::Arc<crate::processing::PreparedLayer>>,
     settings: Settings,
     target: [f64; 4],
     seed: [u32; 2],
@@ -80,7 +80,9 @@ impl Stroke {
             merged: (settings.edge_aware && settings.sample_merged)
                 .then(|| composite::render(document)),
             local: (settings.edge_aware && !settings.sample_merged)
-                .then(|| crate::processing::prepare_layer(document.active()))
+                .then(|| {
+                    composite::Renderer::default().layer(document, document.active_layer, &|| false)
+                })
                 .transpose()?,
             settings,
             target: [0.; 4],

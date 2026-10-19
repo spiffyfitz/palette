@@ -18,11 +18,29 @@ struct Style {
 }
 /// Immutable evaluated appearance, including spatial style extents.
 pub struct PreparedLayer {
+    reference: std::sync::OnceLock<Option<crate::document::ColorReference>>,
     pub(super) original: Layer,
     pixels: Option<Raster>,
     styles: Vec<Style>,
 }
 impl PreparedLayer {
+    /// Streaming statistics include evaluated masks/styles inside source bounds.
+    pub(crate) fn reference_profile(
+        &self,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Option<crate::document::ColorReference>, String> {
+        if let Some(r) = self.reference.get() {
+            return Ok(r.clone());
+        }
+        let r = super::color_transfer::reference_from_pixels(
+            self.original.source.width(),
+            self.original.source.height(),
+            |x, y| self.pixel(x.into(), y.into()),
+            cancel,
+        )?;
+        let _ = self.reference.set(r.clone());
+        Ok(r)
+    }
     /// Signed source-space lookup includes styles outside the source bounds.
     pub fn pixel(&self, x: i64, y: i64) -> [u8; 4] {
         let mut front = if x < 0
@@ -141,13 +159,26 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::Harmonization {
+                    reference_layer,
+                    strength,
+                    ..
+                } => reference_layer.is_some() && strength > 0.,
                 Filter::ColorTransfer { strength, .. } => strength > 0.,
                 Filter::MakeupTransfer {
                     strength,
                     lips,
                     eyes,
+                    cheeks,
+                    model,
                     ..
-                } => strength > 0. && (lips > 0. || eyes > 0.),
+                } => {
+                    strength > 0.
+                        && (lips > 0.
+                            || eyes > 0.
+                            || (model == crate::document::MakeupModel::FaceMeshSpatialV2
+                                && cheeks > 0.))
+                }
                 Filter::DepthBlur {
                     radius, show_depth, ..
                 } => radius > 0. || show_depth,
@@ -287,6 +318,7 @@ pub fn prepare_layer_cancel(
 ) -> Result<PreparedLayer, String> {
     if !has_neighborhood(layer) {
         return Ok(PreparedLayer {
+            reference: std::sync::OnceLock::new(),
             original: layer.clone(),
             pixels: None,
             styles: vec![],
@@ -299,6 +331,13 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::Harmonization {
+                reference_layer: None,
+                ..
+            } => {}
+            Filter::Harmonization { .. } => {
+                return Err("Use the document renderer for reference-layer filters".into());
+            }
             Filter::MakeupTransfer { .. } => {
                 pixels = super::makeup::evaluate(&pixels, &filter.filter, cancel)?
             }
@@ -648,6 +687,7 @@ pub fn prepare_layer_cancel(
         });
     }
     Ok(PreparedLayer {
+        reference: std::sync::OnceLock::new(),
         original: layer.clone(),
         pixels: Some(pixels),
         styles,

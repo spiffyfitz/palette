@@ -405,3 +405,12 @@ type enters the document or raster code. It measures alpha-weighted lip/upper-li
 Lab offsets from an inner-face baseline; target offsets and geometry are cached
 under a separate 128 MiB source budget. Reference profiles store only bounded
 colour offsets and metadata; source-region masks update with source contents.
+
+Harmonization introduces typed layer-reference parameters. The document renderer
+resolves dependencies into transient colour-transfer parameters, streams reference
+statistics into a lazy prepared-layer cache, and rejects cycles without storing
+resolved pixels in the model. Renderer::layer supplies the same context-aware
+appearance to clipboard and local selection sampling. Paint baking retains
+nonvisible dependencies while isolating a rendered layer. Spatial Makeup Transfer
+stores an Arc-backed 512-square face atlas in existing native binary tile assets;
+metadata holds landmarks, pigment-plane coefficients and a canonical RGBA hash.

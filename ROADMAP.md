@@ -9,7 +9,7 @@ This review follows the original phases. Functional source code and passing Wind
 | 2 — core painting | Live strokes, eraser, fill, shapes/polygon/curve, text, clipboard, selections, transforms and history work | Brush variants/tablet/mask painting, text metric parity, property gesture coalescing and persistent vectors remain explicit deferrals |
 | 3 — file compatibility | Real still AVIF codec/options; `.palette` v5 streamed shared assets, v1/v2/v3/v4 migration, backing color and opaque metadata; genuine two-layer `.paint` subset import/export; import layer, recents and recovery | User confirms Paint opening/appearance; edit/save-back, broader variants/platforms and metadata/color/conformance remain |
 | 4 — advanced layers/selections | 19 blend modes; Wand/freeform/edge-aware brush, live feather previews, canvas toolbars, coverage combination and basic layer-mask properties | Merges, polygon selection, morphology and mask painting/view/apply/link workflows |
-| 5 — filters/styles | 140 live filters (133 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
+| 5 — filters/styles | 141 live filters (134 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
 | 6 — platform polish | CI configuration and Windows native captures | Actual platform matrix, performance benchmarks on dense 4K/8K, accessibility, packaging and signing |
 
 ## Phase 3 acceptance status
@@ -84,3 +84,10 @@ adds a reference-portrait lip/upper-lid workflow using existing local face model
 and conventional Lab matching. The catalog is 140 filters: 133 conventional and
 seven limited model-based counterparts. Four audited families still lack a
 counterpart; partial capabilities and quality gates prevent Photoshop parity.
+
+Latest Phase 5 follow-up: spatial Makeup Transfer v2 improves reference fidelity
+and 100% Strength behaviour; [Harmonization](docs/HARMONIZATION_VALIDATION.md) adds
+live layer-to-layer colour matching. Current catalog: 141 filters (134 conventional
+and seven limited model-based counterparts), plus six styles. Smart Portrait,
+Photo Restoration and Landscape Mixer still lack counterparts; partial-capability
+and quality gates remain. Phase 5 is not complete.

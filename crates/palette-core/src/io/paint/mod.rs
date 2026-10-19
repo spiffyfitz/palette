@@ -485,7 +485,9 @@ pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
         .rposition(|l| l.blend != BlendMode::Normal)
     {
         let mut prefix = doc.clone();
-        prefix.layers.truncate(last + 1);
+        for l in prefix.layers.iter_mut().skip(last + 1) {
+            l.visible = false;
+        }
         prefix.active_layer = prefix.layers[last].id;
         let mut merged = Document::from_raster(composite::render(&prefix))
             .layers
@@ -504,7 +506,21 @@ pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
             single.background = [0; 4];
             single.selection = None;
             single.selection_base = None;
-            single.layers = vec![layer.clone()];
+            single.layers = doc
+                .layers
+                .iter()
+                .map(|l| {
+                    let mut l = if l.id == layer.id {
+                        layer.clone()
+                    } else {
+                        l.clone()
+                    };
+                    if l.id != layer.id {
+                        l.visible = false;
+                    }
+                    l
+                })
+                .collect();
             single.active_layer = layer.id;
             layer.source = composite::render(&single);
             layer.offset = [0, 0];

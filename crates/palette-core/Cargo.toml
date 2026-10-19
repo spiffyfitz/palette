@@ -3,7 +3,7 @@ name = "palette-core"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.98"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 
 [dependencies]
 palette-neural = { path = "../palette-neural" }
@@ -12,6 +12,7 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 flate2 = "1"
+sha2 = "0.10.9"
 tempfile = "3"
 fontdue = "0.9.4"
 avif-decode = { version = "3.0.0", default-features = false }

@@ -39,7 +39,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Noise cleanup: Despeckle, Dust & Scratches and Reduce Noise (strength, detail protection, color cleanup and sharpening). Distort adds Pinch, Spherize and Ripple; Sharpen and Sharpen More are also functional. [Validation and limits](docs/RETOUCH_DISTORT_VALIDATION.md).
 - Polar Coordinates (both directions), ZigZag (three styles), seeded two-color Fibers and Glowing Edges. Twirl, Pinch, Spherize, Ripple, Wave, Radial Blur and both new distortions have movable origins: use the four-arrow placement button, then click/drag on the layer. Origin X/Y provide numeric percentages; … > Reset origin restores the default. Origins preview live and remain editable in saved projects. [Validation and exact scope](docs/ORIGIN_FILTERS_VALIDATION.md).
 - Artistic: Cutout and Film Grain; Brush Strokes: Accented Edges and Ink Outlines; Sketch: Photocopy and Dot/Line/Circle Halftone Pattern; Texture: Patchwork and seeded Craquelure. All are editable live filters. Sketch ink/paper colors capture drawing colors when added and remain saved parameters. [Algorithms and validation](docs/ARTISTIC_FILTERS_VALIDATION.md).
-- Pixelate now has working Color Halftone, Crystallize, Facet, Mezzotint and Pointillize alongside Mosaic/Fragment. Texture adds Stained Glass and Mosaic Tiles; Stylize adds Normal/Darken/Lighten/Anisotropic Diffuse. All remain editable live filters. [Validation](docs/PIXELATE_FILTERS_VALIDATION.md). The current catalog has **140 implemented filters (133 conventional plus seven limited local model-based counterparts)**; [generated inventory](docs/FILTER_INVENTORY.md).
+- Pixelate now has working Color Halftone, Crystallize, Facet, Mezzotint and Pointillize alongside Mosaic/Fragment. Texture adds Stained Glass and Mosaic Tiles; Stylize adds Normal/Darken/Lighten/Anisotropic Diffuse. All remain editable live filters. [Validation](docs/PIXELATE_FILTERS_VALIDATION.md). The current catalog has **141 implemented filters (134 conventional plus seven limited local model-based counterparts)**; [generated inventory](docs/FILTER_INVENTORY.md).
 - Adjustments now also includes Color Balance, Photo Filter, Channel Mixer, Gradient Map, Selective Color and Shadows/Highlights. Gradient Map captures drawing colors for new instances; all nine Selective Color ranges remain editable together. Blur and Blur More are functional fixed-kernel commands. [Algorithms, controls and validation](docs/ADJUSTMENT_FILTERS_VALIDATION.md).
 - Artistic adds Colored Pencil, Dry Brush, Paint Daubs and Smudge Stick; Brush Strokes adds Angled Strokes, Crosshatch, Dark Strokes and seeded Spatter. Editable paper color/brightness, pressure, texture, brush geometry and tonal stroke controls use the existing live toolbar. [Algorithms and validation](docs/PAINTING_FILTERS_VALIDATION.md).
 - Brush Strokes is complete for the current menu: Sprayed Strokes and Sumi-e join the six earlier entries. Sketch adds Bas Relief, Chalk & Charcoal, Charcoal, Graphic Pen, Note Paper and Stamp, with saved drawing colors, stroke directions and editable relief lighting. [Algorithms and validation](docs/DRAWING_FILTERS_VALIDATION.md).
@@ -87,7 +87,7 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. 192 reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. 194 reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
 
 See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE5_VALIDATION.md).
 
@@ -101,7 +101,7 @@ Stylize/render follow-up: Extrude, Oil Paint, Tiles, Trace Contour, Wind, Lens B
 
 Previous 121-entry catalog completion: Color Lookup loads 3D `.cube` LUTs; Displace loads real raster maps with Stretch/Tile fitting; Shear has a draggable five-knot curve; Custom has a 5×5 coefficient grid and presets. Use the contextual toolbar’s … menu for imports/editors. Imported data is embedded as bounded binary `.palette` assets; previews, masks, history and removal remain nondestructive. All 121 entries at that milestone had independent implementations; Gallery, remaining layer styles and processing optimization still need work. [Scope and validation](docs/EDITABLE_FILTERS_VALIDATION.md).
 
-Expanded filter audit: eleven more independent filters bring the catalog to **132**. Blur Gallery adds Field/Iris/Tilt-Shift/Path/Spin Blur; Render adds Flame/Picture Frame/Tree; Video adds De-Interlace/NTSC Colors; Other adds HSB/HSL. All use live removable filters. [Implementation and limits](docs/GALLERY_VIDEO_RENDER_VALIDATION.md). Local Mosaic Style Transfer, JPEG Artifacts Removal, Colorize, face-guided Skin Smoothing, cropped Super Zoom and Depth Blur have local implementations; four audited Neural Filter families have no counterpart, Color Transfer has a partial conventional implementation, and partial functionality still prevents full parity; [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md) distinguishes them from the conventional catalog.
+Expanded filter audit: eleven more independent filters bring the catalog to **132**. Blur Gallery adds Field/Iris/Tilt-Shift/Path/Spin Blur; Render adds Flame/Picture Frame/Tree; Video adds De-Interlace/NTSC Colors; Other adds HSB/HSL. All use live removable filters. [Implementation and limits](docs/GALLERY_VIDEO_RENDER_VALIDATION.md). Local Mosaic Style Transfer, JPEG Artifacts Removal, Colorize, face-guided Skin Smoothing, cropped Super Zoom and Depth Blur have local implementations; three audited Neural Filter families have no counterpart, Color Transfer has a partial conventional implementation, and partial functionality still prevents full parity; [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md) distinguishes them from the conventional catalog.
 
 The external audit also records the unimplemented Substance-based Parametric Filters family separately from Neural/AI and the 133 conventional entries; see [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md).
 
@@ -143,9 +143,17 @@ alpha stay intact; projects retain the complete statistical profile and reopen
 without the reference file. This is conventional local processing, not Adobe's
 learned Color Transfer. [Scope and validation](docs/COLOR_TRANSFER_VALIDATION.md).
 
-**Filter → Neural Filters → Makeup Transfer** uses the bundled face models to guide
-lip and upper-lid colour matching. Load a portrait with **Reference photo…**, or
-start with the original Rose and plum palette. Strength, Lips, Eyes, Edge softness
-and Luminance remain editable; source texture and alpha stay intact. This is a
-limited geometry-guided implementation, not learned makeup texture synthesis.
-[Scope and validation](docs/MAKEUP_TRANSFER_VALIDATION.md).
+**Filter → Neural Filters → Makeup Transfer** aligns a bounded reference-face
+atlas to local facial landmarks, transferring spatial colours, liner and highlights.
+Load a portrait with **Reference photo…**. Strength, Lips, Eyes, Cheeks, Edge softness
+and Luminance remain editable, with optional occlusion protection. Layer source
+pixels remain unchanged and output alpha is preserved. This is geometric transfer,
+not learned cosmetic isolation. New filters start with full Strength/Luminance;
+old v1 saves retain their original rendering.
+[Example validation and limits](docs/MAKEUP_SPATIAL_VALIDATION.md).
+
+**Filter → Neural Filters → Harmonization** matches colour and tone to a selected
+reference layer and follows its edits, masks and effects live. The compact
+parameter bar includes the reference picker, Strength, Luminance, Contrast and
+Saturation. This is conventional local Lab matching, not learned relighting.
+[Validation](docs/HARMONIZATION_VALIDATION.md).

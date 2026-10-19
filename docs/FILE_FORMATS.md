@@ -262,3 +262,18 @@ The bounded float64 profile fully specifies the reference for this method; no
 photo, path or landmarks are stored. Existing float-roundtrip parsing preserves
 its values exactly. No binary framing or asset migration occurs; older readers
 reject the unknown enum. [Contract](MAKEUP_TRANSFER_VALIDATION.md).
+
+Spatial makeup v2 retains the `MakeupTransfer` variant and introduces immutable
+`FaceMeshSpatialV2`. Cheeks defaults to zero and Protect occlusions to false when
+reading older fields, keeping v1 output unchanged. `MakeupReference.texture` is
+optional. A bounded square 128–512 raster is detached through the existing filter
+asset slot into tile frames; its 468 points, finite Lab plane/baseline and SHA-256
+source key remain metadata. The original input photo/path is not stored; the face
+crop is. Missing/inline/oversized assets and invalid points are rejected. The v6
+framing is unchanged; older readers reject the new model/asset explicitly.
+
+Harmonization stores a stable optional layer ID and finite strength/luminance/
+contrast/saturation. Resolution is live and does not serialize sampled pixels.
+Cycles (including disabled links) are invalid; missing references are tolerated
+for reversible deletion and render as no-ops. [Spatial makeup](MAKEUP_SPATIAL_VALIDATION.md)
+and [Harmonization](HARMONIZATION_VALIDATION.md) describe contracts and tests.

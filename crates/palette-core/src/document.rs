@@ -412,8 +412,8 @@ pub enum ColorTransferMethod {
     LabStatisticsV1,
 }
 
-/// Portable makeup colour offsets relative to the reference face's skin.
-/// These Lab offsets contain no reference pixels, path or identity descriptor.
+/// Portable makeup colours, with an optional bounded face atlas for spatial detail.
+/// Legacy projects retain their original mean-colour contract.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MakeupReference {
     pub name: String,
@@ -421,17 +421,39 @@ pub struct MakeupReference {
     pub height: u32,
     pub lips: [f64; 3],
     pub eyes: [f64; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texture: Option<Arc<MakeupTexture>>,
+}
+
+/// Bounded reference face crop and landmark correspondence for spatial makeup.
+/// Pixels are detached into native binary assets; metadata stays small.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MakeupTexture {
+    pub pixels: Option<Raster>,
+    pub points: Arc<Vec<[f64; 2]>>,
+    pub baseline: [f64; 3],
+    pub skin_plane: [[f64; 3]; 3],
+    pub source_key: [u8; 32],
 }
 
 /// Fixed face geometry and conventional regional colour-transfer contract.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MakeupModel {
     FaceMeshLabV1,
+    FaceMeshSpatialV2,
 }
 
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Live reference-layer Lab matching, resolved by the document compositor.
+    Harmonization {
+        reference_layer: Option<u64>,
+        strength: f32,
+        luminance: f32,
+        contrast: f32,
+        saturation: f32,
+    },
     /// Learned facial landmarks guide conventional lip and upper-lid matching.
     MakeupTransfer {
         model: MakeupModel,
@@ -439,6 +461,10 @@ pub enum Filter {
         strength: f32,
         lips: f32,
         eyes: f32,
+        #[serde(default)]
+        cheeks: f32,
+        #[serde(default)]
+        protect_occlusions: bool,
         feather: f32,
         luminance: f32,
     },
@@ -1326,6 +1352,9 @@ impl Filter {
     /// Logical bytes retained by embedded filter assets, excluding shared copies.
     pub fn asset_bytes(&self) -> usize {
         match self {
+            Self::MakeupTransfer { reference, .. } => reference.texture.as_ref().map_or(0, |t| {
+                t.pixels.as_ref().map_or(0, Raster::byte_len) + t.points.len() * 16
+            }),
             Self::Displace { map: Some(m), .. } => m.byte_len(),
             Self::ColorLookup { lut: Some(l), .. } => l.values.len() * 12,
             _ => 0,
@@ -1598,6 +1627,15 @@ impl Document {
             layer.source.allocations(&mut output);
             for f in &layer.filters {
                 match &f.filter {
+                    Filter::MakeupTransfer { reference, .. } => {
+                        if let Some(t) = &reference.texture {
+                            if let Some(p) = &t.pixels {
+                                p.allocations(&mut output);
+                            }
+                            output
+                                .insert(Arc::as_ptr(&t.points) as usize, t.points.capacity() * 16);
+                        }
+                    }
                     Filter::Displace { map: Some(map), .. } => map.allocations(&mut output),
                     Filter::ColorLookup { lut: Some(lut), .. } => {
                         output.insert(
@@ -1824,6 +1862,7 @@ impl Document {
                 return Err("Selection dimensions must match the canvas".into());
             }
         }
+        crate::processing::harmonization::validate_links(self)?;
         Ok(())
     }
 }

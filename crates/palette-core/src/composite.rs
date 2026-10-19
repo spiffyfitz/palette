@@ -98,6 +98,21 @@ pub struct RenderFrame {
     pub thumbnails: Vec<(u64, Raster)>,
 }
 impl Renderer {
+    /// Prepare one layer with all live reference-layer dependencies resolved.
+    pub fn layer(
+        &mut self,
+        document: &Document,
+        id: u64,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<std::sync::Arc<crate::processing::PreparedLayer>, String> {
+        let layer = document
+            .layers
+            .iter()
+            .find(|l| l.id == id)
+            .ok_or("Layer no longer exists")?;
+        self.prepared(layer, document, &mut Vec::new(), cancel)
+    }
+
     /// Render a canvas and small spatial-layer thumbnails in the same job.
     pub fn render_frame(&mut self, document: &Document) -> Result<RenderFrame, String> {
         self.render_frame_cancel(document, &|| false)
@@ -147,8 +162,59 @@ impl Renderer {
     fn prepared(
         &mut self,
         layer: &Layer,
+        document: &Document,
+        path: &mut Vec<u64>,
         cancel: &dyn Fn() -> bool,
     ) -> Result<std::sync::Arc<crate::processing::PreparedLayer>, String> {
+        if path.contains(&layer.id) || path.len() >= 256 {
+            return Err("Harmonization reference cycle".into());
+        }
+        path.push(layer.id);
+        let mut resolved = layer.clone();
+        for instance in &mut resolved.filters {
+            if !instance.enabled {
+                continue;
+            }
+            if let crate::document::Filter::Harmonization {
+                reference_layer,
+                strength,
+                luminance,
+                contrast,
+                saturation,
+            } = instance.filter
+            {
+                let reference = if let Some(target) = reference_layer
+                    .filter(|_| strength > 0.)
+                    .and_then(|id| document.layers.iter().find(|l| l.id == id))
+                    .filter(|l| l.opacity > 0.)
+                {
+                    self.prepared(target, document, path, cancel)?
+                        .reference_profile(cancel)?
+                } else {
+                    None
+                };
+                instance.filter = if let Some(reference) = reference {
+                    crate::document::Filter::ColorTransfer {
+                        method: crate::document::ColorTransferMethod::LabStatisticsV1,
+                        reference,
+                        strength,
+                        luminosity: luminance,
+                        contrast,
+                        saturation,
+                    }
+                } else {
+                    crate::document::Filter::Harmonization {
+                        reference_layer: None,
+                        strength,
+                        luminance,
+                        contrast,
+                        saturation,
+                    }
+                };
+            }
+        }
+        path.pop();
+        let layer = &resolved;
         if let Some(index) = self.cache.iter().position(|p| p.matches(layer)) {
             let hit = self.cache.remove(index).expect("cached entry");
             self.cache.push_back(hit.clone());
@@ -204,7 +270,7 @@ impl Renderer {
                 return Err("Processing cancelled".into());
             }
             let prepared = if crate::processing::has_neighborhood(layer) {
-                Some(self.prepared(layer, cancel)?)
+                Some(self.prepared(layer, document, &mut Vec::new(), cancel)?)
             } else {
                 None
             };

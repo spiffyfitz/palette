@@ -89,3 +89,11 @@ and their existing full license/NOTICE, also exposed in its information menu.
 The face-topology indices and Lab processing use the existing licensed sources.
 No new graph, crate, system library, external runtime or runtime download was
 added. Its NumPy/scikit-image reference is development-only and runs locally.
+
+Spatial Makeup Transfer vendors the official MediaPipe triangle topology under
+Apache-2.0. Its converted source file records the source hash; palette-core includes
+LICENSE-MediaPipe-Apache-2.0.txt and NOTICE-MediaPipe.txt and declares MIT AND
+Apache-2.0. Existing face weights are unchanged. Core directly uses the existing
+workspace sha2 0.10.9 crate for canonical source fingerprints; no new runtime
+model, native library, service or Python dependency was added. Harmonization
+uses existing Rust Lab/statistical processing.

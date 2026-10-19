@@ -61,6 +61,20 @@ pub(super) struct Dialog {
     pub(super) import_notice: Option<String>,
 }
 impl Dialog {
+    pub(super) fn reference_ready(&self) -> bool {
+        match &self.operation {
+            Operation::Filter(Filter::Harmonization {
+                reference_layer, ..
+            }) => reference_layer.is_some_and(|id| {
+                palette_core::processing::harmonization::can_reference(
+                    &self.original,
+                    self.layer,
+                    id,
+                )
+            }),
+            _ => true,
+        }
+    }
     /// Whole-image export replaces this draft's crop, then enlarges the visible
     /// composite. Other committed layers, filters, masks and styles stay active.
     pub(super) fn enlargement(&self) -> Result<(Document, f32, f32), String> {
@@ -290,6 +304,25 @@ impl PaletteApp {
         } else {
             kind.default_operation()
         };
+        if instance.is_none()
+            && let Operation::Filter(Filter::Harmonization {
+                reference_layer, ..
+            }) = &mut operation
+        {
+            let doc = &self.current().document;
+            *reference_layer = doc
+                .layers
+                .iter()
+                .rev()
+                .find(|l| {
+                    palette_core::processing::harmonization::can_reference(
+                        doc,
+                        doc.active_layer,
+                        l.id,
+                    )
+                })
+                .map(|l| l.id);
+        }
         if instance.is_none() && operation.kind() == Kind::DiffuseGlow {
             let [r, g, b, _] = self.background.to_srgba_unmultiplied();
             operation
@@ -482,7 +515,7 @@ impl PaletteApp {
         if self
             .processing_dialog
             .as_ref()
-            .is_some_and(|d| d.import.is_some())
+            .is_some_and(|d| d.import.is_some() || !d.reference_ready())
         {
             return;
         }

@@ -18,6 +18,7 @@ mod extended;
 mod gallery;
 mod gaussian;
 mod generators;
+pub mod harmonization;
 mod layer;
 pub mod makeup;
 mod media;
@@ -60,6 +61,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    Harmonization,
     MakeupTransfer,
     ColorTransfer,
     DepthBlur,
@@ -219,6 +221,7 @@ pub enum Kind {
 #[derive(Clone, Copy, Debug)]
 /// UI-independent input constraints, shared by model validation and controls.
 pub enum ParameterType {
+    Layer,
     Number { min: f32, max: f32, step: f32 },
     Color,
     Boolean,
@@ -2407,13 +2410,35 @@ pub const REGISTRY: &[Descriptor] = &[
             number("strength", "Strength", 0., 1., 0.01),
             number("lips", "Lips", 0., 1., 0.01),
             number("eyes", "Eyes", 0., 1., 0.01),
+            number("cheeks", "Cheeks", 0., 1., 0.01),
+            Parameter {
+                key: "protect_occlusions",
+                label: "Protect occlusions",
+                kind: ParameterType::Boolean,
+            },
             number("feather", "Edge softness", 0., 1., 0.01),
             number("luminance", "Luminance", 0., 1., 0.01),
             Parameter {
                 key: "model",
                 label: "Method",
-                kind: ParameterType::Choice(&["Face landmarks + Lab"]),
+                kind: ParameterType::Choice(&["Feature colour (legacy)", "Spatial detail"]),
             },
+        ],
+    },
+    Descriptor {
+        kind: Kind::Harmonization,
+        label: "Harmonization",
+        category: "Neural Filters",
+        parameters: &[
+            Parameter {
+                key: "reference_layer",
+                label: "Reference layer",
+                kind: ParameterType::Layer,
+            },
+            number("strength", "Strength", 0., 1., 0.01),
+            number("luminance", "Luminance", 0., 1., 0.01),
+            number("contrast", "Contrast", 0., 1., 0.01),
+            number("saturation", "Saturation", 0., 2., 0.01),
         ],
     },
 ];
@@ -2428,14 +2453,23 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::Harmonization => Operation::Filter(Filter::Harmonization {
+                reference_layer: None,
+                strength: 1.,
+                luminance: 1.,
+                contrast: 1.,
+                saturation: 1.,
+            }),
             Self::MakeupTransfer => Operation::Filter(Filter::MakeupTransfer {
-                model: crate::document::MakeupModel::FaceMeshLabV1,
+                model: crate::document::MakeupModel::FaceMeshSpatialV2,
                 reference: makeup::rose_reference(),
-                strength: 0.75,
+                strength: 1.,
                 lips: 1.,
-                eyes: 0.7,
-                feather: 0.5,
-                luminance: 0.,
+                eyes: 1.,
+                cheeks: 0.75,
+                protect_occlusions: true,
+                feather: 0.2,
+                luminance: 1.,
             }),
             Self::ColorTransfer => Operation::Filter(Filter::ColorTransfer {
                 method: crate::document::ColorTransferMethod::LabStatisticsV1,
@@ -3232,6 +3266,7 @@ pub enum Operation {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
+    Layer(Option<u64>),
     Number(f32),
     Color([u8; 3]),
     Boolean(bool),
@@ -3241,6 +3276,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::Harmonization { .. }) => Kind::Harmonization,
             Self::Filter(Filter::MakeupTransfer { .. }) => Kind::MakeupTransfer,
             Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
             Self::Filter(Filter::DepthBlur { .. }) => Kind::DepthBlur,
@@ -3395,6 +3431,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = harmonization::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = makeup::value(f, key)
         {
@@ -4706,6 +4747,7 @@ impl Operation {
             .find(|p| p.key == key)
             .ok_or("Unknown processing parameter")?;
         match (parameter.kind, value) {
+            (ParameterType::Layer, Value::Layer(id)) if id != Some(0) => {}
             (ParameterType::Color, Value::Color(_)) => {}
             (ParameterType::Boolean, Value::Boolean(_)) => {}
             (ParameterType::Choice(options), Value::Choice(n)) if n < options.len() => {}
@@ -4754,6 +4796,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && color_transfer::set(f, key, value)
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && harmonization::set(f, key, value)
         {
             return Ok(());
         }

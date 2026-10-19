@@ -87,7 +87,7 @@ impl PaletteApp {
         let reference_photo = draft.as_ref().is_some_and(|d| {
             matches!(
                 d.operation.kind(),
-                Kind::ColorTransfer | Kind::MakeupTransfer
+                Kind::ColorTransfer | Kind::MakeupTransfer | Kind::Harmonization
             )
         });
         let compact = self.canvas_rect.width()
@@ -343,7 +343,7 @@ fn editor_controls(
             .inner;
         let apply = ui
             .push_id("processing-apply", |ui| {
-                ui.add_enabled(d.import.is_none(),
+                ui.add_enabled(d.import.is_none() && d.reference_ready(),
                     egui::Button::new(egui::RichText::new("Apply").color(Color32::BLACK))
                         .fill(ACCENT),
                 )
@@ -362,13 +362,18 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if d.operation.kind()==Kind::Harmonization {
+                    ui.set_max_width(380.);
+                    ui.label("Choose a reference layer using the parameter selector.");
+                    ui.small("Live Lab colour/tone matching follows reference edits, masks and effects. Missing, fully masked or zero-opacity references leave the layer unchanged. Reference visibility is ignored; its own evaluated colours are sampled, without background blending or outer effect padding. This is statistical matching, not learned relighting.");
+                }
                 if let Operation::Filter(Filter::MakeupTransfer{reference,..})=&d.operation {
                     ui.set_max_width(380.);
                     ui.add(egui::Label::new(format!("Reference: {} ({} × {})",reference.name,reference.width,reference.height)).wrap());
-                    ui.label("Local face landmarks · lip and upper-lid color matching");
+                    ui.label("Local face landmarks · spatial makeup detail");
                     ui.label("Use Reference photo to copy colors from the largest detected face. Clear, front-facing portraits work best.");
-                    ui.small("Lips and Eyes control each region; Edge softness feathers inside their boundaries. Luminance transfers relative brightness. Source texture, open mouth, eyes and alpha are retained.");
-                    ui.small("The default Rose and plum palette is original. No face: unchanged. This matches regional colors, not eyeliner, glitter, texture or a learned makeup appearance. Occlusions may need a filter mask.");
+                    ui.small("Photo references retain gradients, liner and highlights. Lips, Eyes and Cheeks control each region. Luminance must be enabled to transfer dark liner and highlights. Strength 100% uses the sampled reference colour inside the mask.");
+                    ui.small("Protect occlusions can mirror the clearer eye when the other is covered by dark hair; disable for asymmetric makeup. This is a geometric warp, not semantic makeup isolation. Lighting/skin texture may transfer; masks may need refinement. The original Rose and plum preset supplies colour only.");
                     ui.collapsing("Model license and attribution",|ui| {
                         egui::ScrollArea::vertical().max_height(180.).show(ui,|ui| {
                             ui.add(egui::Label::new(palette_core::processing::SKIN_NOTICE).wrap());
@@ -539,11 +544,20 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 && parameters[d.parameter].key == "model"
             {
                 "Model"
+            } else if compact && parameters[d.parameter].key == "protect_occlusions" {
+                "Occlusions"
+            } else if compact && parameters[d.parameter].key == "reference_layer" {
+                "Reference"
             } else {
                 parameters[d.parameter].label
             },
         )
         .width(if compact { 102. } else { 124. })
+        .height(if d.operation.kind() == Kind::MakeupTransfer {
+            300.
+        } else {
+            200.
+        })
         .show_ui(ui, |ui| {
             for (index, p) in parameters.iter().enumerate() {
                 ui.selectable_value(&mut d.parameter, index, p.label);
@@ -551,6 +565,55 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
         });
     selector.response.on_hover_text("Choose a setting to edit");
     let p = parameters[d.parameter];
+    if matches!(p.kind, ParameterType::Layer) {
+        let Operation::Filter(Filter::Harmonization {
+            reference_layer, ..
+        }) = &mut d.operation
+        else {
+            return false;
+        };
+        let name = reference_layer
+            .and_then(|id| d.original.layers.iter().find(|l| l.id == id))
+            .map_or("Choose layer…", |l| l.name.as_str());
+        let full = name.to_owned();
+        let short = if name.chars().count() > if compact { 12 } else { 24 } {
+            format!(
+                "{}…",
+                name.chars()
+                    .take(if compact { 11 } else { 23 })
+                    .collect::<String>()
+            )
+        } else {
+            name.to_owned()
+        };
+        let mut changed = false;
+        egui::ComboBox::from_id_salt("processing-reference-layer")
+            .width(if compact { 112. } else { 180. })
+            .selected_text(short)
+            .show_ui(ui, |ui| {
+                changed |= ui
+                    .selectable_value(reference_layer, None, "Choose layer…")
+                    .changed();
+                for layer in &d.original.layers {
+                    if layer.id == d.layer {
+                        continue;
+                    }
+                    let available = palette_core::processing::harmonization::can_reference(
+                        &d.original,
+                        d.layer,
+                        layer.id,
+                    );
+                    ui.add_enabled_ui(available, |ui| {
+                        changed |= ui
+                            .selectable_value(reference_layer, Some(layer.id), &layer.name)
+                            .changed();
+                    });
+                }
+            })
+            .response
+            .on_hover_text(full);
+        return changed;
+    }
     ui.push_id(p.key, |ui| {
         let stochastic = !(p.key == "seed"
             && matches!(
@@ -567,12 +630,18 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 ..
             })
         ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
-        let context_active = match d.operation {
+        let context_active = match &d.operation {
+            Operation::Filter(Filter::MakeupTransfer {
+                model, reference, ..
+            }) if matches!(p.key, "cheeks" | "protect_occlusions") => {
+                *model == palette_core::document::MakeupModel::FaceMeshSpatialV2
+                    && reference.texture.is_some()
+            }
             Operation::Filter(Filter::DepthBlur { pick_focus, .. }) => {
                 if p.key == "focus" {
-                    !pick_focus
+                    !*pick_focus
                 } else if matches!(p.key, "center_x" | "center_y") {
-                    pick_focus
+                    *pick_focus
                 } else {
                     true
                 }
@@ -593,8 +662,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             }) => !matches!(p.key, "angle" | "shine" | "bristles" | "scale"),
             Operation::Filter(Filter::Extrude { random: false, .. }) => p.key != "seed",
             Operation::Filter(Filter::Tiles { fill, .. }) => match p.key {
-                "low" => fill == palette_core::document::TileFill::Foreground,
-                "high" => fill == palette_core::document::TileFill::Background,
+                "low" => *fill == palette_core::document::TileFill::Foreground,
+                "high" => *fill == palette_core::document::TileFill::Background,
                 _ => true,
             },
             _ => true,
@@ -632,7 +701,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     );
                     let painting_percent = matches!(
                         d.operation.kind(),
-                        Kind::MakeupTransfer
+                        Kind::Harmonization
+                            | Kind::MakeupTransfer
                             | Kind::ColorTransfer
                             | Kind::DepthBlur
                             | Kind::SuperZoom
@@ -791,7 +861,11 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         .truncate()
                         .selected_text(
                             if d.operation.kind() == Kind::MakeupTransfer && p.key == "model" {
-                                "Face + Lab"
+                                if matches!(d.operation.value("model"), Some(Value::Choice(1))) {
+                                    "Spatial detail"
+                                } else {
+                                    "Feature colour"
+                                }
                             } else if compact && d.operation.kind() == Kind::SuperZoom {
                                 "ESPCN 3×"
                             } else if compact && d.operation.kind() == Kind::DepthBlur {
