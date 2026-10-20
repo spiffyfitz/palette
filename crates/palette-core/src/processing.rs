@@ -38,6 +38,7 @@ mod round;
 mod sketch;
 mod skin;
 mod studio;
+pub mod style_options;
 mod styles;
 mod stylize;
 mod video;
@@ -464,7 +465,7 @@ pub const REGISTRY: &[Descriptor] = &[
         kind: Kind::ColorOverlay,
         label: "Color Overlay",
         category: "Layer styles",
-        parameters: &[COLOR, OPACITY],
+        parameters: &[COLOR, OPACITY, style_options::BLEND],
     },
     Descriptor {
         kind: Kind::DropShadow,
@@ -477,6 +478,18 @@ pub const REGISTRY: &[Descriptor] = &[
             number("distance", "Distance (px)", 0., 256., 0.1),
             SPREAD,
             SIZE,
+            style_options::BLEND,
+            style_options::CONTOUR,
+            style_options::AA,
+            style_options::NOISE,
+            style_options::SEED,
+            style_options::GLOBAL,
+            style_options::GLOBAL_ANGLE,
+            Parameter {
+                key: "shadow_knockout",
+                label: "Layer knocks out shadow",
+                kind: ParameterType::Boolean,
+            },
         ],
     },
     Descriptor {
@@ -488,6 +501,17 @@ pub const REGISTRY: &[Descriptor] = &[
             OPACITY,
             SPREAD,
             number("radius", "Radius (px)", 0., 64., 0.1),
+            style_options::BLEND,
+            style_options::GRADIENT_FILL,
+            style_options::SOFTER,
+            style_options::CONTOUR,
+            style_options::AA,
+            style_options::RANGE,
+            style_options::NOISE,
+            style_options::JITTER,
+            style_options::SEED,
+            style_options::METHOD,
+            style_options::SMOOTHNESS,
         ],
     },
     Descriptor {
@@ -562,6 +586,13 @@ pub const REGISTRY: &[Descriptor] = &[
             number("distance", "Distance (px)", 0., 256., 0.1),
             number("spread", "Spread", 0., 1., 0.01),
             number("size", "Size (px)", 0., 64., 0.1),
+            style_options::BLEND,
+            style_options::CONTOUR,
+            style_options::AA,
+            style_options::NOISE,
+            style_options::SEED,
+            style_options::GLOBAL,
+            style_options::GLOBAL_ANGLE,
         ],
     },
     Descriptor {
@@ -573,6 +604,22 @@ pub const REGISTRY: &[Descriptor] = &[
             number("opacity", "Opacity", 0., 1., 0.01),
             number("spread", "Spread", 0., 1., 0.01),
             number("radius", "Radius (px)", 0., 64., 0.1),
+            style_options::BLEND,
+            style_options::GRADIENT_FILL,
+            style_options::SOFTER,
+            style_options::CONTOUR,
+            style_options::AA,
+            style_options::RANGE,
+            style_options::NOISE,
+            style_options::JITTER,
+            style_options::SEED,
+            style_options::METHOD,
+            style_options::SMOOTHNESS,
+            Parameter {
+                key: "inner_center",
+                label: "Glow from center",
+                kind: ParameterType::Boolean,
+            },
         ],
     },
     Descriptor {
@@ -593,6 +640,33 @@ pub const REGISTRY: &[Descriptor] = &[
                 label: "Rounded corners",
                 kind: ParameterType::Boolean,
             },
+            style_options::BLEND,
+            style_options::FILL,
+            Parameter {
+                key: "material_style",
+                label: "Gradient style",
+                kind: ParameterType::Choice(&[
+                    "Linear",
+                    "Radial",
+                    "Angle",
+                    "Reflected",
+                    "Diamond",
+                    "Shape burst",
+                ]),
+            },
+            Parameter {
+                key: "material_reverse",
+                label: "Reverse gradient",
+                kind: ParameterType::Boolean,
+            },
+            style_options::METHOD,
+            style_options::SMOOTHNESS,
+            style_options::DITHER,
+            style_options::ALIGN,
+            style_options::MATERIAL_SCALE,
+            style_options::MATERIAL_ANGLE,
+            number("material_x", "Fill X", -4096., 4096., 0.5),
+            number("material_y", "Fill Y", -4096., 4096., 0.5),
         ],
     },
     Descriptor {
@@ -3412,7 +3486,13 @@ pub enum Value {
 impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
+        if let Self::Effect(Effect::Configured { effect, .. }) = self {
+            return Self::Effect((**effect).clone()).kind();
+        }
         match self {
+            Self::Effect(Effect::Configured { .. }) => {
+                unreachable!("unwrapped effect configuration")
+            }
             Self::Filter(Filter::SmartPortrait { .. }) => Kind::SmartPortrait,
             Self::Filter(Filter::PhotoRestoration { .. }) => Kind::PhotoRestoration,
             Self::Filter(Filter::LandscapeMixer { .. }) => Kind::LandscapeMixer,
@@ -3575,6 +3655,21 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Effect(e) = self {
+            if self
+                .kind()
+                .descriptor()
+                .parameters
+                .iter()
+                .any(|p| p.key == key)
+                && let Some(value) = style_options::value(e, key)
+            {
+                return Some(value);
+            }
+            if let Effect::Configured { effect, .. } = e {
+                return Self::Effect((**effect).clone()).value(key);
+            }
+        }
         if let Self::Effect(e) = self
             && let Some(v) = styles::value(e, key)
         {
@@ -4888,11 +4983,7 @@ impl Operation {
     }
     /// Validate before mutation; a rejected value leaves the operation unchanged.
     pub fn set_value(&mut self, key: &str, value: Value) -> Result<(), String> {
-        let key = if key == "size"
-            && matches!(
-                self,
-                Self::Effect(Effect::OuterGlow { .. } | Effect::InnerGlow { .. })
-            ) {
+        let key = if key == "size" && matches!(self.kind(), Kind::OuterGlow | Kind::InnerGlow) {
             "radius"
         } else {
             key
@@ -4948,6 +5039,20 @@ impl Operation {
             }
         }
 
+        if let Self::Effect(e) = self {
+            if style_options::set(e, key, value) {
+                return Ok(());
+            }
+            if let Effect::Configured { effect, .. } = e {
+                let mut base = Self::Effect((**effect).clone());
+                base.set_value(key, value)?;
+                let Self::Effect(updated) = base else {
+                    unreachable!()
+                };
+                **effect = updated;
+                return Ok(());
+            }
+        }
         if let Self::Effect(e) = self
             && styles::set(e, key, value)
         {
@@ -7157,6 +7262,9 @@ impl Operation {
     }
     /// Check every serialized parameter against the same domain as the controls.
     pub fn validate(&self) -> Result<(), String> {
+        if let Self::Effect(e) = self {
+            style_options::validate(e)?;
+        }
         if let Self::Filter(Filter::Levels { black, white, .. }) = self
             && black >= white
         {
@@ -7176,6 +7284,23 @@ impl Operation {
     }
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
+        if let Self::Effect(Effect::Configured { effect, options }) = self {
+            let Self::Effect(effect) = Self::Effect((**effect).clone()).scaled(scale) else {
+                unreachable!()
+            };
+            let mut options = options.clone();
+            for v in options
+                .material_offset
+                .iter_mut()
+                .chain(options.texture_offset.iter_mut())
+            {
+                *v *= scale;
+            }
+            return Self::Effect(Effect::Configured {
+                effect: Box::new(effect),
+                options,
+            });
+        }
         if let Self::Effect(e) = self
             && let Some(e) = styles::scaled(e, scale)
         {
@@ -7359,10 +7484,14 @@ impl Operation {
 /// Styles have transparent padding beyond the source; preflight it at validation
 /// rather than letting a render-worker allocation error become a panic.
 pub fn effect_padding(effect: &Effect) -> Option<u32> {
+    if let Effect::Configured { effect, .. } = effect {
+        return effect_padding(effect);
+    }
     if let Some(pad) = styles::padding(effect) {
         return pad;
     }
     let (spread, size) = match effect {
+        Effect::Configured { .. } => unreachable!("unwrapped effect configuration"),
         Effect::ColorOverlay { .. } => return None,
         Effect::BevelEmboss { .. }
         | Effect::Satin { .. }

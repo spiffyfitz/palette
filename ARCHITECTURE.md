@@ -473,3 +473,7 @@ interpolation with optional learned geometry protection, not learned reconstruct
 ## Layer panel and style extension
 
 Document backing RGBA and visibility are independent of editable raster layers. The CPU compositor starts with the effective backing. Selected IDs and a range anchor belong to each session. The active layer alone expands beneath its thumbnail; raster rows scroll while Background stays docked. Merge builds a validated replacement off-thread and publishes one history snapshot. New typed style variants reuse the registry, transactional live editor, prepared-layer bounds and worker cache. See [layer architecture and validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md).
+
+## Extended styles and native v8
+
+`Effect::Configured` decorates legacy typed effects without reinterpreting them. Common options and bounded material/curve vectors use the registry and existing transactional toolbar. Imported patterns share the binary tile asset store and history allocation accounting. Shared document lighting and resolved material phase participate in prepared-layer cache identity. Exterior style blending receives the real backdrop and resolves effective group RGBA before layer opacity/mode. See [settings validation](docs/LAYER_STYLE_SETTINGS_VALIDATION.md).

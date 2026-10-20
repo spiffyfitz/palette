@@ -83,7 +83,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
-- [x] Native v7 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4/v5/v6 migration.
+- [x] Native v8 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4/v5/v6/v7 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
@@ -230,6 +230,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
   cracks, 0–200% Strength, 1–64 px radius, polarity, optional local facial-detail
   protection, harmonic fill, damage overlay and editable native/mask/history
   preservation. Learned face reconstruction remains absent.
+
+- [x] Extended controls across ten live effect families: effect/highlight/shadow blending; glow technique/source/range/noise/jitter; shadow knockout; custom relief/gloss/satin/shadow/glow contours; shared lighting; RGBA gradient stops/midpoints/interpolation/dither; transparent pattern imports/linkage; gradient/pattern strokes and chisel/stroke emboss. [Scope and evidence](docs/LAYER_STYLE_SETTINGS_VALIDATION.md).
 
 ## Phase 6
 

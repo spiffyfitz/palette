@@ -94,7 +94,7 @@ fn specimen_edits_round_trip_as_two_layers_and_native_v3_keeps_canvas_backing() 
     assert_content(&doc, &io::open(&path).unwrap());
     let native = dir.path().join("full.palette");
     io::save_project(&native, &doc).unwrap();
-    assert_eq!(&fs::read(&native).unwrap()[8..12], &7u32.to_le_bytes());
+    assert_eq!(&fs::read(&native).unwrap()[8..12], &8u32.to_le_bytes());
     assert!(io::open(&native).unwrap() == doc);
     assert_eq!(
         fs::read(

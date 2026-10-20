@@ -6238,3 +6238,4 @@ mod harmonization;
 mod landscape;
 mod layer_panel;
 mod photo_restoration;
+mod style_settings;

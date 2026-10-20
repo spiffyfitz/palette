@@ -23,6 +23,8 @@ fn invalid(message: &str) -> FileError {
 
 #[derive(Serialize, Deserialize)]
 struct Manifest {
+    #[serde(default = "global_light")]
+    global_light: [f32; 2],
     width: u32,
     height: u32,
     #[serde(default)]
@@ -86,7 +88,20 @@ struct LayerRecord {
     offset: [i32; 2],
     mask: Option<MaskRecord>,
     filters: Vec<FilterRecord>,
-    effects: Vec<EffectInstance>,
+    effects: Vec<EffectRecord>,
+}
+fn global_light() -> [f32; 2] {
+    [120., 35.]
+}
+#[derive(Serialize, Deserialize)]
+struct EffectRecord {
+    id: u64,
+    enabled: bool,
+    effect: Effect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pattern: Option<RasterRecord>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pattern_name: String,
 }
 #[derive(Default)]
 struct Assets {
@@ -95,6 +110,23 @@ struct Assets {
     data: Vec<Arc<Vec<u8>>>,
 }
 impl Assets {
+    fn effect(&mut self, instance: &EffectInstance) -> EffectRecord {
+        let mut effect = instance.effect.clone();
+        let asset = match &mut effect {
+            Effect::Configured { options, .. } => options.pattern.take(),
+            _ => None,
+        };
+        let (pattern, pattern_name) = asset.map_or((None, String::new()), |p| {
+            (Some(self.raster(&p.pixels)), p.name)
+        });
+        EffectRecord {
+            id: instance.id,
+            enabled: instance.enabled,
+            effect,
+            pattern,
+            pattern_name,
+        }
+    }
     fn add(&mut self, bytes: &Arc<Vec<u8>>) -> usize {
         let pointer = Arc::as_ptr(bytes) as usize;
         *self.ids.entry(pointer).or_insert_with(|| {
@@ -192,10 +224,11 @@ pub(super) fn write(file: &mut File, doc: &Document) -> Result<(), FileError> {
             offset: l.offset,
             mask: l.mask.as_ref().map(|m| assets.mask(m)),
             filters: l.filters.iter().map(|f| assets.filter(f)).collect(),
-            effects: l.effects.clone(),
+            effects: l.effects.iter().map(|e| assets.effect(e)).collect(),
         })
         .collect();
     let manifest = Manifest {
+        global_light: doc.global_light,
         width: doc.width,
         height: doc.height,
         active_layer: doc.active_layer,
@@ -257,6 +290,13 @@ impl Manifest {
         Ok(())
     }
     fn validate(&self) -> Result<(), FileError> {
+        if !self.global_light[0].is_finite()
+            || !(-180. ..=180.).contains(&self.global_light[0])
+            || !self.global_light[1].is_finite()
+            || !(0. ..=90.).contains(&self.global_light[1])
+        {
+            return Err(invalid("Invalid global layer-style light"));
+        }
         Raster::new(self.width, self.height, [0; 4]).map_err(FileError::Invalid)?;
         if self.layers.is_empty()
             || self.layers.len() > 256
@@ -282,6 +322,27 @@ impl Manifest {
             }
         }
         for layer in &self.layers {
+            for effect in &layer.effects {
+                crate::processing::Operation::Effect(effect.effect.clone())
+                    .validate()
+                    .map_err(FileError::Invalid)?;
+                if effect.effect.options().is_some_and(|o| o.pattern.is_some()) {
+                    return Err(invalid("Inline pattern assets are not permitted"));
+                }
+                if let Some(pattern) = &effect.pattern {
+                    if !matches!(effect.effect, Effect::Configured { .. })
+                        || pattern.width > 1024
+                        || pattern.height > 1024
+                        || effect.pattern_name.is_empty()
+                        || effect.pattern_name.len() > 256
+                    {
+                        return Err(invalid("Invalid embedded layer pattern"));
+                    }
+                    self.raster_asset(pattern)?;
+                } else if !effect.pattern_name.is_empty() {
+                    return Err(invalid("Missing layer-pattern asset"));
+                }
+            }
             let r = &layer.source;
             Raster::new(r.width, r.height, [0; 4]).map_err(FileError::Invalid)?;
             if r.tiles.len() != (r.width.div_ceil(TILE) * r.height.div_ceil(TILE)) as usize
@@ -542,11 +603,34 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
                         })
                     })
                     .collect::<Result<Vec<_>, FileError>>()?,
-                effects: l.effects,
+                effects: l
+                    .effects
+                    .into_iter()
+                    .map(|record| {
+                        let mut effect = record.effect;
+                        if let Some(r) = record.pattern {
+                            effect.options_mut().pattern = Some(StylePattern {
+                                name: record.pattern_name,
+                                pixels: Raster::from_tiles(
+                                    r.width,
+                                    r.height,
+                                    r.tiles.iter().map(|id| assets[*id].clone()).collect(),
+                                )
+                                .map_err(FileError::Invalid)?,
+                            });
+                        }
+                        Ok(EffectInstance {
+                            id: record.id,
+                            enabled: record.enabled,
+                            effect,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, FileError>>()?,
             })
         })
         .collect::<Result<Vec<_>, FileError>>()?;
     let doc = Document {
+        global_light: m.global_light,
         width: m.width,
         height: m.height,
         layers,

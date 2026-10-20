@@ -171,6 +171,26 @@ impl Renderer {
         }
         path.push(layer.id);
         let mut resolved = layer.clone();
+        for instance in &mut resolved.effects {
+            if let Effect::Configured { effect, options } = &mut instance.effect {
+                options.resolved_origin = layer.offset.map(|v| v as f32);
+                options.resolved_size = [document.width as f32, document.height as f32];
+                if options.use_global_light {
+                    match &mut **effect {
+                        Effect::DropShadow { angle, .. } | Effect::InnerShadow { angle, .. } => {
+                            *angle = document.global_light[0]
+                        }
+                        Effect::BevelEmboss {
+                            angle, altitude, ..
+                        } => {
+                            *angle = document.global_light[0];
+                            *altitude = document.global_light[1];
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
         for instance in &mut resolved.filters {
             if !instance.enabled {
                 continue;
@@ -312,17 +332,25 @@ impl Renderer {
                 for dx in (left + bounds[0]).max(i64::from(region.x))
                     ..(left + bounds[2]).min(i64::from(region.x) + i64::from(region.width))
                 {
-                    let front = prepared.as_ref().map_or_else(
-                        || point_pixel(layer, (dx - left) as u32, (dy - top) as u32),
-                        |p| p.pixel(dx - left, dy - top),
-                    );
                     let x = dx as u32 - region.x;
                     let y = dy as u32 - region.y;
-                    result.set(
-                        x,
-                        y,
-                        over(result.get(x, y), front, layer.opacity, layer.blend),
-                    );
+                    let combined = if let Some(p) = &prepared {
+                        p.composite(
+                            result.get(x, y),
+                            dx - left,
+                            dy - top,
+                            layer.opacity,
+                            layer.blend,
+                        )
+                    } else {
+                        over(
+                            result.get(x, y),
+                            point_pixel(layer, (dx - left) as u32, (dy - top) as u32),
+                            layer.opacity,
+                            layer.blend,
+                        )
+                    };
+                    result.set(x, y, combined);
                 }
             }
         }

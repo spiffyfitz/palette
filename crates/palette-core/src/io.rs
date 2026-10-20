@@ -15,7 +15,7 @@ use std::{
 use thiserror::Error;
 
 const MAGIC: &[u8; 8] = b"PALETTE\0";
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 const MAX_PROJECT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Recoverable format, codec and filesystem failures suitable for a user dialog.
@@ -144,7 +144,7 @@ pub fn read_project(path: &Path) -> Result<Document, FileError> {
         return Err(FileError::Invalid("Not a Palette project".into()));
     }
     let version = u32::from_le_bytes(header[8..12].try_into().expect("version"));
-    if matches!(version, 2..=7) {
+    if matches!(version, 2..=8) {
         return project::read(file);
     }
     if version != 1 {

@@ -1592,9 +1592,16 @@ pub enum BevelStyle {
     Outer,
     Emboss,
     Pillow,
+    Stroke,
 }
 impl BevelStyle {
-    pub const ALL: [Self; 4] = [Self::Inner, Self::Outer, Self::Emboss, Self::Pillow];
+    pub const ALL: [Self; 5] = [
+        Self::Inner,
+        Self::Outer,
+        Self::Emboss,
+        Self::Pillow,
+        Self::Stroke,
+    ];
 }
 /// Bounded analytic relief contours, independent of proprietary preset assets.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -1640,6 +1647,12 @@ impl LayerPattern {
 /// Live styles retain all parameters and never overwrite layer source pixels.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Effect {
+    /// Extended controls decorate an existing effect. Legacy variants keep
+    /// their original rendering until the user changes an extended setting.
+    Configured {
+        effect: Box<Effect>,
+        options: Box<StyleOptions>,
+    },
     BevelEmboss {
         style: BevelStyle,
         depth: f32,
@@ -1728,6 +1741,144 @@ pub enum Effect {
     },
 }
 
+impl Effect {
+    /// The original effect family, without its optional extended controls.
+    pub fn base(&self) -> &Self {
+        match self {
+            Self::Configured { effect, .. } => effect,
+            _ => self,
+        }
+    }
+    /// Mutable original settings, retaining the extended controls alongside them.
+    pub fn base_mut(&mut self) -> &mut Self {
+        match self {
+            Self::Configured { effect, .. } => effect,
+            _ => self,
+        }
+    }
+    /// Extended controls, if the instance has been explicitly customized.
+    pub fn options(&self) -> Option<&StyleOptions> {
+        match self {
+            Self::Configured { options, .. } => Some(options),
+            _ => None,
+        }
+    }
+    /// Upgrade an effect without replacing or reinterpreting its old settings.
+    pub fn options_mut(&mut self) -> &mut StyleOptions {
+        if !matches!(self, Self::Configured { .. }) {
+            *self = Self::Configured {
+                effect: Box::new(self.clone()),
+                options: Box::default(),
+            };
+        }
+        match self {
+            Self::Configured { options, .. } => options,
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// An editable gradient stop with straight alpha and an outgoing midpoint.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct StyleStop {
+    pub position: f32,
+    pub color: [u8; 3],
+    pub opacity: f32,
+    pub midpoint: f32,
+}
+/// Original user-supplied pattern pixels; projects embed these losslessly.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct StylePattern {
+    pub name: String,
+    pub pixels: crate::raster::Raster,
+}
+/// Family-specific extended controls. A single wrapper avoids changing the
+/// meaning of legacy serialized variants. Parameter registries expose only the
+/// settings meaningful for that family; vectors/assets are independently bounded.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct StyleOptions {
+    pub blend: BlendMode,
+    pub highlight_blend: BlendMode,
+    pub shadow_blend: BlendMode,
+    pub technique: usize,
+    pub contour: Vec<[f32; 2]>,
+    pub contour_enabled: bool,
+    pub gloss: Vec<[f32; 2]>,
+    pub gloss_enabled: bool,
+    pub gloss_antialias: bool,
+    pub contour_antialias: bool,
+    pub range: f32,
+    pub noise: f32,
+    pub jitter: f32,
+    pub seed: u32,
+    pub inner_center: bool,
+    pub knockout: bool,
+    pub use_global_light: bool,
+    pub global_light: [f32; 2],
+    pub fill: usize,
+    pub stops: Vec<StyleStop>,
+    pub gradient_method: usize,
+    pub gradient_smoothness: f32,
+    pub material_style: usize,
+    pub material_reverse: bool,
+    pub dither: bool,
+    pub align: bool,
+    pub material_scale: f32,
+    pub material_angle: f32,
+    pub material_offset: [f32; 2],
+    pub pattern: Option<StylePattern>,
+    pub texture_invert: bool,
+    pub texture_link: bool,
+    pub texture_offset: [f32; 2],
+    /// Resolved document-space phase participates in render-cache identity.
+    #[serde(skip)]
+    pub resolved_origin: [f32; 2],
+    #[serde(skip)]
+    pub resolved_size: [f32; 2],
+}
+impl Default for StyleOptions {
+    fn default() -> Self {
+        Self {
+            blend: BlendMode::Normal,
+            highlight_blend: BlendMode::Normal,
+            shadow_blend: BlendMode::Normal,
+            technique: 0,
+            contour: vec![[0., 0.], [1., 1.]],
+            contour_enabled: false,
+            gloss: vec![[0., 0.], [1., 1.]],
+            gloss_enabled: false,
+            gloss_antialias: true,
+            contour_antialias: true,
+            range: 1.,
+            noise: 0.,
+            jitter: 0.,
+            seed: 0,
+            inner_center: false,
+            knockout: false,
+            use_global_light: false,
+            global_light: [120., 35.],
+            fill: 0,
+            stops: vec![],
+            gradient_method: 0,
+            gradient_smoothness: 0.,
+            material_style: 0,
+            material_reverse: false,
+            dither: false,
+            align: true,
+            material_scale: 100.,
+            material_angle: 90.,
+            material_offset: [0.; 2],
+            pattern: None,
+            texture_invert: false,
+            texture_link: true,
+            texture_offset: [0.; 2],
+            resolved_origin: [0.; 2],
+            resolved_size: [0.; 2],
+        }
+    }
+}
+
 /// An independently enabled, nondestructive layer-style operation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EffectInstance {
@@ -1755,6 +1906,9 @@ pub struct Layer {
 /// Layers are stored bottom to top; IDs are monotonic within a document.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Document {
+    /// Shared style lighting: azimuth and altitude in degrees.
+    #[serde(default = "default_global_light")]
+    pub global_light: [f32; 2],
     pub width: u32,
     pub height: u32,
     /// Canvas backing color, separate from editable raster layers (HEIF iovl).
@@ -1779,6 +1933,9 @@ pub struct Document {
 
 fn default_background_visible() -> bool {
     true
+}
+fn default_global_light() -> [f32; 2] {
+    [120., 35.]
 }
 
 /// Bounded original metadata, preserved independently from raster source data.
@@ -1818,6 +1975,11 @@ impl Document {
         }
         for layer in &self.layers {
             layer.source.allocations(&mut output);
+            for e in &layer.effects {
+                if let Some(p) = e.effect.options().and_then(|o| o.pattern.as_ref()) {
+                    p.pixels.allocations(&mut output);
+                }
+            }
             for f in &layer.filters {
                 match &f.filter {
                     Filter::LandscapeMixer {
@@ -1857,6 +2019,7 @@ impl Document {
     /// Wrap a raster as an editable single-layer document.
     pub fn from_raster(source: Raster) -> Self {
         Self {
+            global_light: default_global_light(),
             width: source.width(),
             height: source.height(),
             background: [0; 4],
@@ -1986,6 +2149,13 @@ impl Document {
 
     /// Validate all serialized invariants before any indexing or rendering.
     pub fn validate(&self) -> Result<(), String> {
+        if !self.global_light[0].is_finite()
+            || !(-180. ..=180.).contains(&self.global_light[0])
+            || !self.global_light[1].is_finite()
+            || !(0. ..=90.).contains(&self.global_light[1])
+        {
+            return Err("Invalid document global light".into());
+        }
         if self.metadata.icc_profile.len() > 4 * 1024 * 1024
             || self.metadata.exif.len() > 4 * 1024 * 1024
         {
@@ -2041,14 +2211,14 @@ impl Document {
                         .div_ceil(u64::from(crate::raster::TILE));
                     let h = u64::from(layer.source.height() + 2 * pad)
                         .div_ceil(u64::from(crate::raster::TILE));
-                    let planes = if let Effect::BevelEmboss { style, .. } = effect.effect {
+                    let planes = if let Effect::BevelEmboss { style, .. } = effect.effect.base() {
                         if matches!(style, BevelStyle::Inner | BevelStyle::Outer) {
                             2
                         } else {
                             4
                         }
                     } else if matches!(
-                        effect.effect,
+                        effect.effect.base(),
                         Effect::Stroke {
                             position: StrokePosition::Center,
                             ..

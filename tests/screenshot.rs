@@ -230,6 +230,13 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "canvas-background",
         "canvas-background-hidden",
         "canvas-background-colors",
+        "style-gradient-editor",
+        "style-gloss-editor",
+        "style-contour-editor",
+        "style-glow-settings",
+        "style-shadow-settings",
+        "style-imported-pattern",
+        "style-gradient-stroke",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

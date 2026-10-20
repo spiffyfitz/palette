@@ -309,21 +309,14 @@ fn editor_controls(
             .get(d.parameter)
             .map(|p| p.key);
         if selected_parameter != Some("rounded")
-            && let Operation::Effect(palette_core::document::Effect::Stroke { rounded, .. }) =
-                &mut d.operation
+            && let Operation::Effect(effect)=&mut d.operation
+            && let Effect::Stroke { rounded, .. }=effect.base_mut()
         {
             changed |= ui
                 .checkbox(rounded, if compact { "Round" } else { "Rounded corners" })
                 .changed();
         }
-        if !compact
-            && matches!(
-                d.operation,
-                Operation::Effect(
-                    palette_core::document::Effect::DropShadow { .. }
-                        | palette_core::document::Effect::InnerShadow { .. }
-                )
-            )
+        if !compact && matches!(d.operation.kind(),Kind::DropShadow|Kind::InnerShadow)
         {
             let selected = d.operation.kind().descriptor().parameters[d.parameter].key;
             for (key, label, max, scale) in [
@@ -334,6 +327,7 @@ fn editor_controls(
                 if selected == key {
                     continue;
                 }
+                if key=="angle" && d.operation.value("global_light")==Some(Value::Boolean(true)){continue;}
                 changed |= ui
                     .push_id(("shadow-quick", key), |ui| {
                         let Some(Value::Number(n)) = d.operation.value(key) else {
@@ -388,6 +382,9 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                let (style_changed,load_pattern)=super::style_editors::controls(app,ui,d);
+                changed|=style_changed;
+                if load_pattern{*intent=Some(Intent::Import);}
                 if let Operation::Filter(Filter::LandscapeMixer{reference,reference_name,..}) = &d.operation {
                     ui.set_max_width(380.);
                     ui.label("Edge-aware sky replacement · terrain colour transfer");
@@ -588,6 +585,7 @@ fn editor_controls(
             app.capture_popup("processing-super-zoom-options",&menu.response);
             app.capture_popup("processing-color-transfer-reference",&menu.response);
             app.capture_popup("processing-makeup-reference",&menu.response);
+            for scene in ["style-gradient-editor","style-gloss-editor","style-contour-editor"]{app.capture_popup(scene,&menu.response);}
         });
         changed
     })
@@ -646,6 +644,11 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 parameters[d.parameter].label
             },
         )
+        .wrap_mode(if matches!(d.operation, Operation::Effect(_)) {
+            egui::TextWrapMode::Truncate
+        } else {
+            ui.wrap_mode()
+        })
         .width(if compact { 102. } else { 124. })
         .height(if d.operation.kind() == Kind::LandscapeMixer {
             520.
@@ -774,7 +777,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             },
             _ => true,
         };
-        ui.add_enabled_ui(stochastic && channel_active && context_active, |ui| {
+        let style_active=match &d.operation{Operation::Effect(e)=>palette_core::processing::style_options::parameter_enabled(e,p.key),_=>true};
+        ui.add_enabled_ui(stochastic && channel_active && context_active && style_active, |ui| {
             match (
                 p.kind,
                 d.operation.value(p.key).expect("registered parameter"),
@@ -886,7 +890,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                             ..
                         }
                     );
-                    let percent = ((d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
+                    let percent = matches!(p.key,"style_noise"|"style_jitter"|"style_range"|"gradient_smoothness") || ((d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
                         || (d.operation.kind()==Kind::SmartPortrait && matches!(p.key,"happiness"|"surprise"|"anger"|"lighting"))
                         || (d.operation.kind() == Kind::PhotoRestoration
                             && matches!(
@@ -937,9 +941,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     let mut slider = egui::Slider::new(&mut value, min * scale..=max * scale)
                         .step_by(f64::from(display_step))
                         .max_decimals(decimals);
-                    if percent || (d.operation.kind()==Kind::BevelEmboss && p.key=="depth") || (d.operation.kind()==Kind::GradientOverlay && p.key=="scale") {
+                    if percent || (d.operation.kind()==Kind::BevelEmboss && p.key=="depth") || (d.operation.kind()==Kind::GradientOverlay && p.key=="scale") || p.key=="material_scale" {
                         slider=slider.suffix("%");
-                    } else if matches!(d.operation.kind(),Kind::BevelEmboss|Kind::Satin|Kind::GradientOverlay|Kind::PatternOverlay) && matches!(p.key,"angle"|"altitude") {
+                    } else if matches!(d.operation.kind(),Kind::BevelEmboss|Kind::Satin|Kind::GradientOverlay|Kind::PatternOverlay) && matches!(p.key,"angle"|"altitude"|"global_angle"|"global_altitude"|"material_angle") {
                         slider=slider.suffix("°");
                     } else if d.operation.kind() == Kind::SuperZoom && p.key == "zoom" {
                         slider = slider.suffix("×");
@@ -1036,6 +1040,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         d.operation
                             .set_value(p.key, Value::Boolean(value))
                             .expect("boolean");
+                        if p.key=="global_light" && value && let Operation::Effect(e)=&mut d.operation {e.options_mut().global_light=d.original.global_light;}
                     }
                     changed
                 }

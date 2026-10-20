@@ -5,10 +5,11 @@ mod editors;
 mod landscape;
 mod landscape_brush;
 mod origin;
+mod style_editors;
 mod toolbar;
 use super::*;
 use palette_core::{
-    document::EffectInstance,
+    document::{Effect, EffectInstance},
     processing::{Kind, Operation, ParameterType, REGISTRY, Value},
 };
 use std::sync::{
@@ -109,7 +110,8 @@ impl Dialog {
         doc.validate()?;
         Ok((doc, *zoom, *enhancement))
     }
-    fn document(&self) -> Result<Document, String> {
+    /// Build an isolated preview/apply snapshot without mutating the open tab.
+    pub(super) fn document(&self) -> Result<Document, String> {
         let mut doc = self.original.clone();
         if doc.active_layer != self.layer {
             return Err("Processing layer changed".into());
@@ -136,6 +138,9 @@ impl Dialog {
                 }
             }
             Operation::Effect(effect) => {
+                if let Some(options) = effect.options().filter(|o| o.use_global_light) {
+                    doc.global_light = options.global_light;
+                }
                 if let Some(id) = self.instance {
                     doc.active_mut()
                         .effects
@@ -327,6 +332,11 @@ impl PaletteApp {
         } else {
             kind.default_operation()
         };
+        if let Operation::Effect(Effect::Configured { options, .. }) = &mut operation
+            && options.use_global_light
+        {
+            options.global_light = self.current().document.global_light;
+        }
         if instance.is_none()
             && let Operation::Filter(Filter::Harmonization {
                 reference_layer, ..

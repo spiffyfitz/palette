@@ -4,7 +4,7 @@
 
 | Format | Open | Write | Meaning |
 |---|---|---|---|
-| `.palette` v1/v2/v3/v4/v5/v6/v7 | Yes | Save/Save As writes v7 | All implemented editable model state; older versions migrate on explicit save |
+| `.palette` v1/v2/v3/v4/v5/v6/v7/v8 | Yes | Save/Save As writes v8 | All implemented editable model state; older versions migrate on explicit save |
 | PNG | Yes | Export | Lossless RGBA; alpha round-trip tested |
 | JPEG | Yes | Export | Lossy RGB; transparency composited over white |
 | BMP | Yes | Export | Raster; alpha behavior depends on BMP variant |
@@ -19,12 +19,12 @@ Raster imports create a single editable source layer. They do not recreate layer
 
 The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
 
-## `.palette` version 7 — current writer (versions 1–6 migration)
+## `.palette` version 8 — current writer (versions 1–7 migration)
 
 | Offset | Encoding | Value |
 |---|---|---|
 | 0 | 8 bytes | ASCII `PALETTE` followed by NUL |
-| 8 | little-endian u32 | `7` |
+| 8 | little-endian u32 | `8` |
 | 12 | little-endian u32 | UTF-8 JSON manifest byte length |
 | 16 | bytes | JSON manifest |
 | After manifest | repeated records | little-endian u64 compressed length, then one zlib stream |
@@ -327,4 +327,8 @@ asset layout need no migration. Older readers reject the unknown v2 method.
 
 ## Version 7: Background visibility and live styles
 
-The manifest adds background_visible, defaulting to true for versions 1–6. The retained four-channel background is preserved while hidden; rendering uses transparent backing when false. New documents begin with transparent raster content over white visible backing; existing source pixels are unchanged. Four additional typed Effect variants preserve BevelEmboss, Satin, GradientOverlay and PatternOverlay parameters. Current saves require a v7-capable reader. The Paint subset stores effective backing only; export reports hidden retained backing as unsupported state and asks for complete native preservation. See [layer validation](LAYER_EFFECTS_PANEL_VALIDATION.md).
+The manifest adds background_visible, defaulting to true for versions 1–6. The retained four-channel background is preserved while hidden; rendering uses transparent backing when false. New documents begin with transparent raster content over white visible backing; existing source pixels are unchanged. Four additional typed Effect variants preserve BevelEmboss, Satin, GradientOverlay and PatternOverlay parameters. Version 7 files require a v7-capable reader. The Paint subset stores effective backing only; export reports hidden retained backing as unsupported state and asks for complete native preservation. See [layer validation](LAYER_EFFECTS_PANEL_VALIDATION.md).
+
+## Version 8: extended effects, pattern assets and shared light
+
+The manifest adds `global_light` as `[azimuth, altitude]` in degrees, defaulting to `[120, 35]` for older files. The `Configured` effect wrapper carries original typed parameters plus bounded `StyleOptions` (curves, RGBA stops, blending/material settings). Each effect record may reference an embedded pattern through a `pattern` raster descriptor and `pattern_name`; image tiles are streamed/deduplicated using existing assets. Inline pattern pixels are rejected. Missing descriptors default to none for all earlier effects. Runtime-resolved material phase/dimensions are not serialized. Writer version 8 is required for these controls; versions 1–7 still load. Full validation/limits and compatibility baking are in [layer settings validation](LAYER_STYLE_SETTINGS_VALIDATION.md).

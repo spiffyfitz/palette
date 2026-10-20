@@ -8,6 +8,8 @@ use crate::{
 use std::collections::VecDeque;
 
 pub(super) struct Style {
+    pub(super) blend: BlendMode,
+    pub(super) colored: bool,
     pub(super) pixels: Raster,
     pub(super) origin: [f32; 2],
     pub(super) color: [u8; 3],
@@ -15,6 +17,62 @@ pub(super) struct Style {
     pub(super) outer: bool,
     pub(super) inner: bool,
     pub(super) inverse: bool,
+}
+impl Style {
+    fn sample(&self, x: i64, y: i64) -> ([u8; 3], f32) {
+        let px = x as f32 - self.origin[0];
+        let py = y as f32 - self.origin[1];
+        let (ix, iy) = (px.floor() as i64, py.floor() as i64);
+        let (fx, fy) = (px - px.floor(), py - py.floor());
+        let mut a = 0.;
+        let mut rgb = [0.; 3];
+        for (dx, dy, w) in [
+            (0, 0, (1. - fx) * (1. - fy)),
+            (1, 0, fx * (1. - fy)),
+            (0, 1, (1. - fx) * fy),
+            (1, 1, fx * fy),
+        ] {
+            let (x, y) = (ix + dx, iy + dy);
+            if x >= 0
+                && y >= 0
+                && x < i64::from(self.pixels.width())
+                && y < i64::from(self.pixels.height())
+            {
+                let p = self.pixels.get(x as u32, y as u32);
+                let coverage = f32::from(p[3]) * w;
+                a += coverage;
+                if self.colored {
+                    for c in 0..3 {
+                        rgb[c] += f32::from(p[c]) * coverage;
+                    }
+                }
+            }
+        }
+        let color = if self.colored && a > 0. {
+            rgb.map(|c| (c / a).round() as u8)
+        } else {
+            self.color
+        };
+        (color, if self.inverse { 255. - a } else { a })
+    }
+    fn tint(&self, mut front: [u8; 4], color: [u8; 3], a: f32) -> [u8; 4] {
+        let amount = a / 255. * self.opacity;
+        if self.blend == BlendMode::Normal {
+            for c in 0..3 {
+                front[c] = (f32::from(front[c]) * (1. - amount) + f32::from(color[c]) * amount)
+                    .round() as u8;
+            }
+        } else {
+            let out = over(
+                [front[0], front[1], front[2], 255],
+                [color[0], color[1], color[2], (amount * 255.).round() as u8],
+                1.,
+                self.blend,
+            );
+            front[..3].copy_from_slice(&out[..3]);
+        }
+        front
+    }
 }
 /// Immutable evaluated appearance, including spatial style extents.
 pub struct PreparedLayer {
@@ -43,49 +101,17 @@ impl PreparedLayer {
     }
     /// Signed source-space lookup includes styles outside the source bounds.
     pub fn pixel(&self, x: i64, y: i64) -> [u8; 4] {
-        let mut front = if x < 0
-            || y < 0
-            || x >= i64::from(self.original.source.width())
-            || y >= i64::from(self.original.source.height())
-        {
-            [0; 4]
-        } else if let Some(p) = &self.pixels {
-            p.get(x as u32, y as u32)
-        } else {
-            crate::composite::point_pixel(&self.original, x as u32, y as u32)
-        };
-        let mut under = [0; 4];
+        let mut front = self.content(x, y);
+        // Isolated filtered pixels retain their invisible RGB. Only the final
+        // document composite canonicalizes zero alpha; styles need source-over.
         if self.styles.is_empty() {
             return front;
         }
+        let mut under = [0; 4];
         for effect in &self.styles {
-            let px = x as f32 - effect.origin[0];
-            let py = y as f32 - effect.origin[1];
-            let (ix, iy) = (px.floor() as i64, py.floor() as i64);
-            let (fx, fy) = (px - px.floor(), py - py.floor());
-            let at = |x: i64, y: i64| {
-                if x < 0
-                    || y < 0
-                    || x >= i64::from(effect.pixels.width())
-                    || y >= i64::from(effect.pixels.height())
-                {
-                    0.
-                } else {
-                    f32::from(effect.pixels.get(x as u32, y as u32)[3])
-                }
-            };
-            let a = (at(ix, iy) * (1. - fx) + at(ix + 1, iy) * fx) * (1. - fy)
-                + (at(ix, iy + 1) * (1. - fx) + at(ix + 1, iy + 1) * fx) * fy;
-            let a = if effect.inverse { 255. - a } else { a };
+            let (color, a) = effect.sample(x, y);
             if effect.inner {
-                // Inner styles recolor through existing coverage. They cannot
-                // create opacity or reveal pixels hidden by the layer mask.
-                let coverage = a / 255. * effect.opacity;
-                for (c, color) in effect.color.iter().enumerate() {
-                    front[c] = (f32::from(front[c]) * (1. - coverage)
-                        + f32::from(*color) * coverage)
-                        .round() as u8;
-                }
+                front = effect.tint(front, color, a);
                 continue;
             }
             let alpha = a
@@ -97,17 +123,83 @@ impl PreparedLayer {
                 };
             under = over(
                 under,
-                [
-                    effect.color[0],
-                    effect.color[1],
-                    effect.color[2],
-                    alpha.round() as u8,
-                ],
+                [color[0], color[1], color[2], alpha.round() as u8],
                 1.,
-                BlendMode::Normal,
+                effect.blend,
             );
         }
         over(under, front, 1., BlendMode::Normal)
+    }
+    fn content(&self, x: i64, y: i64) -> [u8; 4] {
+        if x < 0
+            || y < 0
+            || x >= i64::from(self.original.source.width())
+            || y >= i64::from(self.original.source.height())
+        {
+            [0; 4]
+        } else if let Some(p) = &self.pixels {
+            p.get(x as u32, y as u32)
+        } else {
+            crate::composite::point_pixel(&self.original, x as u32, y as u32)
+        }
+    }
+    /// Evaluate exterior style blend modes against the actual document backdrop.
+    /// Recover a straight-alpha group color before applying layer opacity/mode;
+    /// this preserves group opacity instead of independently fading each plane.
+    pub fn composite(
+        &self,
+        back: [u8; 4],
+        x: i64,
+        y: i64,
+        opacity: f32,
+        mode: BlendMode,
+    ) -> [u8; 4] {
+        let isolated = self.pixel(x, y);
+        if !self
+            .styles
+            .iter()
+            .any(|s| !s.inner && s.blend != BlendMode::Normal)
+        {
+            return over(back, isolated, opacity, mode);
+        }
+        let mut front = self.content(x, y);
+        let mut under = back;
+        for effect in &self.styles {
+            let (color, a) = effect.sample(x, y);
+            if effect.inner {
+                front = effect.tint(front, color, a);
+                continue;
+            }
+            let a = a
+                * effect.opacity
+                * if effect.outer {
+                    1. - f32::from(front[3]) / 255.
+                } else {
+                    1.
+                };
+            under = over(
+                under,
+                [color[0], color[1], color[2], a.round() as u8],
+                1.,
+                effect.blend,
+            );
+        }
+        let desired = over(under, front, 1., BlendMode::Normal);
+        let (a, ab, ao) = (
+            f32::from(isolated[3]) / 255.,
+            f32::from(back[3]) / 255.,
+            f32::from(desired[3]) / 255.,
+        );
+        if a == 0. {
+            return back;
+        }
+        let mut group = isolated;
+        for c in 0..3 {
+            group[c] = ((f32::from(desired[c]) * ao - f32::from(back[c]) * ab * (1. - a)) / a)
+                .round()
+                .clamp(0., 255.) as u8;
+        }
+        over(back, group, opacity, mode)
     }
     /// Source-space half-open bounds: left, top, right, bottom.
     pub fn bounds(&self) -> [i64; 4] {
@@ -133,6 +225,13 @@ impl PreparedLayer {
             .iter()
             .map(|f| f.filter.asset_bytes())
             .sum::<usize>()
+            + self
+                .original
+                .effects
+                .iter()
+                .filter_map(|e| e.effect.options().and_then(|o| o.pattern.as_ref()))
+                .map(|p| p.pixels.byte_len())
+                .sum::<usize>()
             + self.original.source.byte_len()
             + self.original.mask.as_ref().map_or(0, |m| m.values.len())
             + self
@@ -319,6 +418,13 @@ pub fn prepare_layer_cancel(
     layer: &Layer,
     cancel: &dyn Fn() -> bool,
 ) -> Result<PreparedLayer, String> {
+    for instance in layer
+        .effects
+        .iter()
+        .filter(|e| e.enabled && matches!(e.effect, Effect::Configured { .. }))
+    {
+        Operation::Effect(instance.effect.clone()).validate()?;
+    }
     if !has_neighborhood(layer) {
         return Ok(PreparedLayer {
             reference: std::sync::OnceLock::new(),
@@ -568,6 +674,17 @@ pub fn prepare_layer_cancel(
         for x in 0..pixels.width() {
             let mut p = pixels.get(x, y);
             for e in layer.effects.iter().filter(|e| e.enabled) {
+                if let Some(result) = super::style_options::overlay(
+                    p,
+                    &e.effect,
+                    x,
+                    y,
+                    pixels.width(),
+                    pixels.height(),
+                ) {
+                    p = result;
+                    continue;
+                }
                 if let Some(result) =
                     super::styles::overlay(p, &e.effect, x, y, pixels.width(), pixels.height())
                 {
@@ -587,7 +704,9 @@ pub fn prepare_layer_cancel(
     let mut styles = vec![];
     for effect in layer.effects.iter().filter(|e| e.enabled) {
         if let Some(planes) = super::styles::planes(&pixels, &effect.effect, cancel)? {
+            let start = styles.len();
             styles.extend(planes);
+            super::style_options::finish(&mut styles[start..], &effect.effect, &pixels, cancel)?;
             continue;
         }
         if let Effect::Stroke {
@@ -596,8 +715,9 @@ pub fn prepare_layer_cancel(
             width,
             position,
             rounded,
-        } = effect.effect
+        } = *effect.effect.base()
         {
+            let start = styles.len();
             styles.extend(stroke(
                 &pixels,
                 color,
@@ -606,9 +726,11 @@ pub fn prepare_layer_cancel(
                 (position, rounded),
                 cancel,
             )?);
+            super::style_options::finish(&mut styles[start..], &effect.effect, &pixels, cancel)?;
             continue;
         }
-        let (color, opacity, spread, size, shift, outer, inner) = match effect.effect {
+        let (color, opacity, spread, size, shift, outer, inner) = match *effect.effect.base() {
+            Effect::Configured { .. } => unreachable!("validated base effect"),
             Effect::ColorOverlay { .. }
             | Effect::Stroke { .. }
             | Effect::BevelEmboss { .. }
@@ -639,7 +761,7 @@ pub fn prepare_layer_cancel(
                     size,
                     [-a.cos() * distance, a.sin() * distance],
                     false,
-                    matches!(effect.effect, Effect::InnerShadow { .. }),
+                    matches!(effect.effect.base(), Effect::InnerShadow { .. }),
                 )
             }
             Effect::OuterGlow {
@@ -660,7 +782,7 @@ pub fn prepare_layer_cancel(
                 size,
                 [0.; 2],
                 true,
-                matches!(effect.effect, Effect::InnerGlow { .. }),
+                matches!(effect.effect.base(), Effect::InnerGlow { .. }),
             ),
         };
         let pad = effect_padding(&effect.effect).expect("underlay padding");
@@ -681,7 +803,15 @@ pub fn prepare_layer_cancel(
                     *a = 255 - *a;
                 }
             }
-            alpha = dilate(&alpha, w as usize, h as usize, r, cancel)?;
+            alpha = if effect.effect.options().is_some_and(|o| o.technique == 1)
+                && matches!(
+                    effect.effect.base(),
+                    Effect::OuterGlow { .. } | Effect::InnerGlow { .. }
+                ) {
+                super::round::grow(&alpha, w as usize, h as usize, size * spread, cancel)?
+            } else {
+                dilate(&alpha, w as usize, h as usize, r, cancel)?
+            };
             if inner {
                 for a in &mut alpha {
                     *a = 255 - *a;
@@ -701,7 +831,16 @@ pub fn prepare_layer_cancel(
             }
         }
         drop(alpha);
-        let blurred = gaussian_blur_cancel(&silhouette, size * (1. - spread), cancel)?;
+        let precise = effect.effect.options().is_some_and(|o| o.technique == 1)
+            && matches!(
+                effect.effect.base(),
+                Effect::OuterGlow { .. } | Effect::InnerGlow { .. }
+            );
+        let blurred = gaussian_blur_cancel(
+            &silhouette,
+            size * (1. - spread) * if precise { 0.5 } else { 1. },
+            cancel,
+        )?;
         styles.push(Style {
             pixels: blurred,
             origin: [shift[0] - pad as f32, shift[1] - pad as f32],
@@ -710,7 +849,11 @@ pub fn prepare_layer_cancel(
             outer,
             inner,
             inverse: inner,
+            blend: BlendMode::Normal,
+            colored: false,
         });
+        let count = styles.len();
+        super::style_options::finish(&mut styles[count - 1..], &effect.effect, &pixels, cancel)?;
     }
     Ok(PreparedLayer {
         reference: std::sync::OnceLock::new(),
@@ -804,6 +947,8 @@ fn stroke(
             outer: !inner,
             inner,
             inverse: false,
+            blend: BlendMode::Normal,
+            colored: false,
         });
     }
     Ok(styles)

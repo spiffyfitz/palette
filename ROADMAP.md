@@ -44,7 +44,7 @@ in the coverage audit. The following order is recommended, not an assertion that
 the still-disabled Filter Gallery is already functional.
 
 1. Build Filter Gallery as a separate window: category browsing, shared sample-image thumbnails, editable settings and live current-document preview, with transactional Apply/Cancel into the existing nondestructive stack. Keep the main Paint-style ribbon unchanged. This is the recommended next vertical slice; Gallery remains disabled until implemented.
-2. Extend the ten implemented live layer styles with custom assets/contours and advanced blending as needed. The requested panel, selected-layer merge and Background milestone is recorded in [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md).
+2. Follow up the completed effect controls with preset/library workflows, per-effect masks and layer-level advanced blending as needed. The requested panel, selected-layer merge and Background milestone is recorded in [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md).
 3. Reduce full-resolution styled-layer costs through alpha-only padded assets, per-stage/tile caching and measured background/GPU work before claiming smooth dense 4K/8K editing.
 4. Retain the open Phase 4 work: polygon selection, source-preserving mask painting/view/link/apply, selection morphology, merge-visible and confirmed flattening with backdrop-dependent blend tests.
 5. Broaden `.paint` evidence with native layer editing/save-back and execute the platform codec/build matrix as environments become available.

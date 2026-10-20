@@ -452,6 +452,9 @@ pub(super) fn read(path: &Path) -> Result<Document, FileError> {
 /// Callers must preserve the original as .palette before explicit baking.
 pub fn limitations(doc: &Document) -> Vec<&'static str> {
     let mut reasons = vec![];
+    if doc.global_light != [120., 35.] {
+        reasons.push("Shared layer-effect lighting");
+    }
     if !doc.background_visible {
         reasons.push("Hidden canvas background color");
     }
@@ -486,11 +489,13 @@ pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
     // separate retained hidden color. The original is preserved as .palette.
     out.background = doc.backing_color();
     out.background_visible = true;
-    if let Some(last) = doc
-        .layers
-        .iter()
-        .rposition(|l| l.blend != BlendMode::Normal)
-    {
+    out.global_light = [120., 35.];
+    if let Some(last) = doc.layers.iter().rposition(|l| {
+        l.blend != BlendMode::Normal
+            || l.effects.iter().any(|e| {
+                e.enabled && crate::processing::style_options::backdrop_dependent(&e.effect)
+            })
+    }) {
         let mut prefix = doc.clone();
         for l in prefix.layers.iter_mut().skip(last + 1) {
             l.visible = false;
