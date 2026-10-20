@@ -1,6 +1,52 @@
 //! Reproducible native UI capture scenes. Scene selection is a debug-build
 //! command-line diagnostic and is never part of the editor's visible workflow.
 use super::*;
+
+/// Original procedural comparison scene; no third-party or user photos are fixtures.
+fn landscape_capture(warm: bool) -> Raster {
+    let mut r = Raster::new(819, 594, [0; 4]).unwrap();
+    for y in 0..594 {
+        for x in 0..819 {
+            let u = x as f32 / 818.;
+            let v = y as f32 / 593.;
+            let ridge = 0.43 + (u * 13.).sin() * 0.035 + (u * 31.).cos() * 0.018;
+            let far = 0.32 + (u * 11.).sin() * 0.055;
+            let p = if v > ridge {
+                let texture = ((x * 13 + y * 17) % 19) as u8;
+                if warm {
+                    [135 + texture, 90 + texture, 45 + texture, 255]
+                } else {
+                    [28 + texture, 100 + texture, 32 + texture, 255]
+                }
+            } else if v > far {
+                if warm {
+                    [100, 80, 115, 255]
+                } else {
+                    [80, 105, 135, 255]
+                }
+            } else {
+                let t = (v / 0.45).clamp(0., 1.);
+                if warm {
+                    [
+                        (120. + 125. * t) as u8,
+                        (75. + 85. * t) as u8,
+                        (150. - 65. * t) as u8,
+                        255,
+                    ]
+                } else {
+                    [
+                        (55. + 110. * t) as u8,
+                        (125. + 75. * t) as u8,
+                        (210. + 30. * t) as u8,
+                        255,
+                    ]
+                }
+            };
+            r.set(x, y, p);
+        }
+    }
+    r
+}
 #[derive(Default)]
 pub(super) struct CaptureState {
     pub scene: Option<String>,
@@ -157,13 +203,17 @@ impl PaletteApp {
                 | "processing-photo-restoration"
                 | "processing-photo-restoration-damage"
                 | "processing-photo-restoration-boost"
+                | "processing-landscape"
+                | "processing-landscape-reference"
+                | "processing-landscape-reference-winter"
+                | "processing-landscape-protection"
                 | "processing-depth-blur"
                 | "processing-depth-map"
                 | "processing-super-zoom"
                 | "processing-super-zoom-options"
                 | "processing-shear-curve",
             ) => {
-                use palette_core::processing::{Kind, Operation};
+                use palette_core::processing::{Kind, Operation, Value};
                 self.current_mut().document =
                     Document::from_raster(Raster::new(819, 594, [0; 4]).expect("capture canvas"));
                 self.current_mut().document.background =
@@ -306,6 +356,10 @@ impl PaletteApp {
                             | "processing-photo-restoration"
                             | "processing-photo-restoration-damage"
                             | "processing-photo-restoration-boost"
+                            | "processing-landscape"
+                            | "processing-landscape-reference"
+                            | "processing-landscape-reference-winter"
+                            | "processing-landscape-protection"
                             | "processing-depth-blur"
                             | "processing-depth-map"
                             | "processing-super-zoom"
@@ -521,6 +575,12 @@ impl PaletteApp {
                             | "processing-photo-restoration-boost",
                         ) => Kind::PhotoRestoration,
                         Some(
+                            "processing-landscape"
+                            | "processing-landscape-reference"
+                            | "processing-landscape-reference-winter"
+                            | "processing-landscape-protection",
+                        ) => Kind::LandscapeMixer,
+                        Some(
                             "processing-makeup"
                             | "processing-makeup-reference"
                             | "processing-makeup-spatial",
@@ -583,6 +643,9 @@ impl PaletteApp {
                             Raster::from_rgba(p.width(), p.height(), p.as_raw()).unwrap();
                         doc.active_mut().offset = [280, 169];
                     }
+                    if kind == Kind::LandscapeMixer {
+                        self.current_mut().document.active_mut().source = landscape_capture(false);
+                    }
                     if kind == Kind::PhotoRestoration {
                         // Original deterministic damage on a public-domain NASA
                         // photo: no supplied user photograph becomes a fixture.
@@ -603,6 +666,73 @@ impl PaletteApp {
                         }
                     }
                     self.open_processing(kind, None);
+                    if matches!(
+                        self.capture.scene.as_deref(),
+                        Some(
+                            "processing-landscape-reference"
+                                | "processing-landscape-reference-winter"
+                                | "processing-landscape-protection"
+                        )
+                    ) {
+                        let Operation::Filter(Filter::LandscapeMixer {
+                            reference,
+                            reference_name,
+                            ..
+                        }) = &mut self.processing_dialog.as_mut().unwrap().operation
+                        else {
+                            unreachable!();
+                        };
+                        *reference = Some(
+                            palette_core::processing::landscape::reference_from_raster(
+                                &landscape_capture(true),
+                                &|| false,
+                            )
+                            .unwrap(),
+                        );
+                        *reference_name = "Original sunset landscape".into();
+                    }
+                    if self.capture.scene.as_deref()
+                        == Some("processing-landscape-reference-winter")
+                    {
+                        let d = self.processing_dialog.as_mut().unwrap();
+                        d.operation.set_value("winter", Value::Number(1.)).unwrap();
+                        d.parameter = 10;
+                    }
+                    if self.capture.scene.as_deref() == Some("processing-landscape-protection") {
+                        let d = self.processing_dialog.as_mut().unwrap();
+                        let (width, height) = (
+                            d.original.active().source.width(),
+                            d.original.active().source.height(),
+                        );
+                        let sample = Document::from_raster(d.original.active().source.clone());
+                        let mut brush = palette_core::selection::brush::Stroke::new(
+                            &sample,
+                            [330., 200.],
+                            palette_core::selection::brush::Settings {
+                                diameter: 160.,
+                                hardness: 0.7,
+                                edge_aware: false,
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap();
+                        brush.extend([480., 240.]).unwrap();
+                        let values = brush
+                            .coverage()
+                            .unwrap()
+                            .values
+                            .iter()
+                            .map(|v| 255 - v)
+                            .collect();
+                        d.filter_mask = Some(palette_core::raster::Coverage {
+                            width,
+                            height,
+                            enabled: true,
+                            values: std::sync::Arc::new(values),
+                        });
+                        d.pick_origin = false;
+                        d.protection.as_mut().unwrap().editing = true;
+                    }
                     if self.capture.scene.as_deref() == Some("processing-photo-restoration-boost") {
                         self.processing_dialog
                             .as_mut()
@@ -1156,10 +1286,9 @@ impl PaletteApp {
         if self.current().texture.is_none()
             || self.current().rendered_generation != Some(self.current().generation)
             || self.processing_worker.busy
-            || self
-                .processing_dialog
-                .as_ref()
-                .is_some_and(|d| d.ready != Some(d.ticket))
+            || self.processing_dialog.as_ref().is_some_and(|d| {
+                d.ready != Some(d.ticket) || d.protection.as_ref().is_some_and(|p| p.pending())
+            })
             || self.selection_brush_worker.busy
             || self
                 .current()

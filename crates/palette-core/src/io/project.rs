@@ -110,6 +110,9 @@ impl Assets {
         let mut map_record = None;
         let mut lut_record = None;
         match &mut filter {
+            Filter::LandscapeMixer { reference, .. } => {
+                map_record = reference.take().map(|r| self.raster(&r));
+            }
             Filter::MakeupTransfer { reference, .. } => {
                 if let Some(t) = &mut reference.texture {
                     map_record = Arc::make_mut(t).pixels.take().map(|r| self.raster(&r));
@@ -286,6 +289,38 @@ impl Manifest {
             }
             for f in &layer.filters {
                 match (&f.filter, &f.map, &f.lut) {
+                    (
+                        Filter::LandscapeMixer {
+                            reference: None,
+                            reference_name,
+                            method,
+                            ..
+                        },
+                        Some(r),
+                        None,
+                    ) => {
+                        let limit = if *method == LandscapeMethod::HorizonBlendV1 {
+                            512
+                        } else {
+                            crate::processing::landscape::REFERENCE_EDGE
+                        };
+                        if r.width > limit || r.height > limit || reference_name.is_empty() {
+                            return Err(invalid("Invalid landscape reference asset"));
+                        }
+                        self.raster_asset(r)?;
+                    }
+                    (
+                        Filter::LandscapeMixer {
+                            reference: None,
+                            reference_name,
+                            ..
+                        },
+                        None,
+                        None,
+                    ) if reference_name.is_empty() => {}
+                    (Filter::LandscapeMixer { .. }, _, _) => {
+                        return Err(invalid("Missing or inline landscape reference asset"));
+                    }
                     (Filter::MakeupTransfer { reference, .. }, Some(r), None) => {
                         if reference
                             .texture
@@ -423,6 +458,18 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
                     .map(|f| {
                         let mut filter = f.filter;
                         match &mut filter {
+                            Filter::LandscapeMixer { reference, .. } => {
+                                if let Some(r) = f.map {
+                                    *reference = Some(
+                                        Raster::from_tiles(
+                                            r.width,
+                                            r.height,
+                                            r.tiles.iter().map(|id| assets[*id].clone()).collect(),
+                                        )
+                                        .map_err(FileError::Invalid)?,
+                                    );
+                                }
+                            }
                             Filter::MakeupTransfer { reference, .. } => {
                                 if let Some(t) = &mut reference.texture {
                                     let r =

@@ -2,6 +2,8 @@
 //! a cancellation ticket; only Apply mutates the original full-resolution model.
 mod assets;
 mod editors;
+mod landscape;
+mod landscape_brush;
 mod origin;
 mod toolbar;
 use super::*;
@@ -48,12 +50,18 @@ pub(super) struct Dialog {
     pub layer: u64,
     pub instance: Option<u64>,
     pub operation: Operation,
+    pub(super) filter_mask: Option<palette_core::raster::Coverage>,
+    pub(super) protection: Option<landscape_brush::Protection>,
     pub original: Document,
     pub preview: bool,
     pub ticket: u64,
     requested: Option<u64>,
     pub ready: Option<u64>,
     pub image: Option<TextureHandle>,
+    pub(super) reference_image: Option<TextureHandle>,
+    pub(super) show_reference: bool,
+    pub(super) reference_rect: egui::Rect,
+    pub(super) reference_image_rect: egui::Rect,
     pub(super) parameter: usize,
     pub(super) pick_origin: bool,
     pub(super) origin_drag: bool,
@@ -109,19 +117,21 @@ impl Dialog {
         match &self.operation {
             Operation::Filter(filter) => {
                 if let Some(id) = self.instance {
-                    doc.active_mut()
+                    let instance = doc
+                        .active_mut()
                         .filters
                         .iter_mut()
                         .find(|f| f.id == id)
-                        .ok_or("Filter no longer exists")?
-                        .filter = filter.clone();
+                        .ok_or("Filter no longer exists")?;
+                    instance.filter = filter.clone();
+                    instance.mask = self.filter_mask.clone();
                 } else {
                     let id = doc.allocate_id();
                     doc.active_mut().filters.push(FilterInstance {
                         id,
                         enabled: true,
                         filter: filter.clone(),
-                        mask: None,
+                        mask: self.filter_mask.clone(),
                     });
                 }
             }
@@ -152,12 +162,13 @@ struct Request {
     session: u64,
     generation: u64,
     document: Document,
+    reference: Option<Filter>,
 }
 struct Ready {
     ticket: u64,
     session: u64,
     generation: u64,
-    result: Result<ColorImage, String>,
+    result: Result<(ColorImage, Option<ColorImage>), String>,
 }
 pub(super) struct Worker {
     tx: mpsc::SyncSender<Request>,
@@ -184,7 +195,19 @@ impl Worker {
                     if cancelled() {
                         return Err("Processing cancelled".into());
                     }
-                    Ok(texture_image(&pixels, 2048))
+                    let reference = request
+                        .reference
+                        .as_ref()
+                        .map(|f| {
+                            palette_core::processing::landscape::reference_preview(f, &cancelled)
+                        })
+                        .transpose()?
+                        .flatten()
+                        .map(|r| texture_image(&r, 512));
+                    if cancelled() {
+                        return Err("Processing cancelled".into());
+                    }
+                    Ok((texture_image(&pixels, 2048), reference))
                 })();
                 if results
                     .send(Ready {
@@ -397,12 +420,25 @@ impl PaletteApp {
             selected: instance,
         });
         let session = self.current();
+        let filter_mask = instance
+            .and_then(|id| {
+                session
+                    .document
+                    .active()
+                    .filters
+                    .iter()
+                    .find(|f| f.id == id)
+            })
+            .and_then(|f| f.mask.clone());
         self.processing_dialog = Some(Dialog {
             session: session.id,
             generation: session.generation,
             layer: session.document.active_layer,
             instance,
             operation,
+            filter_mask: filter_mask.clone(),
+            protection: (kind == Kind::LandscapeMixer)
+                .then(|| landscape_brush::Protection::new(filter_mask)),
             pick_origin: true,
             origin_drag: false,
             import: None,
@@ -413,6 +449,10 @@ impl PaletteApp {
             requested: None,
             ready: None,
             image: None,
+            reference_image: None,
+            show_reference: true,
+            reference_rect: egui::Rect::NOTHING,
+            reference_image_rect: egui::Rect::NOTHING,
             parameter: kind
                 .descriptor()
                 .parameters
@@ -457,7 +497,7 @@ impl PaletteApp {
                 continue;
             }
             match ready.result {
-                Ok(image) => {
+                Ok((image, reference)) => {
                     let full_size =
                         image.size == [d.original.width as usize, d.original.height as usize];
                     d.image = Some(ctx.load_texture(
@@ -470,6 +510,9 @@ impl PaletteApp {
                         },
                     ));
                     d.ready = Some(ready.ticket);
+                    d.reference_image = reference.map(|r| {
+                        ctx.load_texture("landscape-reference-preview", r, TextureOptions::LINEAR)
+                    });
                 }
                 Err(error) => self.error = Some(error),
             }
@@ -497,6 +540,14 @@ impl PaletteApp {
                     session: d.session,
                     generation: d.generation,
                     document,
+                    reference: if d.preview
+                        && d.show_reference
+                        && let Operation::Filter(f @ Filter::LandscapeMixer { .. }) = &d.operation
+                    {
+                        Some(f.clone())
+                    } else {
+                        None
+                    },
                 };
                 if self.processing_worker.tx.try_send(request).is_ok() {
                     self.processing_worker.busy = true;
@@ -512,11 +563,11 @@ impl PaletteApp {
         }
     }
     pub(super) fn apply_processing(&mut self) {
-        if self
-            .processing_dialog
-            .as_ref()
-            .is_some_and(|d| d.import.is_some() || !d.reference_ready())
-        {
+        if self.processing_dialog.as_ref().is_some_and(|d| {
+            d.import.is_some()
+                || !d.reference_ready()
+                || d.protection.as_ref().is_some_and(|p| p.pending())
+        }) {
             return;
         }
         let Some(d) = self.processing_dialog.take() else {

@@ -1,5 +1,10 @@
 # Master roadmap review
 
+Latest Landscape follow-up: Method is hidden, and a live Selection Brush protects
+source areas through an editable filter mask. [Workflow and validation](docs/LANDSCAPE_PROTECTION_VALIDATION.md).
+This adds manual correction without claiming semantic sky segmentation or full
+Photoshop parity; the phase gates below remain in effect.
+
 This review follows the original phases. Functional source code and passing Windows tests count as local implementation; a configured CI job, disabled menu entry or model field alone does not establish a completed workflow. The selection-handle slice is sufficient for now, per the user's direction.
 
 | Phase | Current evidence | Remaining gate / next work |
@@ -9,7 +14,7 @@ This review follows the original phases. Functional source code and passing Wind
 | 2 — core painting | Live strokes, eraser, fill, shapes/polygon/curve, text, clipboard, selections, transforms and history work | Brush variants/tablet/mask painting, text metric parity, property gesture coalescing and persistent vectors remain explicit deferrals |
 | 3 — file compatibility | Real still AVIF codec/options; `.palette` v5 streamed shared assets, v1/v2/v3/v4 migration, backing color and opaque metadata; genuine two-layer `.paint` subset import/export; import layer, recents and recovery | User confirms Paint opening/appearance; edit/save-back, broader variants/platforms and metadata/color/conformance remain |
 | 4 — advanced layers/selections | 19 blend modes; Wand/freeform/edge-aware brush, live feather previews, canvas toolbars, coverage combination and basic layer-mask properties | Merges, polygon selection, morphology and mask painting/view/apply/link workflows |
-| 5 — filters/styles | 142 live filters (135 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
+| 5 — filters/styles | 143 live filters (136 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
 | 6 — platform polish | CI configuration and Windows native captures | Actual platform matrix, performance benchmarks on dense 4K/8K, accessibility, packaging and signing |
 
 ## Phase 3 acceptance status
@@ -85,10 +90,24 @@ and conventional Lab matching. The catalog is 140 filters: 133 conventional and
 seven limited model-based counterparts. Four audited families still lack a
 counterpart; partial capabilities and quality gates prevent Photoshop parity.
 
-Latest Phase 5 follow-up: [Photo Restoration v2](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md)
+Previous Phase 5 follow-up: [Photo Restoration v2](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md)
 extends thin-scratch/dust repair to wider curved cracks, 200% Strength, larger
 radii, polarity and optional local facial-detail protection. It follows spatial Makeup
-Transfer v2 and reference-layer Harmonization. Current catalog: 142 filters
-(135 conventional and seven limited model-based counterparts), plus six styles.
-Smart Portrait and Landscape Mixer still lack counterparts; learned photo/face
+Transfer v2 and reference-layer Harmonization. Current catalog: 143 filters
+(136 conventional and seven limited model-based counterparts), plus six styles.
+Smart Portrait still lacks a counterpart; learned photo/face
 reconstruction and other partial-capability/quality gates remain. Phase 5 is not complete.
+
+Latest Phase 5 follow-up: [Landscape Mixer](docs/LANDSCAPE_MIXER_VALIDATION.md)
+adds local horizon-aligned reference sky/terrain compositing, retained source
+detail and seasonal/sunset colour grades. References remain portable and
+editable, and horizons support precise numeric and mouse placement. It is a
+limited conventional counterpart; learned scene synthesis and automatic subject
+masks remain absent. Smart Portrait is still wholly missing.
+
+Landscape Mixer v2 follow-up: [edge-aware blending and reference preview](docs/LANDSCAPE_EDGES_VALIDATION.md)
+replace the flat transition with a ridge/vegetation sky matte and source-preserving
+terrain palette transfer. An independent graded reference view supports horizon
+dragging, all five grades affect both inputs, and new references allow 2048 px.
+Legacy rendering remains available. This conventional counterpart still has
+ambiguous-colour/edge limits and does not complete Phase 5 or Photoshop parity.

@@ -65,6 +65,7 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
         Filter::PhotoRestoration { .. }
+        | Filter::LandscapeMixer { .. }
         | Filter::Harmonization { .. }
         | Filter::MakeupTransfer { .. }
         | Filter::ColorTransfer { .. }

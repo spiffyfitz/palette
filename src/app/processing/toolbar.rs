@@ -87,7 +87,10 @@ impl PaletteApp {
         let reference_photo = draft.as_ref().is_some_and(|d| {
             matches!(
                 d.operation.kind(),
-                Kind::ColorTransfer | Kind::MakeupTransfer | Kind::Harmonization
+                Kind::ColorTransfer
+                    | Kind::MakeupTransfer
+                    | Kind::Harmonization
+                    | Kind::LandscapeMixer
             )
         });
         let compact = self.canvas_rect.width()
@@ -101,6 +104,9 @@ impl PaletteApp {
         let mut intent = None;
         let mut changed = false;
         if let Some(d) = &mut draft {
+            if let Err(e) = landscape_brush::update(d, ctx, &self.processing_worker.ticket) {
+                self.error = Some(format!("Could not refine Landscape Mixer: {e}"));
+            }
             match assets::poll(d) {
                 Ok(value) => {
                     changed |= value;
@@ -127,15 +133,26 @@ impl PaletteApp {
             .show(ctx, |ui| {
                 crate::interface::context_toolbar_frame(ui.style()).show(ui, |ui| {
                     ui.spacing_mut().interact_size.y = crate::interface::CONTEXT_CONTROL_HEIGHT;
-                    ui.spacing_mut().item_spacing.x = if compact { 4. } else { 6. };
+                    ui.spacing_mut().item_spacing.x = if compact
+                        && draft
+                            .as_ref()
+                            .is_some_and(|d| d.operation.kind() == Kind::LandscapeMixer)
+                    {
+                        2.
+                    } else if compact {
+                        4.
+                    } else {
+                        6.
+                    };
                     ui.horizontal(|ui| {
                         ui.set_min_height(crate::interface::CONTEXT_CONTROL_HEIGHT);
                         let (rect, response) =
                             ui.allocate_exact_size(Vec2::splat(24.), Sense::hover());
-                        if draft
-                            .as_ref()
-                            .is_some_and(|d| d.ready != Some(d.ticket) || d.import.is_some())
-                        {
+                        if draft.as_ref().is_some_and(|d| {
+                            d.ready != Some(d.ticket)
+                                || d.import.is_some()
+                                || d.protection.as_ref().is_some_and(|p| p.awaiting_samples())
+                        }) {
                             // Paint-only status keeps control IDs stable when a job
                             // completes during a pointer gesture or an open menu.
                             let phase = ctx.input(|i| i.time) as f32 * 4.;
@@ -177,6 +194,8 @@ impl PaletteApp {
             && !egui::Popup::is_any_open(ctx)
             && ctx.input(|i| i.key_pressed(Key::Escape));
         if let Some(d) = &mut draft {
+            changed |=
+                landscape::reference_window(d, ctx, self.canvas_rect, self.processing_toolbar_rect);
             if changed {
                 d.ticket = self
                     .processing_worker
@@ -229,20 +248,26 @@ fn editor_controls(
     intent: &mut Option<Intent>,
 ) -> bool {
     ui.add_enabled_ui(enabled, |ui| {
+        if d.protection.as_ref().is_some_and(|p| p.editing) {
+            return landscape_brush::controls(ui,d,compact);
+        }
         if !compact {
             ui.label(d.operation.kind().descriptor().label);
         }
         let mut changed = parameter_control(ui, d, compact);
         let reference = match &d.operation {
+            Operation::Filter(Filter::LandscapeMixer {reference,reference_name,..}) => Some((reference_name,reference.as_ref().map_or(0,Raster::width),reference.as_ref().map_or(0,Raster::height))),
             Operation::Filter(Filter::ColorTransfer {reference,..}) => Some((&reference.name,reference.width,reference.height)),
             Operation::Filter(Filter::MakeupTransfer {reference,..}) => Some((&reference.name,reference.width,reference.height)),
             _=>None,
         };
         if let Some((name,width,height)) = reference {
-            let tooltip = format!(
+            let tooltip = if d.operation.kind() == Kind::LandscapeMixer {
+                format!("Blend a reference landscape; align Source horizon and Reference horizon\nCurrent: {} ({} × {})",if name.is_empty(){"None — season controls only"}else{name},width,height)
+            } else {format!(
                 "Load a reference photo to use its color grade\nCurrent reference: {} ({} × {})",
                 name, width, height
-            );
+            )};
             let response = ui
                 .push_id("color-transfer-reference-photo", |ui| {
                     if compact {
@@ -265,10 +290,10 @@ fn editor_controls(
             }
         }
         let movable=!matches!(d.operation,Operation::Filter(Filter::LightingEffects {kind:palette_core::document::LightKind::Directional,..} | Filter::DepthBlur {pick_focus:false,..}));
-        if matches!(&d.operation, Operation::Filter(f) if f.center().is_some())
+        if matches!(&d.operation, Operation::Filter(f) if f.center().is_some() || matches!(f, Filter::LandscapeMixer { .. }))
             && icons::button(
                 ui, Icon::Move,
-                "Place effect origin: click or drag on the layer; Space or middle-drag pans. Origin X/Y accept exact values.",
+                if d.operation.kind() == Kind::LandscapeMixer {"Place source horizon: click or drag vertically on the layer; Space or middle-drag pans. Use Reference horizon to align the reference photo."} else {"Place effect origin: click or drag on the layer; Space or middle-drag pans. Origin X/Y accept exact values."},
                 d.pick_origin, movable, Vec2::splat(24.),
             ).clicked()
         {
@@ -343,7 +368,7 @@ fn editor_controls(
             .inner;
         let apply = ui
             .push_id("processing-apply", |ui| {
-                ui.add_enabled(d.import.is_none() && d.reference_ready(),
+                ui.add_enabled(d.import.is_none() && d.reference_ready() && d.protection.as_ref().is_none_or(|p| !p.pending()),
                     egui::Button::new(egui::RichText::new("Apply").color(Color32::BLACK))
                         .fill(ACCENT),
                 )
@@ -362,6 +387,27 @@ fn editor_controls(
         ui.push_id("processing-edit-actions", |ui| {
             let menu=ui.menu_button("…", |ui| {
                 ui.label(d.operation.kind().descriptor().label);
+                if let Operation::Filter(Filter::LandscapeMixer{reference,reference_name,..}) = &d.operation {
+                    ui.set_max_width(380.);
+                    ui.label("Edge-aware sky replacement · terrain colour transfer");
+                    ui.small("Edge-aware mode follows detected sky around mountain ridges and vegetation. Reference terrain transfers a luminance-ranked palette while retaining the source's geometry; Detail retains source luminance. Softness affects the sky matte instead of a horizontal band. Sky detection adjusts colour/texture sensitivity. Horizons are search hints; use the separate reference preview to align its sky.");
+                    ui.small("Seasons and Sunset grade both inputs before blending, including the reference preview. Refine mix lets you protect source areas the detector misclassified. New references retain up to 2048 × 2048; old Horizontal projects keep their old rendering until a new reference is loaded.");
+                    if let Some(r)=reference {ui.label(format!("Reference: {} ({} × {})",reference_name,r.width(),r.height()));}
+                }
+                if d.operation.kind()==Kind::LandscapeMixer {changed |= ui.checkbox(&mut d.show_reference,"Reference preview").changed();}
+                if let Some(p) = &mut d.protection && ui.button("Refine mix…").clicked() {
+                    p.editing=true;
+                    changed |= !d.preview;
+                    d.preview=true;
+                    d.pick_origin=false;
+                    d.origin_drag=false;
+                    ui.close();
+                }
+                if matches!(&d.operation,Operation::Filter(Filter::LandscapeMixer{reference:Some(_),..})) && ui.button("Clear reference").clicked() {
+                    if let Operation::Filter(Filter::LandscapeMixer{reference,reference_name,..})=&mut d.operation { *reference=None;reference_name.clear(); }
+                    changed=true;
+                    ui.close();
+                }
                 if d.operation.kind()==Kind::PhotoRestoration {
                     ui.set_max_width(380.);
                     ui.label(if d.operation.value("method")==Some(Value::Choice(0)){"Conventional local restoration · thin scratches (legacy)"}else{"Conventional local restoration · multiscale cracks"});
@@ -504,7 +550,7 @@ fn editor_controls(
                     Operation::Filter(Filter::Displace {map:Some(m),map_name,..})=>{ui.label(format!("{} ({} × {})",map_name,m.width(),m.height()));},
                     _=>{},
                 }
-                if matches!(d.operation.kind(),Kind::ColorLookup|Kind::Displace|Kind::ColorTransfer|Kind::MakeupTransfer) && ui.add_enabled(d.import.is_none(),egui::Button::new(match d.operation.kind(){Kind::ColorLookup=>"Load 3D LUT…",Kind::ColorTransfer|Kind::MakeupTransfer=>"Load reference image…",_=>"Load displacement map…"})).clicked() {*intent=Some(Intent::Import);ui.close();}
+                if matches!(d.operation.kind(),Kind::ColorLookup|Kind::Displace|Kind::ColorTransfer|Kind::MakeupTransfer|Kind::LandscapeMixer) && ui.add_enabled(d.import.is_none(),egui::Button::new(match d.operation.kind(){Kind::ColorLookup=>"Load 3D LUT…",Kind::ColorTransfer|Kind::MakeupTransfer|Kind::LandscapeMixer=>"Load reference image…",_=>"Load displacement map…"})).clicked() {*intent=Some(Intent::Import);ui.close();}
                 if let Some(notice)=&d.import_notice {ui.label(notice);}
                 if d.operation.kind()==Kind::Custom {let sub=ui.menu_button("Edit kernel…",|ui|{changed|=editors::kernel(ui,&mut d.operation);});app.capture_submenu("processing-custom-kernel",ui,&sub.response);}
                 if d.operation.kind()==Kind::Shear {let sub=ui.menu_button("Edit shear curve…",|ui|{changed|=editors::curve(ui,&mut d.operation);});app.capture_submenu("processing-shear-curve",ui,&sub.response);}
@@ -544,6 +590,11 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
         return false;
     }
     d.parameter = d.parameter.min(parameters.len() - 1);
+    // Method is a compatibility tag, not a user-facing Landscape setting.
+    // Keep legacy saved filters readable without exposing an obsolete switch.
+    if d.operation.kind() == Kind::LandscapeMixer && parameters[d.parameter].key == "method" {
+        d.parameter = 0;
+    }
     let selector = egui::ComboBox::from_id_salt("processing-parameter")
         .selected_text(
             if compact
@@ -553,6 +604,17 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                 "Model"
             } else if compact && parameters[d.parameter].key == "protect_occlusions" {
                 "Occlusions"
+            } else if compact && d.operation.kind() == Kind::LandscapeMixer {
+                match parameters[d.parameter].key {
+                    "sky" => "Sky",
+                    "terrain" => "Terrain",
+                    "detail" => "Detail",
+                    "horizon" => "Horizon",
+                    "reference_horizon" => "Ref. horizon",
+                    "feather" => "Softness",
+                    "edge_sensitivity" => "Sky detect",
+                    _ => parameters[d.parameter].label,
+                }
             } else if compact && d.operation.kind() == Kind::PhotoRestoration {
                 match parameters[d.parameter].key {
                     "enhancement" => "Enhancement",
@@ -572,7 +634,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             },
         )
         .width(if compact { 102. } else { 124. })
-        .height(if d.operation.kind() == Kind::PhotoRestoration {
+        .height(if d.operation.kind() == Kind::LandscapeMixer {
+            520.
+        } else if d.operation.kind() == Kind::PhotoRestoration {
             360.
         } else if d.operation.kind() == Kind::MakeupTransfer {
             300.
@@ -581,6 +645,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
         })
         .show_ui(ui, |ui| {
             for (index, p) in parameters.iter().enumerate() {
+                if d.operation.kind() == Kind::LandscapeMixer && p.key == "method" {
+                    continue;
+                }
                 ui.selectable_value(&mut d.parameter, index, p.label);
             }
         });
@@ -652,6 +719,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             })
         ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
         let context_active = match &d.operation {
+            Operation::Filter(Filter::LandscapeMixer {
+                reference: None, ..
+            }) if matches!(p.key, "sky" | "terrain" | "detail" | "reference_horizon") => false,
             Operation::Filter(Filter::MakeupTransfer {
                 model, reference, ..
             }) if matches!(p.key, "cheeks" | "protect_occlusions") => {
@@ -725,6 +795,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         Kind::Harmonization
                             | Kind::MakeupTransfer
                             | Kind::ColorTransfer
+                            | Kind::LandscapeMixer
                             | Kind::DepthBlur
                             | Kind::SuperZoom
                             | Kind::SkinSmoothing
@@ -886,7 +957,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         .width(88.)
                         .truncate()
                         .selected_text(
-                            if d.operation.kind() == Kind::MakeupTransfer && p.key == "model" {
+                            if d.operation.kind() == Kind::LandscapeMixer && p.key == "method" {
+                                if selected==1 {"Edge-aware"} else {"Horizontal"}
+                            } else if d.operation.kind() == Kind::MakeupTransfer && p.key == "model" {
                                 if matches!(d.operation.value("model"), Some(Value::Choice(1))) {
                                     "Spatial detail"
                                 } else {
@@ -908,7 +981,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         )
                         .show_ui(ui, |ui| {
                             for (index, label) in options.iter().enumerate() {
-                                ui.selectable_value(&mut selected, index, *label);
+                                let enabled=!(d.operation.kind()==Kind::LandscapeMixer && p.key=="method" && index==0 && matches!(&d.operation,Operation::Filter(Filter::LandscapeMixer{reference:Some(r),..}) if r.width()>512 || r.height()>512));
+                                ui.add_enabled_ui(enabled,|ui|ui.selectable_value(&mut selected,index,*label));
                             }
                         });
                     if selected != before {

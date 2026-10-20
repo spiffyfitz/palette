@@ -160,6 +160,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
         f.enabled
             && match f.filter {
                 Filter::PhotoRestoration { strength, .. } => strength > 0.,
+                Filter::LandscapeMixer { strength, .. } => strength > 0.,
                 Filter::Harmonization {
                     reference_layer,
                     strength,
@@ -332,6 +333,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::LandscapeMixer { .. } => {
+                pixels = super::landscape::evaluate(&pixels, &filter.filter, cancel)?;
+            }
             Filter::PhotoRestoration { .. } => {
                 pixels = super::photo_restoration::evaluate(&pixels, &filter.filter, cancel)?;
             }

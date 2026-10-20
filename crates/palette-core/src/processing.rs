@@ -19,6 +19,7 @@ mod gallery;
 mod gaussian;
 mod generators;
 pub mod harmonization;
+pub mod landscape;
 mod layer;
 pub mod makeup;
 mod media;
@@ -62,6 +63,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    LandscapeMixer,
     PhotoRestoration,
     Harmonization,
     MakeupTransfer,
@@ -2405,6 +2407,31 @@ pub const REGISTRY: &[Descriptor] = &[
         ],
     },
     Descriptor {
+        kind: Kind::LandscapeMixer,
+        label: "Landscape Mixer",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("sky", "Reference sky", 0., 1., 0.01),
+            number("terrain", "Reference terrain", 0., 1., 0.01),
+            number("detail", "Retain terrain detail", 0., 1., 0.01),
+            number("horizon", "Source horizon", 0.02, 0.98, 0.01),
+            number("reference_horizon", "Reference horizon", 0.02, 0.98, 0.01),
+            number("feather", "Horizon softness", 0., 0.5, 0.01),
+            number("spring", "Spring", 0., 1., 0.01),
+            number("summer", "Summer", 0., 1., 0.01),
+            number("autumn", "Autumn", 0., 1., 0.01),
+            number("winter", "Winter", 0., 1., 0.01),
+            number("sunset", "Sunset", 0., 1., 0.01),
+            number("edge_sensitivity", "Sky detection", 0., 1., 0.01),
+            Parameter {
+                key: "method",
+                label: "Method",
+                kind: ParameterType::Choice(&["Horizontal (legacy)", "Edge-aware landscape"]),
+            },
+        ],
+    },
+    Descriptor {
         kind: Kind::MakeupTransfer,
         label: "Makeup Transfer",
         category: "Neural Filters",
@@ -2488,6 +2515,24 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::LandscapeMixer => Operation::Filter(Filter::LandscapeMixer {
+                method: crate::document::LandscapeMethod::EdgeAwareV2,
+                edge_sensitivity: 0.5,
+                reference: None,
+                reference_name: String::new(),
+                strength: 1.,
+                sky: 1.,
+                terrain: 0.65,
+                detail: 0.85,
+                horizon: 0.45,
+                reference_horizon: 0.45,
+                feather: 0.08,
+                spring: 0.,
+                summer: 0.,
+                autumn: 0.5,
+                winter: 0.,
+                sunset: 0.2,
+            }),
             Self::PhotoRestoration => Operation::Filter(Filter::PhotoRestoration {
                 method: crate::document::PhotoRestorationMethod::MultiscaleV2,
                 damage_type: crate::document::PhotoDamageType::Bright,
@@ -3324,6 +3369,7 @@ impl Operation {
     pub fn kind(&self) -> Kind {
         match self {
             Self::Filter(Filter::PhotoRestoration { .. }) => Kind::PhotoRestoration,
+            Self::Filter(Filter::LandscapeMixer { .. }) => Kind::LandscapeMixer,
             Self::Filter(Filter::Harmonization { .. }) => Kind::Harmonization,
             Self::Filter(Filter::MakeupTransfer { .. }) => Kind::MakeupTransfer,
             Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
@@ -3481,6 +3527,11 @@ impl Operation {
     pub fn value(&self, key: &str) -> Option<Value> {
         if let Self::Filter(f) = self
             && let Some(v) = photo_restoration::value(f, key)
+        {
+            return Some(v);
+        }
+        if let Self::Filter(f) = self
+            && let Some(v) = landscape::value(f, key)
         {
             return Some(v);
         }
@@ -4854,6 +4905,11 @@ impl Operation {
         }
         if let Self::Filter(f) = self
             && photo_restoration::set(f, key, value)
+        {
+            return Ok(());
+        }
+        if let Self::Filter(f) = self
+            && landscape::set(f, key, value)
         {
             return Ok(());
         }
@@ -7038,6 +7094,7 @@ impl Operation {
         }
         if let Self::Filter(f) = self {
             photo_restoration::validate(f)?;
+            landscape::validate(f)?;
             editable::validate_assets(f)?;
             gallery::validate(f)?;
         }

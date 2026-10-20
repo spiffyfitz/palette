@@ -286,6 +286,26 @@ save/render; native v6 framing is unchanged. Older readers reject the unknown
 variant. The diagnostic overlay remains enabled after saving when explicitly
 applied in that mode. [Scope](PHOTO_RESTORATION_VALIDATION.md).
 
+`LandscapeMixer` originally used immutable `LandscapeMethod::HorizonBlendV1`, all twelve
+numeric parameters, a bounded reference name and optional reference raster.
+Native v6 detaches the latter into the existing filter `map` asset slot (at most
+512 × 512). Inline/missing/misbound/oversized assets are rejected during manifest
+preflight. Reopening requires no external reference file. Older readers reject
+the new filter variant; framing/version and existing documents are unchanged.
+
+`EdgeAwareV2` adds sky/terrain-aware processing and `edge_sensitivity` (0–1,
+default 0.5 when absent). Its binary reference limit is 2048 × 2048; manifest
+preflight still enforces 512 × 512 for `HorizonBlendV1`. Existing methods do not
+upgrade on decode/save. Reference-preview window state and textures are UI-only
+and are never serialized. Old readers reject the new method. Version 6 framing,
+asset deduplication, masks and atomic-save rules remain unchanged.
+The sky-warping fix corrects EdgeAwareV2 placement and donor colour extension;
+it requires no new serialized parameters or asset conversion. HorizonBlendV1
+retains its original pixel behavior.
+Landscape brush corrections reuse the existing `FilterInstance.mask` coverage
+asset: source rasters, filter parameters, framing and version are unchanged.
+The Method compatibility parameter is hidden in the UI but remains serialized.
+
 `MultiscaleV2` extends Photo Restoration to Strength 0–2 and nominal radius 1–64.
 `damage_type` is Bright/Dark/Both; missing fields default to Both. `protect_faces`
 defaults to false when absent, preserving old v1 saves. New v2 filters select

@@ -5263,6 +5263,7 @@ fn processing_toolbars_fit_compact_high_dpi_windows_and_yield_to_tools_and_layer
                         | Kind::MakeupTransfer
                         | Kind::Harmonization
                         | Kind::PhotoRestoration
+                        | Kind::LandscapeMixer
                 )
                 || entry.parameters.iter().any(|p| p.key == "center_x")
                 || matches!(
@@ -6239,4 +6240,5 @@ mod zoom;
 mod makeup;
 
 mod harmonization;
+mod landscape;
 mod photo_restoration;

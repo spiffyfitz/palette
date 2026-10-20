@@ -461,9 +461,41 @@ pub enum PhotoDamageType {
     Both,
 }
 
+/// Immutable conventional horizon-aligned landscape compositing contract.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum LandscapeMethod {
+    HorizonBlendV1,
+    /// Edge-aware sky replacement and terrain palette transfer.
+    EdgeAwareV2,
+}
+
+fn default_landscape_edges() -> f32 {
+    0.5
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Local reference compositing and seasonal grading, without scene synthesis.
+    LandscapeMixer {
+        method: LandscapeMethod,
+        reference: Option<Raster>,
+        reference_name: String,
+        #[serde(default = "default_landscape_edges")]
+        edge_sensitivity: f32,
+        strength: f32,
+        sky: f32,
+        terrain: f32,
+        detail: f32,
+        horizon: f32,
+        reference_horizon: f32,
+        feather: f32,
+        spring: f32,
+        summer: f32,
+        autumn: f32,
+        winter: f32,
+        sunset: f32,
+    },
     /// Conventional scan restoration; no learned face reconstruction.
     PhotoRestoration {
         method: PhotoRestorationMethod,
@@ -1385,6 +1417,9 @@ impl Filter {
     /// Logical bytes retained by embedded filter assets, excluding shared copies.
     pub fn asset_bytes(&self) -> usize {
         match self {
+            Self::LandscapeMixer { reference, .. } => {
+                reference.as_ref().map_or(0, Raster::byte_len)
+            }
             Self::MakeupTransfer { reference, .. } => reference.texture.as_ref().map_or(0, |t| {
                 t.pixels.as_ref().map_or(0, Raster::byte_len) + t.points.len() * 16
             }),
@@ -1660,6 +1695,9 @@ impl Document {
             layer.source.allocations(&mut output);
             for f in &layer.filters {
                 match &f.filter {
+                    Filter::LandscapeMixer {
+                        reference: Some(r), ..
+                    } => r.allocations(&mut output),
                     Filter::MakeupTransfer { reference, .. } => {
                         if let Some(t) = &reference.texture {
                             if let Some(p) = &t.pixels {

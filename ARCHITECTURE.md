@@ -422,6 +422,34 @@ bounded histogram enhancement. It uses the existing cancellable prepared-layer
 worker/cache and shared mask/preview/history pipeline, with no new runtime or
 weights. The diagnostic damage overlay is an editable output mode.
 
+Landscape Mixer EdgeAwareV2 estimates source/donor sky on a bounded 768 px guide,
+using top-connected colour/texture classification, bottom-connected terrain,
+guided coverage refinement and colour-aware upsampling. One aspect-preserving
+horizon-aligned cover crop maps the donor without terrain-dependent cloud warps
+or repeated border rows. A bounded alpha-weighted push/pull colour extension
+fills donor foreground gaps without moving neighbouring sky coordinates.
+Ground-only luminance-ranked Lab
+palette transfer retains source geometry/luminance without additive halos.
+Both inputs receive seasonal grades. The preview worker returns an independently
+graded reference texture, guarded by the same ticket/session/generation as the
+composite; its floating alignment window never mutates source pixels. V2 binary
+references allow 2048 px; row-streamed import accumulation uses at most 80 KiB.
+Sky analyses have two 64 MiB-budget entries. See docs/LANDSCAPE_EDGES_VALIDATION.md.
+Landscape refinement reuses the Selection Brush in a private bounded worker,
+sampling the layer before the edited filter. A draft `FilterInstance.mask`
+receives protection/restoration coverage and shares existing preview cancellation,
+native assets and Apply/Cancel/history. Stroke snapshots are capped at eight/64 MiB.
+Method is a serialized compatibility tag hidden in the UI.
+See docs/LANDSCAPE_PROTECTION_VALIDATION.md.
+
+The immutable legacy HorizonBlendV1 uses continuous piecewise horizon
+alignment, linear-premultiplied reference sampling, a cached Gaussian guide for
+source terrain detail and bounded seasonal grades. Reference rasters are reduced
+to at most 512 × 512, detached into native binary map assets and counted in
+history allocations. Horizon placement updates the same cancellable draft as
+numeric controls. This is conventional compositing, without new models or scene
+segmentation. See docs/LANDSCAPE_MIXER_VALIDATION.md.
+
 Photo Restoration MultiscaleV2 retains v1 as an immutable legacy method. A
 premultiplied guide, width/orientation samples, bounded connected components and
 fine-scratch fallback build a damage map. Overdrive unions the 100% map before

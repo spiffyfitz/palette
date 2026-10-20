@@ -98,6 +98,16 @@ workspace sha2 0.10.9 crate for canonical source fingerprints; no new runtime
 model, native library, service or Python dependency was added. Harmonization
 uses existing Rust Lab/statistical processing.
 
+Landscape Mixer v2 adds no dependencies or weights. Its conventional sky matte,
+guided-filter refinement, terrain palette transfer and independently graded
+reference view run in Rust. The primary guided-filter paper is linked from
+docs/LANDSCAPE_EDGES_VALIDATION.md; no external code/model/runtime is bundled.
+
+Landscape Mixer v1 added no dependencies, weights or preset assets. Its independent
+linear-light horizon compositor, reference reduction and seasonal grades use
+existing Rust raster/codec/Gaussian facilities inside Palette. References are
+embedded in the project, without a sidecar or network service.
+
 Photo Restoration MultiscaleV2 adds no dependencies or model weights. Detection
 and harmonic filling are independently implemented Rust. Optional facial-detail
 protection reuses the existing Apache-2.0 face geometry backend/shared cache and
