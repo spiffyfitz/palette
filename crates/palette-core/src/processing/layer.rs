@@ -159,6 +159,7 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
+                Filter::SmartPortrait { .. } => super::portrait::active(&f.filter),
                 Filter::PhotoRestoration { strength, .. } => strength > 0.,
                 Filter::LandscapeMixer { strength, .. } => strength > 0.,
                 Filter::Harmonization {
@@ -333,6 +334,9 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
+            Filter::SmartPortrait { .. } => {
+                pixels = super::portrait::evaluate(&pixels, &filter.filter, cancel)?;
+            }
             Filter::LandscapeMixer { .. } => {
                 pixels = super::landscape::evaluate(&pixels, &filter.filter, cancel)?;
             }

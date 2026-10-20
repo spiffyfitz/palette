@@ -408,6 +408,18 @@ fn editor_controls(
                     changed=true;
                     ui.close();
                 }
+                if d.operation.kind()==Kind::SmartPortrait {
+                    ui.set_max_width(380.);
+                    ui.label("Local face expressions and directional shading");
+                    ui.label("Happiness: left frowns, right smiles, with stronger endpoints. High positive values separate the lips and reveal teeth. Surprise opens the eyes/mouth; Anger adjusts the brows. Lighting strength enables shading; Light direction is 0° right, −90° above. Turn All faces off to edit only the largest detected face.");
+                    ui.small("Visible teeth reuse source texture; closed mouths use a shaded procedural dental arch, not recovered anatomy. Strong changes can stretch texture. Age/hair/gaze/new head poses remain unavailable. Shading is conventional. No detected face leaves the image unchanged. Existing projects keep legacy rendering until an expression is edited.");
+                    ui.collapsing("Model license and attribution",|ui| {
+                        egui::ScrollArea::vertical().max_height(180.).show(ui,|ui| {
+                            ui.add(egui::Label::new(palette_core::processing::SKIN_NOTICE).wrap());
+                            ui.add(egui::Label::new(palette_core::processing::SKIN_LICENSE).wrap());
+                        });
+                    });
+                }
                 if d.operation.kind()==Kind::PhotoRestoration {
                     ui.set_max_width(380.);
                     ui.label(if d.operation.value("method")==Some(Value::Choice(0)){"Conventional local restoration · thin scratches (legacy)"}else{"Conventional local restoration · multiscale cracks"});
@@ -872,6 +884,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         }
                     );
                     let percent = (d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
+                        || (d.operation.kind()==Kind::SmartPortrait && matches!(p.key,"happiness"|"surprise"|"anger"|"lighting"))
                         || (d.operation.kind() == Kind::PhotoRestoration
                             && matches!(
                                 p.key,
@@ -923,6 +936,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                         slider = slider.suffix("%");
                     } else if d.operation.kind() == Kind::SuperZoom && p.key == "zoom" {
                         slider = slider.suffix("×");
+                    } else if d.operation.kind()==Kind::SmartPortrait && p.key=="light_direction" {
+                        slider=slider.suffix("°");
                     }
                     let response = ui.add(slider).on_hover_text(p.label);
                     let mut accepted = false;

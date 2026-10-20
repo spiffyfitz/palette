@@ -3,14 +3,14 @@
 //! spatial path because they can introduce new coverage.
 use crate::document::{Filter, NoiseDistribution};
 
-fn linear(v: f32) -> f32 {
+pub(super) fn linear(v: f32) -> f32 {
     if v <= 0.04045 {
         v / 12.92
     } else {
         ((v + 0.055) / 1.055).powf(2.4)
     }
 }
-fn encoded(v: f32) -> f32 {
+pub(super) fn encoded(v: f32) -> f32 {
     if v <= 0.0031308 {
         v * 12.92
     } else {
@@ -66,6 +66,7 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     let result = match *filter {
         Filter::PhotoRestoration { .. }
         | Filter::LandscapeMixer { .. }
+        | Filter::SmartPortrait { .. }
         | Filter::Harmonization { .. }
         | Filter::MakeupTransfer { .. }
         | Filter::ColorTransfer { .. }

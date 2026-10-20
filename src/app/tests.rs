@@ -6234,6 +6234,7 @@ fn colorize_menu_strength_and_saturation_preview_cancel_apply_persist_and_remove
 }
 mod color_transfer;
 mod depth;
+mod portrait;
 mod skin;
 mod zoom;
 

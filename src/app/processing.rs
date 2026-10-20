@@ -463,6 +463,7 @@ impl PaletteApp {
                             Kind::OuterGlow | Kind::InnerGlow => "radius",
                             Kind::DropShadow | Kind::InnerShadow => "angle",
                             Kind::Stroke => "width",
+                            Kind::SmartPortrait => "happiness",
                             _ => "",
                         }
                 })

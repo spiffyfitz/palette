@@ -1,5 +1,13 @@
 # Master roadmap review
 
+Latest filter slice: [Smart Portrait](docs/SMART_PORTRAIT_VALIDATION.md) adds a
+local geometric counterpart, now with stronger endpoints, lip separation,
+source/procedural teeth and frown closure. Current catalog: 144 filters (136 conventional,
+eight limited model-based counterparts), plus six styles. All twelve audited
+Neural Filter families have at least a partial counterpart; generative capabilities,
+Substance-based Parametric Filters and the broader parity gates remain incomplete.
+Earlier milestone snapshots below retain their historical counts/status.
+
 Latest Landscape follow-up: Method is hidden, and a live Selection Brush protects
 source areas through an editable filter mask. [Workflow and validation](docs/LANDSCAPE_PROTECTION_VALIDATION.md).
 This adds manual correction without claiming semantic sky segmentation or full
@@ -14,7 +22,7 @@ This review follows the original phases. Functional source code and passing Wind
 | 2 — core painting | Live strokes, eraser, fill, shapes/polygon/curve, text, clipboard, selections, transforms and history work | Brush variants/tablet/mask painting, text metric parity, property gesture coalescing and persistent vectors remain explicit deferrals |
 | 3 — file compatibility | Real still AVIF codec/options; `.palette` v5 streamed shared assets, v1/v2/v3/v4 migration, backing color and opaque metadata; genuine two-layer `.paint` subset import/export; import layer, recents and recovery | User confirms Paint opening/appearance; edit/save-back, broader variants/platforms and metadata/color/conformance remain |
 | 4 — advanced layers/selections | 19 blend modes; Wand/freeform/edge-aware brush, live feather previews, canvas toolbars, coverage combination and basic layer-mask properties | Merges, polygon selection, morphology and mask painting/view/apply/link workflows |
-| 5 — filters/styles | 143 live filters (136 conventional, seven limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
+| 5 — filters/styles | 144 live filters (136 conventional, eight limited local model-based counterparts), six styles, typed registry/common parameters, on-canvas previews, three-icon layer controls, filter masks, evaluated-layer cache and native preservation | Remaining styles, Filter Gallery, per-stage/tile caching, GPU processing |
 | 6 — platform polish | CI configuration and Windows native captures | Actual platform matrix, performance benchmarks on dense 4K/8K, accessibility, packaging and signing |
 
 ## Phase 3 acceptance status

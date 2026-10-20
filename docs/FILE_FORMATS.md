@@ -286,6 +286,16 @@ save/render; native v6 framing is unchanged. Older readers reject the unknown
 variant. The diagnostic overlay remains enabled after saving when explicitly
 applied in that mode. [Scope](PHOTO_RESTORATION_VALIDATION.md).
 
+`SmartPortrait` pins `PortraitMethod::FaceMeshWarpV1` or `ExpressiveMouthV2` with finite expression,
+strength, lighting-angle/intensity and all-faces parameters. It uses existing
+filter masks; it has no embedded reference/model asset or external file link.
+Native v6 framing is unchanged, and older readers reject the unknown filter
+variant. Preview resizing retains its dimensionless face-space parameters.
+V2 is the new default, with stronger expression endpoints, lip separation and
+local mouth infill. Existing V1 instances keep their appearance until an
+expression is edited; the method change participates in Apply/Cancel/history.
+Older readers reject the unknown V2 method rather than silently changing pixels.
+
 `LandscapeMixer` originally used immutable `LandscapeMethod::HorizonBlendV1`, all twelve
 numeric parameters, a bounded reference name and optional reference raster.
 Native v6 detaches the latter into the existing filter `map` asset slot (at most

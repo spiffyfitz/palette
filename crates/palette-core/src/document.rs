@@ -473,9 +473,29 @@ fn default_landscape_edges() -> f32 {
     0.5
 }
 
+/// Fixed face geometry with conventional expression warps and diffuse shading.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PortraitMethod {
+    /// Original conservative texture-only deformation; retained for old files.
+    FaceMeshWarpV1,
+    /// Stronger endpoints, lip separation and local procedural mouth infill.
+    ExpressiveMouthV2,
+}
+
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
+    /// Local landmark deformation, not generative age/hair/pose synthesis.
+    SmartPortrait {
+        method: PortraitMethod,
+        strength: f32,
+        happiness: f32,
+        surprise: f32,
+        anger: f32,
+        light_direction: f32,
+        lighting: f32,
+        all_faces: bool,
+    },
     /// Local reference compositing and seasonal grading, without scene synthesis.
     LandscapeMixer {
         method: LandscapeMethod,

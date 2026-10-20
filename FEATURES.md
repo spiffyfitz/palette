@@ -119,7 +119,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 149 implemented operations (143 filters and six styles).
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 150 implemented operations (144 filters and six styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
@@ -134,7 +134,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 143 of 143 catalog entries implemented (136 conventional plus seven limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
+- [x] Registry-generated filter inventory: 144 of 144 catalog entries implemented (136 conventional plus eight limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions, per-stage/tile caches and GPU compositor.
@@ -168,7 +168,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [ ] First six Neural Filter counterparts: model selection/terms, numerical and image-quality references, alpha/geometry adapters, runtime scheduling, native/UI integration. See docs/NEURAL_FILTERS_FIRST_SIX.md.
 
 - [x] Bundled offline Mosaic Style Transfer: local Rust inference, immutable model profile, exact checksum, independent CPU reference, cancellable operators, source/alpha preservation, strength/cache, native roundtrip and compact live toolbar.
-- [ ] Smart Portrait, remaining first-batch capability gaps and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
+- [ ] Generative Smart Portrait capabilities, remaining first-batch capability gaps and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
 
 - [x] Bundled local JPEG Artifacts Removal: full-resolution overlapping DnCNN-3 tiles, alpha/chroma preservation, cached strength edits, masks and native/UI transactions.
 - [x] Main render tickets cancel obsolete generations/tab targets and resubmit cancelled tabs when revisited; app drop cancels render/preview work.
@@ -184,8 +184,13 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
   local background inference, cancellation and atomic replacement; source project stays editable.
 - [ ] Enlarged editable Super Zoom documents and related painting/selection/mask coordinate mapping.
 - [ ] Full Photoshop filter parity: tracked separately from catalog counts in
-  docs/PHOTOSHOP_FILTER_AUDIT.md; partial implementations do not satisfy it.
-- [ ] Smart Portrait and remaining limitations of the five partial first-six counterparts; remaining learned later-group capabilities and Filter Gallery remain deferred.
+  docs/PHOTOSHOP_FILTER_AUDIT.md. Smart Portrait now has a local geometric counterpart;
+  generative features and the audit's other gates remain incomplete.
+- [x] Local Smart Portrait: learned facial geometry, bounded expression warps,
+  stronger endpoints, lip separation, source teeth/procedural dental arch,
+  frown closure, directional face shading, all/largest face targeting and live native/mask/history
+  preservation. Generative age/hair/gaze/pose is not supplied.
+- [ ] Smart Portrait synthesis and remaining limitations of the partial first-six counterparts; remaining learned later-group capabilities and Filter Gallery remain deferred.
 
 - [x] Local Depth Blur: bundled inverse-depth model, click/manual focus, focal
   range/radius, depth-map view, live editable stack/masks/native/history and

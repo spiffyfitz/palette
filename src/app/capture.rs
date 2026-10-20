@@ -194,6 +194,9 @@ impl PaletteApp {
                 | "processing-jpeg-artifacts"
                 | "processing-colorize"
                 | "processing-skin-smoothing"
+                | "processing-smart-portrait"
+                | "processing-smart-portrait-smile"
+                | "processing-smart-portrait-frown"
                 | "processing-color-transfer"
                 | "processing-color-transfer-reference"
                 | "processing-makeup"
@@ -347,6 +350,9 @@ impl PaletteApp {
                             | "processing-jpeg-artifacts"
                             | "processing-colorize"
                             | "processing-skin-smoothing"
+                            | "processing-smart-portrait"
+                            | "processing-smart-portrait-smile"
+                            | "processing-smart-portrait-frown"
                             | "processing-color-transfer"
                             | "processing-color-transfer-reference"
                             | "processing-makeup"
@@ -568,6 +574,11 @@ impl PaletteApp {
                         Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
                         Some("processing-colorize") => Kind::Colorize,
                         Some("processing-skin-smoothing") => Kind::SkinSmoothing,
+                        Some(
+                            "processing-smart-portrait"
+                            | "processing-smart-portrait-smile"
+                            | "processing-smart-portrait-frown",
+                        ) => Kind::SmartPortrait,
                         Some("processing-harmonization") => Kind::Harmonization,
                         Some(
                             "processing-photo-restoration"
@@ -606,6 +617,7 @@ impl PaletteApp {
                     if matches!(
                         kind,
                         Kind::SkinSmoothing
+                            | Kind::SmartPortrait
                             | Kind::PhotoRestoration
                             | Kind::MakeupTransfer
                             | Kind::SuperZoom
@@ -618,6 +630,27 @@ impl PaletteApp {
                             Raster::from_rgba(image.width(), image.height(), image.as_raw())
                                 .expect("portrait raster");
                         layer.offset = [280, 169];
+                        if matches!(
+                            self.capture.scene.as_deref(),
+                            Some(
+                                "processing-smart-portrait-smile"
+                                    | "processing-smart-portrait-frown"
+                            )
+                        ) {
+                            // Enlarge a head crop so endpoint mouth behaviour is
+                            // inspectable at the reference window size.
+                            let head =
+                                image::imageops::crop_imm(&image, 48, 0, 128, 128).to_image();
+                            let head = image::imageops::resize(
+                                &head,
+                                384,
+                                384,
+                                image::imageops::FilterType::CatmullRom,
+                            );
+                            let layer = self.current_mut().document.active_mut();
+                            layer.source = Raster::from_rgba(384, 384, head.as_raw()).unwrap();
+                            layer.offset = [218, 105];
+                        }
                     }
                     if kind == Kind::Harmonization {
                         let doc = &mut self.current_mut().document;
@@ -666,6 +699,25 @@ impl PaletteApp {
                         }
                     }
                     self.open_processing(kind, None);
+                    if matches!(
+                        self.capture.scene.as_deref(),
+                        Some("processing-smart-portrait-smile" | "processing-smart-portrait-frown")
+                    ) {
+                        let value = if self.capture.scene.as_deref()
+                            == Some("processing-smart-portrait-smile")
+                        {
+                            1.
+                        } else {
+                            -1.
+                        };
+                        let d = self.processing_dialog.as_mut().unwrap();
+                        d.operation
+                            .set_value("happiness", Value::Number(value))
+                            .unwrap();
+                        d.operation
+                            .set_value("lighting", Value::Number(0.))
+                            .unwrap();
+                    }
                     if matches!(
                         self.capture.scene.as_deref(),
                         Some(

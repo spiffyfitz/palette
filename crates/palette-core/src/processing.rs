@@ -31,6 +31,7 @@ mod painting;
 mod photo_restoration;
 mod pixelate;
 mod point;
+mod portrait;
 mod restoration;
 mod retouch;
 mod round;
@@ -63,6 +64,7 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    SmartPortrait,
     LandscapeMixer,
     PhotoRestoration,
     Harmonization,
@@ -2407,6 +2409,24 @@ pub const REGISTRY: &[Descriptor] = &[
         ],
     },
     Descriptor {
+        kind: Kind::SmartPortrait,
+        label: "Smart Portrait",
+        category: "Neural Filters",
+        parameters: &[
+            number("strength", "Strength", 0., 1., 0.01),
+            number("happiness", "Happiness", -1., 1., 0.01),
+            number("surprise", "Surprise", 0., 1., 0.01),
+            number("anger", "Anger", 0., 1., 0.01),
+            number("light_direction", "Light direction", -180., 180., 1.),
+            number("lighting", "Lighting strength", 0., 1., 0.01),
+            Parameter {
+                key: "all_faces",
+                label: "All faces",
+                kind: ParameterType::Boolean,
+            },
+        ],
+    },
+    Descriptor {
         kind: Kind::LandscapeMixer,
         label: "Landscape Mixer",
         category: "Neural Filters",
@@ -2515,6 +2535,16 @@ impl Kind {
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
         match self {
+            Self::SmartPortrait => Operation::Filter(Filter::SmartPortrait {
+                method: crate::document::PortraitMethod::ExpressiveMouthV2,
+                strength: 1.,
+                happiness: 0.3,
+                surprise: 0.,
+                anger: 0.,
+                light_direction: -45.,
+                lighting: 0.15,
+                all_faces: true,
+            }),
             Self::LandscapeMixer => Operation::Filter(Filter::LandscapeMixer {
                 method: crate::document::LandscapeMethod::EdgeAwareV2,
                 edge_sensitivity: 0.5,
@@ -3368,6 +3398,7 @@ impl Operation {
     /// Registry identifier for these typed parameters.
     pub fn kind(&self) -> Kind {
         match self {
+            Self::Filter(Filter::SmartPortrait { .. }) => Kind::SmartPortrait,
             Self::Filter(Filter::PhotoRestoration { .. }) => Kind::PhotoRestoration,
             Self::Filter(Filter::LandscapeMixer { .. }) => Kind::LandscapeMixer,
             Self::Filter(Filter::Harmonization { .. }) => Kind::Harmonization,
@@ -3525,6 +3556,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Filter(f) = self
+            && let Some(v) = portrait::value(f, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = photo_restoration::value(f, key)
         {
@@ -4865,6 +4901,11 @@ impl Operation {
                 || (key == "white" && n <= f32::from(*black)))
         {
             return Err("Input black must be below input white".into());
+        }
+        if let Self::Filter(f) = self
+            && portrait::set(f, key, value)
+        {
+            return Ok(());
         }
         if let Self::Filter(f) = self
             && let Some(c) = f.center_mut()

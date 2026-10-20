@@ -422,6 +422,17 @@ bounded histogram enhancement. It uses the existing cancellable prepared-layer
 worker/cache and shared mask/preview/history pipeline, with no new runtime or
 weights. The diagnostic damage overlay is an editable output mode.
 
+Smart Portrait ExpressiveMouthV2 reuses cached local face geometry. A bounded 192²
+compact-polynomial displacement field, a conservative Jacobian limit and inverse
+sampling change existing expressions with a stronger endpoint response. A second
+face-aligned inner-lip mapping separates lips or narrows a frown, reusing original
+lip/dental texture where available. Closed mouths receive local procedural cavity
+and dental-arch infill, not recovered anatomy or learned synthesis. Saved V1
+instances retain their pixel contract until an undoable expression edit upgrades them.
+Skin-only directional shading and alpha-weighted sampling run in linear RGB;
+source pixels/alpha and generic filter mask/history/native behavior remain intact.
+See docs/SMART_PORTRAIT_VALIDATION.md for the explicit limits.
+
 Landscape Mixer EdgeAwareV2 estimates source/donor sky on a bounded 768 px guide,
 using top-connected colour/texture classification, bottom-connected terrain,
 guided coverage refinement and colour-aware upsampling. One aspect-preserving

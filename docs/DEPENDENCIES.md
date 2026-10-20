@@ -98,6 +98,12 @@ workspace sha2 0.10.9 crate for canonical source fingerprints; no new runtime
 model, native library, service or Python dependency was added. Harmonization
 uses existing Rust Lab/statistical processing.
 
+Smart Portrait reuses the existing Apache-2.0 BlazeFace/FaceMesh weights and
+notices. Expression deformation, inverse sampling, face shading and V2 procedural
+mouth/dental-arch infill are independent
+Rust implementations, not an additional generative model. No new crate, native
+library, cloud service or runtime is introduced. See docs/SMART_PORTRAIT_VALIDATION.md.
+
 Landscape Mixer v2 adds no dependencies or weights. Its conventional sky matte,
 guided-filter refinement, terrain palette transfer and independently graded
 reference view run in Rust. The primary guided-filter paper is linked from
