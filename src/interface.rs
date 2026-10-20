@@ -153,6 +153,7 @@ pub enum ColorTarget {
     #[default]
     Foreground,
     Background,
+    CanvasBackground,
 }
 pub struct ColorEditor {
     pub target: ColorTarget,
@@ -160,6 +161,7 @@ pub struct ColorEditor {
     pub hex: String,
     pub hsv: egui::ecolor::Hsva,
     pub field: Option<egui::TextureHandle>,
+    pub document: Option<(u64, u64)>,
 }
 impl ColorEditor {
     pub fn new(target: ColorTarget, rgb: [u8; 3]) -> Self {
@@ -169,6 +171,7 @@ impl ColorEditor {
             hsv: Color32::from_rgb(rgb[0], rgb[1], rgb[2]).into(),
             hex: format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]),
             field: None,
+            document: None,
         }
     }
 }

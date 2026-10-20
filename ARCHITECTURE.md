@@ -201,7 +201,7 @@ Registry parameter metadata includes booleans and finite enumerations as well as
 
 ### Style controls and six more conventional filters
 
-The registry retains typed source-preserving filters and six styles; subsequent catalog batches are described below. `processing::extended` evaluates premultiplied bilinear Motion Blur, alpha-preserving Gaussian High Pass and premultiplied block-area Mosaic. Point processing now takes layer-local coordinates for deterministic seeded Uniform/Gaussian Add Noise; partial/full/staged evaluation samples the same field. Levels validates ordered black/white inputs before any mutation; its gamma/output transfer and five-knot cubic-Hermite Curves preserve alpha. Curves knots are fixed at inputs 0/64/128/192/255 with editable output values. Spatial preparation and preview scaling recognize the new operations; High Pass always uses preparation, including zero radius (neutral gray).
+The registry retains typed source-preserving filters and ten styles; subsequent catalog batches are described below. `processing::extended` evaluates premultiplied bilinear Motion Blur, alpha-preserving Gaussian High Pass and premultiplied block-area Mosaic. Point processing now takes layer-local coordinates for deterministic seeded Uniform/Gaussian Add Noise; partial/full/staged evaluation samples the same field. Levels validates ordered black/white inputs before any mutation; its gamma/output transfer and five-knot cubic-Hermite Curves preserve alpha. Curves knots are fixed at inputs 0/64/128/192/255 with editable output values. Spatial preparation and preview scaling recognize the new operations; High Pass always uses preparation, including zero radius (neutral gray).
 
 Registry parameters include booleans. Glow exposes Radius (serialized legacy `size` stays intact). Shadow Angle/Distance/Spread and Stroke Width/Rounded corners are accessible in the same 46-point contextual bar. Shadow quick fields appear only when space permits; narrow layouts retain all parameters through the selector. Defaults select the requested geometric property. Draft editing remains source-preserving and cancellation-ticketed.
 
@@ -469,3 +469,7 @@ uses fixed alpha-weighted boundaries and bounded symmetric sweeps; it allocates
 nodes only for detected pixels (two-million-node cap). Worker cancellation reaches
 detection, geometry and filling. Native framing is unchanged; this is conventional
 interpolation with optional learned geometry protection, not learned reconstruction.
+
+## Layer panel and style extension
+
+Document backing RGBA and visibility are independent of editable raster layers. The CPU compositor starts with the effective backing. Selected IDs and a range anchor belong to each session. The active layer alone expands beneath its thumbnail; raster rows scroll while Background stays docked. Merge builds a validated replacement off-thread and publishes one history snapshot. New typed style variants reuse the registry, transactional live editor, prepared-layer bounds and worker cache. See [layer architecture and validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md).

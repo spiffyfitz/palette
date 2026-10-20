@@ -94,7 +94,7 @@ fn specimen_edits_round_trip_as_two_layers_and_native_v3_keeps_canvas_backing() 
     assert_content(&doc, &io::open(&path).unwrap());
     let native = dir.path().join("full.palette");
     io::save_project(&native, &doc).unwrap();
-    assert_eq!(&fs::read(&native).unwrap()[8..12], &6u32.to_le_bytes());
+    assert_eq!(&fs::read(&native).unwrap()[8..12], &7u32.to_le_bytes());
     assert!(io::open(&native).unwrap() == doc);
     assert_eq!(
         fs::read(
@@ -213,7 +213,12 @@ fn unsupported_editable_features_cannot_overwrite_a_paint_file_and_baking_keeps_
     doc.active_mut().source.set(4, 3, [255, 0, 0, 255]);
     let converted = paint::compatible_copy(&doc).unwrap();
     assert_eq!(converted.layers.len(), 2);
-    assert!(composite::render(&converted) == composite::render(&doc));
+    // Baking the backing into a raster changes unused tile padding. Compare
+    // visible RGBA rather than the storage representation of those tiles.
+    assert_eq!(
+        composite::render(&converted).rgba(),
+        composite::render(&doc).rgba()
+    );
 }
 
 #[test]

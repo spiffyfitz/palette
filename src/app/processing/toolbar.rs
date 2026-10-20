@@ -1,6 +1,7 @@
 //! Paint-sized contextual processing bar. Drafts are presentation-only: the
 //! canvas samples the worker's preview texture until Apply commits parameters.
 use super::*;
+use palette_core::document::Effect;
 
 enum Intent {
     ExportZoom,
@@ -731,6 +732,8 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
             })
         ) || !(p.key.starts_with("green_") || p.key.starts_with("blue_"));
         let context_active = match &d.operation {
+            Operation::Effect(Effect::GradientOverlay { style: palette_core::document::GradientStyle::Angle, .. }) if p.key=="scale" => false,
+            Operation::Effect(Effect::BevelEmboss {texture:false,..}) if matches!(p.key,"surface"|"texture_scale"|"texture_depth")=>false,
             Operation::Filter(Filter::LandscapeMixer {
                 reference: None, ..
             }) if matches!(p.key, "sky" | "terrain" | "detail" | "reference_horizon") => false,
@@ -883,7 +886,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                             ..
                         }
                     );
-                    let percent = (d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
+                    let percent = ((d.operation.kind() == Kind::SmartSharpen && p.key == "amount")
                         || (d.operation.kind()==Kind::SmartPortrait && matches!(p.key,"happiness"|"surprise"|"anger"|"lighting"))
                         || (d.operation.kind() == Kind::PhotoRestoration
                             && matches!(
@@ -917,7 +920,9 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                                 | "dot"
                         )
                         || (p.key == "intensity"
-                            && matches!(d.operation, Operation::Filter(Filter::FilmGrain { .. })));
+                            && matches!(d.operation, Operation::Filter(Filter::FilmGrain { .. }))))
+                        && !(d.operation.kind()==Kind::BevelEmboss && p.key=="depth")
+                        || (d.operation.kind()==Kind::BevelEmboss && matches!(p.key,"highlight_opacity"|"shadow_opacity"|"texture_depth"));
                     let scale = if percent { 100. } else { 1. };
                     value *= scale;
                     ui.spacing_mut().slider_width = if compact { 60. } else { 100. };
@@ -932,8 +937,10 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     let mut slider = egui::Slider::new(&mut value, min * scale..=max * scale)
                         .step_by(f64::from(display_step))
                         .max_decimals(decimals);
-                    if percent {
-                        slider = slider.suffix("%");
+                    if percent || (d.operation.kind()==Kind::BevelEmboss && p.key=="depth") || (d.operation.kind()==Kind::GradientOverlay && p.key=="scale") {
+                        slider=slider.suffix("%");
+                    } else if matches!(d.operation.kind(),Kind::BevelEmboss|Kind::Satin|Kind::GradientOverlay|Kind::PatternOverlay) && matches!(p.key,"angle"|"altitude") {
+                        slider=slider.suffix("°");
                     } else if d.operation.kind() == Kind::SuperZoom && p.key == "zoom" {
                         slider = slider.suffix("×");
                     } else if d.operation.kind()==Kind::SmartPortrait && p.key=="light_direction" {
@@ -1011,7 +1018,7 @@ fn parameter_control(ui: &mut Ui, d: &mut Dialog, compact: bool) -> bool {
                     let label = if d.operation.kind() == Kind::NtscColors {
                         "7.5 IRE"
                     } else if compact
-                        && (p.key == "preserve_luminosity"
+                        && (matches!(d.operation,Operation::Effect(_)) || p.key == "preserve_luminosity"
                             || matches!(
                                 d.operation.kind(),
                                 Kind::DepthBlur | Kind::PhotoRestoration

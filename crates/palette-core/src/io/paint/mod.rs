@@ -452,6 +452,9 @@ pub(super) fn read(path: &Path) -> Result<Document, FileError> {
 /// Callers must preserve the original as .palette before explicit baking.
 pub fn limitations(doc: &Document) -> Vec<&'static str> {
     let mut reasons = vec![];
+    if !doc.background_visible {
+        reasons.push("Hidden canvas background color");
+    }
     if doc.layers.iter().any(|l| !l.visible || l.locked) {
         reasons.push("Layer visibility and locks");
     }
@@ -479,6 +482,10 @@ pub fn limitations(doc: &Document) -> Vec<&'static str> {
 pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
     doc.validate().map_err(FileError::Invalid)?;
     let mut out = doc.clone();
+    // The verified Paint subset stores an effective backing RGBA, without a
+    // separate retained hidden color. The original is preserved as .palette.
+    out.background = doc.backing_color();
+    out.background_visible = true;
     if let Some(last) = doc
         .layers
         .iter()

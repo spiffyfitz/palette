@@ -43,7 +43,7 @@ fn overlay(doc: &Document) -> Vec<u8> {
             .flat_map(|l| l.offset)
             .any(|n| i16::try_from(n).is_err());
     let mut b = vec![0, u8::from(wide)];
-    for channel in doc.background {
+    for channel in doc.backing_color() {
         b.extend_from_slice(&(u16::from(channel) * 257).to_be_bytes());
     }
     for n in [doc.width, doc.height] {

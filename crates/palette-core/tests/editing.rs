@@ -120,7 +120,7 @@ fn copy_paste_and_cut_preserve_other_layers_and_live_source_properties() {
     history.begin("Cut", &doc);
     assert!(editing::clear(&mut doc));
     history.finish(&doc);
-    assert_eq!(doc.layers[0].source.get(1, 1), [255; 4]);
+    assert_eq!(doc.layers[0].source.get(1, 1), [0; 4]);
     assert_eq!(doc.active().source.get(1, 1)[3], 0);
     history.undo(&mut doc);
     assert_eq!(doc.active().source.get(1, 1), [30, 60, 90, 200]);
@@ -283,9 +283,9 @@ fn history_accounts_for_unique_tiles_and_keeps_large_canvas_strokes_undoable() {
     doc.active_mut().source.set(10, 10, [255, 0, 0, 255]);
     history.finish(&doc);
     assert!(history.undo_label().is_some());
-    assert_eq!(history.retained_bytes(&doc), 0); // Solid white backing is still shared by other live tiles.
+    assert_eq!(history.retained_bytes(&doc), 0); // Transparent source tile is still shared by other live tiles.
     history.undo(&mut doc);
-    assert_eq!(doc.active().source.get(10, 10), [255; 4]);
+    assert_eq!(doc.active().source.get(10, 10), [0; 4]);
     assert!(history.retained_bytes(&doc) <= 128 * 128 * 4);
     history.redo(&mut doc);
     assert_eq!(doc.active().source.get(10, 10), [255, 0, 0, 255]);
@@ -344,7 +344,7 @@ fn paste_expands_canvas_and_preserves_the_entire_clipboard_image() {
     editing::paste(&mut doc, pixels).unwrap();
     assert_eq!((doc.width, doc.height), (5, 3));
     assert_eq!(doc.active().source.get(4, 2), [40, 80, 120, 128]);
-    assert_eq!(doc.layers[0].source.get(0, 0), [255; 4]);
+    assert_eq!(doc.layers[0].source.get(0, 0), [0; 4]);
     assert_eq!(
         editing::bounds(doc.selection.as_ref().unwrap()),
         Some(rect(0, 0, 5, 3))

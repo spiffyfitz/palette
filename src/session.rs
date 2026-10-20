@@ -12,6 +12,9 @@ pub struct Session {
     pub name: String,
     pub path: Option<PathBuf>,
     pub document: Document,
+    /// Layer selection is per-tab UI state; the document keeps one edit target.
+    pub selected_layers: std::collections::BTreeSet<u64>,
+    pub layer_anchor: u64,
     pub history: History,
     pub saved_revision: u64,
     pub generation: u64,
@@ -53,11 +56,14 @@ pub struct Session {
 
 impl Session {
     pub fn new(id: u64, name: String, document: Document) -> Self {
+        let active = document.active_layer;
         Self {
             id,
             name,
             path: None,
             document,
+            selected_layers: std::collections::BTreeSet::from([active]),
+            layer_anchor: active,
             history: History::default(),
             saved_revision: 0,
             generation: 0,
@@ -141,6 +147,7 @@ impl Session {
         self.end_gesture();
         self.history.begin(label, &self.document);
         change(&mut self.document);
+        self.sync_layer_selection();
         self.history.finish(&self.document);
         self.invalidate();
     }
@@ -169,6 +176,7 @@ impl Session {
         self.paint_stroke = None;
         self.selection_drag = None;
         self.history.undo(&mut self.document);
+        self.sync_layer_selection();
         self.invalidate();
     }
     pub fn redo(&mut self) {
@@ -176,7 +184,65 @@ impl Session {
         self.paint_stroke = None;
         self.selection_drag = None;
         self.history.redo(&mut self.document);
+        self.sync_layer_selection();
         self.invalidate();
+    }
+    pub fn sync_layer_selection(&mut self) {
+        self.selected_layers
+            .retain(|id| self.document.layers.iter().any(|l| l.id == *id));
+        if !self.selected_layers.contains(&self.document.active_layer) {
+            self.selected_layers.clear();
+            self.selected_layers.insert(self.document.active_layer);
+        }
+        if !self
+            .document
+            .layers
+            .iter()
+            .any(|l| l.id == self.layer_anchor)
+        {
+            self.layer_anchor = self.document.active_layer;
+        }
+    }
+    /// Ctrl/Command toggles; Shift selects a stack range from the anchor.
+    pub fn select_layer(&mut self, id: u64, toggle: bool, range: bool) {
+        self.sync_layer_selection();
+        let Some(index) = self.document.layers.iter().position(|l| l.id == id) else {
+            return;
+        };
+        if range {
+            let anchor = self
+                .document
+                .layers
+                .iter()
+                .position(|l| l.id == self.layer_anchor)
+                .unwrap_or(index);
+            if !toggle {
+                self.selected_layers.clear();
+            }
+            self.selected_layers.extend(
+                self.document.layers[index.min(anchor)..=index.max(anchor)]
+                    .iter()
+                    .map(|l| l.id),
+            );
+            self.document.active_layer = id;
+        } else if toggle {
+            if self.selected_layers.contains(&id) && self.selected_layers.len() > 1 {
+                self.selected_layers.remove(&id);
+                if self.document.active_layer == id {
+                    self.document.active_layer =
+                        *self.selected_layers.last().expect("one selected");
+                }
+            } else {
+                self.selected_layers.insert(id);
+                self.document.active_layer = id;
+            }
+            self.layer_anchor = id;
+        } else {
+            self.selected_layers.clear();
+            self.selected_layers.insert(id);
+            self.document.active_layer = id;
+            self.layer_anchor = id;
+        }
     }
     pub fn selection_bounds(&mut self) -> Option<PixelRect> {
         if let Some(frame) = self

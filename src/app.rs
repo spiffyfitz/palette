@@ -5,6 +5,7 @@ mod close;
 pub(crate) mod editing;
 mod feather;
 mod files;
+mod layers;
 mod panels;
 pub(crate) mod processing;
 mod selection_brush;
@@ -133,6 +134,9 @@ pub struct PaletteApp {
     pub(crate) processing_toolbar: Option<processing::Toolbar>,
     pub processing_toolbar_rect: egui::Rect,
     pub layer_processing_buttons: [egui::Rect; 3],
+    merge_dialog: Option<layers::MergeDialog>,
+    pub layer_background_rect: egui::Rect,
+    pub layer_background_eye: egui::Rect,
     close_pending: Option<u64>,
     close_after_save: Option<u64>,
     quitting: bool,
@@ -313,6 +317,9 @@ impl PaletteApp {
             processing_toolbar: None,
             processing_toolbar_rect: egui::Rect::NOTHING,
             layer_processing_buttons: [egui::Rect::NOTHING; 3],
+            merge_dialog: None,
+            layer_background_rect: egui::Rect::NOTHING,
+            layer_background_eye: egui::Rect::NOTHING,
             close_pending: None,
             close_after_save: None,
             quitting: false,
@@ -378,6 +385,7 @@ impl PaletteApp {
     }
     pub fn close_pending_none(&self) -> bool {
         !self.recovery_prompt
+            && self.merge_dialog.is_none()
             && self.avif_export.is_none()
             && self.paint_export.is_none()
             && self.feather_dialog.is_none()
@@ -882,6 +890,7 @@ impl PaletteApp {
 
     fn shortcuts(&mut self, ctx: &Context) {
         if self.recovery_prompt
+            || self.merge_dialog.is_some()
             || self.avif_export.is_some()
             || self.paint_export.is_some()
             || self.feather_dialog.is_some()
@@ -969,6 +978,7 @@ impl PaletteApp {
             self.deferred_close = true;
         }
         if ctx.input(|i| i.viewport().close_requested()) {
+            self.merge_dialog = None;
             self.cancel_processing();
             self.current_mut().end_gesture();
         }

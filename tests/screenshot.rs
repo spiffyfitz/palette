@@ -219,6 +219,17 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "processing-super-zoom-options",
         "neural-menu",
         "processing-shear-curve",
+        "processing-bevel",
+        "processing-satin",
+        "processing-gradient-overlay",
+        "processing-pattern-overlay",
+        "layer-style-stack",
+        "layer-multi-select",
+        "merge-layers-dialog",
+        "merge-layers-result",
+        "canvas-background",
+        "canvas-background-hidden",
+        "canvas-background-colors",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }

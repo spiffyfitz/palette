@@ -35,12 +35,12 @@ impl PaletteApp {
             self.show_layers,
             crate::interface::PANEL_SECONDS,
         );
-        let tray_width = crate::interface::LAYER_TRAY_WIDTH
-            + if self.interface.layer_properties {
-                68.0
-            } else {
-                0.0
-            };
+        let property_visibility = ui.ctx().animate_bool_with_time(
+            egui::Id::unique("layer-properties-expanded"),
+            self.interface.layer_properties,
+            crate::interface::PANEL_SECONDS,
+        );
+        let tray_width = crate::interface::LAYER_TRAY_WIDTH + 68. * property_visibility;
         let right_width = 12.0 + (tray_width + 12.0) * tray_visibility;
         let workspace = Rect::from_min_max(
             pos2(bounds.left() + left_width, bounds.top()),
@@ -509,10 +509,8 @@ impl PaletteApp {
                         .show(ui, |ui| {
                             ui.set_width(tray_width - 16.0);
                             ui.set_min_height(panel.height() - 16.0);
-                            egui::ScrollArea::vertical()
-                                .id_salt("layers-scroll")
-                                .max_height(panel.height() - 16.0)
-                                .show(ui, |ui| self.layers(ui));
+                            ui.set_max_height(panel.height() - 16.0);
+                            self.layers(ui);
                         });
                 });
             });

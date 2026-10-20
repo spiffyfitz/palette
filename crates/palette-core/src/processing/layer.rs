@@ -7,14 +7,14 @@ use crate::{
 };
 use std::collections::VecDeque;
 
-struct Style {
-    pixels: Raster,
-    origin: [f32; 2],
-    color: [u8; 3],
-    opacity: f32,
-    outer: bool,
-    inner: bool,
-    inverse: bool,
+pub(super) struct Style {
+    pub(super) pixels: Raster,
+    pub(super) origin: [f32; 2],
+    pub(super) color: [u8; 3],
+    pub(super) opacity: f32,
+    pub(super) outer: bool,
+    pub(super) inner: bool,
+    pub(super) inverse: bool,
 }
 /// Immutable evaluated appearance, including spatial style extents.
 pub struct PreparedLayer {
@@ -568,6 +568,11 @@ pub fn prepare_layer_cancel(
         for x in 0..pixels.width() {
             let mut p = pixels.get(x, y);
             for e in layer.effects.iter().filter(|e| e.enabled) {
+                if let Some(result) =
+                    super::styles::overlay(p, &e.effect, x, y, pixels.width(), pixels.height())
+                {
+                    p = result;
+                }
                 if let Effect::ColorOverlay { color, opacity } = e.effect {
                     for c in 0..3 {
                         p[c] = (f32::from(p[c]) * (1. - opacity) + f32::from(color[c]) * opacity)
@@ -581,6 +586,10 @@ pub fn prepare_layer_cancel(
     }
     let mut styles = vec![];
     for effect in layer.effects.iter().filter(|e| e.enabled) {
+        if let Some(planes) = super::styles::planes(&pixels, &effect.effect, cancel)? {
+            styles.extend(planes);
+            continue;
+        }
         if let Effect::Stroke {
             color,
             opacity,
@@ -600,7 +609,12 @@ pub fn prepare_layer_cancel(
             continue;
         }
         let (color, opacity, spread, size, shift, outer, inner) = match effect.effect {
-            Effect::ColorOverlay { .. } | Effect::Stroke { .. } => continue,
+            Effect::ColorOverlay { .. }
+            | Effect::Stroke { .. }
+            | Effect::BevelEmboss { .. }
+            | Effect::Satin { .. }
+            | Effect::GradientOverlay { .. }
+            | Effect::PatternOverlay { .. } => continue,
             Effect::DropShadow {
                 color,
                 opacity,

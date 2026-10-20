@@ -4,7 +4,7 @@
 
 | Format | Open | Write | Meaning |
 |---|---|---|---|
-| `.palette` v1/v2/v3/v4/v5/v6 | Yes | Save/Save As writes v6 | All implemented editable model state; older versions migrate on explicit save |
+| `.palette` v1/v2/v3/v4/v5/v6/v7 | Yes | Save/Save As writes v7 | All implemented editable model state; older versions migrate on explicit save |
 | PNG | Yes | Export | Lossless RGBA; alpha round-trip tested |
 | JPEG | Yes | Export | Lossy RGB; transparency composited over white |
 | BMP | Yes | Export | Raster; alpha behavior depends on BMP variant |
@@ -19,17 +19,17 @@ Raster imports create a single editable source layer. They do not recreate layer
 
 The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
 
-## `.palette` version 6 — current writer (versions 1–5 migration)
+## `.palette` version 7 — current writer (versions 1–6 migration)
 
 | Offset | Encoding | Value |
 |---|---|---|
 | 0 | 8 bytes | ASCII `PALETTE` followed by NUL |
-| 8 | little-endian u32 | `6` |
+| 8 | little-endian u32 | `7` |
 | 12 | little-endian u32 | UTF-8 JSON manifest byte length |
 | 16 | bytes | JSON manifest |
 | After manifest | repeated records | little-endian u64 compressed length, then one zlib stream |
 
-The manifest contains `width`, `height`, `background` (four straight-alpha RGBA8 canvas-backing channels), `active_layer`, `next_id`, `layers`, optional `selection`, ICC/Exif asset indices (`icc`, `exif`) and `asset_lengths`. Each layer retains all v1 properties. A source descriptor contains width, height and a row-major vector of tile asset indices; each tile is exactly 65536 bytes (128 x 128 straight RGBA8), including defined padding. A mask descriptor contains width, height, enabled and one asset index; its asset contains exactly width x height coverage bytes. Filter records retain ID, enabled, typed filter and optional mask descriptor; effect records retain existing typed style data. ICC/Exif assets contain original opaque bytes, with an empty asset when absent. Pixels use the existing RGBA8/sRGB working interpretation; storing a profile does not apply it.
+The manifest contains `width`, `height`, `background` (four straight-alpha RGBA8 canvas-backing channels), `background_visible` (boolean), `active_layer`, `next_id`, `layers`, optional `selection`, ICC/Exif asset indices (`icc`, `exif`) and `asset_lengths`. Each layer retains all v1 properties. A source descriptor contains width, height and a row-major vector of tile asset indices; each tile is exactly 65536 bytes (128 x 128 straight RGBA8), including defined padding. A mask descriptor contains width, height, enabled and one asset index; its asset contains exactly width x height coverage bytes. Filter records retain ID, enabled, typed filter and optional mask descriptor; effect records retain existing typed style data. ICC/Exif assets contain original opaque bytes, with an empty asset when absent. Pixels use the existing RGBA8/sRGB working interpretation; storing a profile does not apply it.
 
 Asset records follow `asset_lengths` order, zero-based. Shared Arc backing buffers have one asset, preserving tile sharing on load. Zlib checksums, exact decoded lengths, consumed compressed lengths and trailing-file rejection detect malformed/truncated data. The reader preflights references, dimensions and counts before decompression, then validates the reconstructed model. Unknown versions or enum variants fail explicitly. Limits: 4 MiB manifest, 65536 assets, 512 MiB summed unique decoded bytes, 1 GiB file, 4 MiB each ICC/Exif field, existing 64-megapixel plane and model count limits. These are format/allocation policies rather than a total process-memory cap.
 
@@ -324,3 +324,7 @@ v1 range opt into v2; decoding/saving alone does not. V1 retains its original
 0–1 Strength / 1–8 radius validation. Source assets are unchanged; v6 framing and
 asset layout need no migration. Older readers reject the unknown v2 method.
 [Contract and legacy hash](PHOTO_RESTORATION_CRACKS_VALIDATION.md).
+
+## Version 7: Background visibility and live styles
+
+The manifest adds background_visible, defaulting to true for versions 1–6. The retained four-channel background is preserved while hidden; rendering uses transparent backing when false. New documents begin with transparent raster content over white visible backing; existing source pixels are unchanged. Four additional typed Effect variants preserve BevelEmboss, Satin, GradientOverlay and PatternOverlay parameters. Current saves require a v7-capable reader. The Paint subset stores effective backing only; export reports hidden retained backing as unsupported state and asks for complete native preservation. See [layer validation](LAYER_EFFECTS_PANEL_VALIDATION.md).

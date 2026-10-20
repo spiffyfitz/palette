@@ -29,6 +29,7 @@ pub enum Edit {
         mask: bool,
     },
     MaskFromSelection,
+    MergeLayers(Vec<u64>),
     InvertMask,
     ToggleMask,
     DeleteMask,
@@ -219,6 +220,7 @@ impl PaletteApp {
             Edit::Feather { mask: true, .. } => "Feather layer mask",
             Edit::Feather { mask: false, .. } => "Feather selection",
             Edit::MaskFromSelection => "Add layer mask",
+            Edit::MergeLayers(_) => "Merge layers",
             Edit::InvertMask => "Invert layer mask",
             Edit::ToggleMask => "Toggle layer mask",
             Edit::DeleteMask => "Delete layer mask",
@@ -252,6 +254,9 @@ impl PaletteApp {
         std::thread::spawn(move || {
             let result = (|| {
                 let changed = match operation {
+                    Edit::MergeLayers(ids) => {
+                        palette_core::layers::merge_selected(&mut document, &ids, &|| false)?
+                    }
                     Edit::Rectangle(rect, mode) => {
                         let incoming = editing::rectangle(document.width, document.height, rect);
                         palette_core::selection::apply_region(

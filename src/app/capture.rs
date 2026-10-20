@@ -1,6 +1,7 @@
 //! Reproducible native UI capture scenes. Scene selection is a debug-build
 //! command-line diagnostic and is never part of the editor's visible workflow.
 use super::*;
+mod layer_scenes;
 
 /// Original procedural comparison scene; no third-party or user photos are fixtures.
 fn landscape_capture(warm: bool) -> Raster {
@@ -59,6 +60,11 @@ impl PaletteApp {
 
     pub(super) fn prepare_capture(&mut self) {
         if self.screenshot.is_none() {
+            return;
+        }
+        if let Some(scene) = self.capture.scene.clone()
+            && self.prepare_layer_capture(&scene)
+        {
             return;
         }
         match self.capture.scene.as_deref() {

@@ -55,10 +55,7 @@ fn painting_through_ui_at_75_percent_is_undoable_and_layer_local() {
     frame(&mut app, &ctx, vec![Event::PointerMoved(end)]);
     frame(&mut app, &ctx, vec![pointer(end, false)]);
     assert!(app.current().document.active().source.get(50, 10)[3] > 200);
-    assert_eq!(
-        app.current().document.layers[0].source.get(50, 10),
-        [255; 4]
-    );
+    assert_eq!(app.current().document.layers[0].source.get(50, 10), [0; 4]);
     app.current_mut().undo();
     assert_eq!(app.current().document.active().source.get(50, 10), [0; 4]);
     app.current_mut().redo();
@@ -103,7 +100,7 @@ fn tab_state_and_unsaved_close_are_independent() {
     );
     app.sessions[0].undo();
     assert!(!app.sessions[0].modified());
-    assert_eq!(app.sessions[1].document.active().source.get(0, 0), [255; 4]);
+    assert_eq!(app.sessions[1].document.active().source.get(0, 0), [0; 4]);
 }
 
 #[test]
@@ -433,10 +430,7 @@ fn selection_fill_move_crop_workflow_through_fractional_zoom_pointer_input() {
         [255, 0, 0, 255]
     );
     assert_eq!(app.current().document.active().source.get(9, 20), [0; 4]);
-    assert_eq!(
-        app.current().document.layers[0].source.get(20, 20),
-        [255; 4]
-    );
+    assert_eq!(app.current().document.layers[0].source.get(20, 20), [0; 4]);
     app.tool = Tool::Select;
     let end = image_position(&app, [60.5, 40.5]);
     frame(
@@ -516,7 +510,7 @@ fn a_late_worker_result_cannot_overwrite_new_edits() {
         app.current().document.active().source.get(0, 0),
         [0, 0, 255, 255]
     );
-    assert_eq!(app.current().document.active().source.get(1, 0), [255; 4]);
+    assert_eq!(app.current().document.active().source.get(1, 0), [0; 4]);
     assert!(app.message.contains("cancelled"));
 }
 
@@ -1840,7 +1834,7 @@ fn scoped_label_bounds(
     // content. Measure stable geometry, and clear texture deltas before a test
     // assertion can unwind (epaint intentionally panics on unhandled deltas).
     let mut previous = None;
-    for _ in 0..6 {
+    for _ in 0..24 {
         let input = RawInput {
             screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1386., 963.))),
             ..Default::default()
@@ -6242,4 +6236,5 @@ mod makeup;
 
 mod harmonization;
 mod landscape;
+mod layer_panel;
 mod photo_restoration;

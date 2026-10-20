@@ -516,6 +516,9 @@ impl PaletteApp {
                                         self.brush.color = [rgb[0], rgb[1], rgb[2], 255]
                                     }
                                     ColorTarget::Background => self.background = color,
+                                    ColorTarget::CanvasBackground => {
+                                        unreachable!("canvas backing uses its own editor")
+                                    }
                                 }
                             }
                             if response.secondary_clicked() {
@@ -541,6 +544,9 @@ impl PaletteApp {
                                         self.brush.color = color.to_srgba_unmultiplied()
                                     }
                                     ColorTarget::Background => self.background = color,
+                                    ColorTarget::CanvasBackground => {
+                                        unreachable!("canvas backing uses its own editor")
+                                    }
                                 }
                             }
                         } else {

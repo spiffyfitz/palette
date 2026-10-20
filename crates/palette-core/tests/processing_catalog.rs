@@ -614,7 +614,7 @@ fn rounded_stroke_contours_differ_from_square_and_old_v4_projects_keep_square_co
     let path = dir.path().join("stroke.palette");
     io::save_project(&path, &doc).unwrap();
     let bytes = std::fs::read(&path).unwrap();
-    assert_eq!(&bytes[8..12], &6u32.to_le_bytes());
+    assert_eq!(&bytes[8..12], &7u32.to_le_bytes());
     let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
     let mut manifest: serde_json::Value = serde_json::from_slice(&bytes[16..16 + len]).unwrap();
     manifest["layers"][0]["effects"][0]["effect"]["Stroke"]

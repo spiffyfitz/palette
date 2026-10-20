@@ -64,7 +64,7 @@ fn detected_animation_and_page_notices_match_the_imported_pixels_and_survive_mis
 #[test]
 fn version_one_migrates_to_current_without_losing_editable_state() {
     let dir = tempfile::tempdir().unwrap();
-    let mut doc = Document::new(130, 90).unwrap();
+    let mut doc = Document::from_raster(Raster::new(130, 90, [255; 4]).unwrap());
     doc.add_layer();
     doc.active_mut().source.set(129, 89, [10, 30, 50, 128]);
     doc.active_mut().offset = [-2, 3];
@@ -79,6 +79,10 @@ fn version_one_migrates_to_current_without_losing_editable_state() {
     let legacy = dir.path().join("legacy.palette");
     let mut metadata = serde_json::to_value(&doc).unwrap();
     metadata.as_object_mut().unwrap().remove("background");
+    metadata
+        .as_object_mut()
+        .unwrap()
+        .remove("background_visible");
     metadata.as_object_mut().unwrap().remove("metadata"); // Genuine old schema.
     let mut file = fs::File::create(&legacy).unwrap();
     file.write_all(b"PALETTE\0\x01\0\0\0").unwrap();
@@ -89,7 +93,7 @@ fn version_one_migrates_to_current_without_losing_editable_state() {
     assert!(migrated == doc);
     let current = dir.path().join("current.palette");
     io::save_project(&current, &migrated).unwrap();
-    assert_eq!(&fs::read(&current).unwrap()[8..12], &6u32.to_le_bytes());
+    assert_eq!(&fs::read(&current).unwrap()[8..12], &7u32.to_le_bytes());
     assert!(io::open(&current).unwrap() == doc);
     assert!(
         io::open(&legacy).unwrap() == doc,
@@ -154,12 +158,16 @@ fn current_project_rejects_truncation_bombs_bad_references_corruption_and_unknow
 fn version_two_defaults_missing_backing_to_transparent_then_saves_current_version() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("v2.palette");
-    let doc = Document::new(5, 4).unwrap();
+    let doc = Document::from_raster(Raster::new(5, 4, [255; 4]).unwrap());
     io::save_project(&path, &doc).unwrap();
     let bytes = fs::read(&path).unwrap();
     let length = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
     let mut manifest: serde_json::Value = serde_json::from_slice(&bytes[16..16 + length]).unwrap();
     manifest.as_object_mut().unwrap().remove("background");
+    manifest
+        .as_object_mut()
+        .unwrap()
+        .remove("background_visible");
     let json = serde_json::to_vec(&manifest).unwrap();
     let mut v2 = b"PALETTE\0".to_vec();
     v2.extend_from_slice(&2u32.to_le_bytes());
@@ -171,7 +179,7 @@ fn version_two_defaults_missing_backing_to_transparent_then_saves_current_versio
     assert!(migrated == doc);
     assert_eq!(fs::read(&path).unwrap(), v2);
     io::save_project(&path, &migrated).unwrap();
-    assert_eq!(&fs::read(&path).unwrap()[8..12], &6u32.to_le_bytes());
+    assert_eq!(&fs::read(&path).unwrap()[8..12], &7u32.to_le_bytes());
 }
 
 #[test]

@@ -27,6 +27,8 @@ struct Manifest {
     height: u32,
     #[serde(default)]
     background: [u8; 4],
+    #[serde(default = "visible_background")]
+    background_visible: bool,
     active_layer: u64,
     next_id: u64,
     layers: Vec<LayerRecord>,
@@ -36,6 +38,9 @@ struct Manifest {
     icc: usize,
     exif: usize,
     asset_lengths: Vec<usize>,
+}
+fn visible_background() -> bool {
+    true
 }
 #[derive(Serialize, Deserialize)]
 struct RasterRecord {
@@ -195,6 +200,7 @@ pub(super) fn write(file: &mut File, doc: &Document) -> Result<(), FileError> {
         height: doc.height,
         active_layer: doc.active_layer,
         background: doc.background,
+        background_visible: doc.background_visible,
         next_id: doc.next_id,
         layers,
         selection: doc.selection.as_ref().map(|m| assets.mask(m)),
@@ -546,6 +552,7 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
         layers,
         active_layer: m.active_layer,
         background: m.background,
+        background_visible: m.background_visible,
         next_id: m.next_id,
         selection: m.selection.map(mask),
         selection_base: m.selection_base.map(mask),

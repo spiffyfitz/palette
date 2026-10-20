@@ -17,12 +17,23 @@ impl PaletteApp {
         });
     }
     pub(crate) fn edit_color(&mut self, target: ColorTarget) {
+        if target == ColorTarget::CanvasBackground {
+            if self.edit_pending || !self.finish_inline_text() {
+                return;
+            }
+            self.cancel_processing();
+            self.current_mut().end_gesture();
+        }
         let color = match target {
             ColorTarget::Foreground => self.brush.color,
             ColorTarget::Background => self.background.to_srgba_unmultiplied(),
+            ColorTarget::CanvasBackground => self.current().document.background,
         };
-        self.interface.color_editor =
-            Some(ColorEditor::new(target, [color[0], color[1], color[2]]));
+        let mut draft = ColorEditor::new(target, [color[0], color[1], color[2]]);
+        if target == ColorTarget::CanvasBackground {
+            draft.document = Some((self.current().id, self.current().generation));
+        }
+        self.interface.color_editor = Some(draft);
     }
     pub(super) fn appearance_windows(&mut self, ctx: &Context) {
         self.rotation_window(ctx);
@@ -134,7 +145,11 @@ impl PaletteApp {
                     .max_height((ctx.content_rect().height() - 150.0).max(200.0))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.heading("Edit colors");
+                        ui.heading(if draft.target == ColorTarget::CanvasBackground {
+                            "Background color"
+                        } else {
+                            "Edit colors"
+                        });
                         ui.add_space(16.0);
                         if draft.field.is_none() {
                             let pixels = (0..128)
@@ -281,6 +296,17 @@ impl PaletteApp {
                 }
                 ColorTarget::Background => {
                     self.background = Color32::from_rgb(draft.rgb[0], draft.rgb[1], draft.rgb[2])
+                }
+                ColorTarget::CanvasBackground => {
+                    if draft.document == Some((self.current().id, self.current().generation)) {
+                        self.current_mut().command("Background color", |doc| {
+                            doc.background = [draft.rgb[0], draft.rgb[1], draft.rgb[2], 255];
+                            doc.background_visible = true;
+                        });
+                    } else {
+                        self.message =
+                            "Background color edit cancelled because its document changed".into();
+                    }
                 }
             }
         } else if !cancel && !(result.is_top_modal && ctx.input(|i| i.key_pressed(Key::Escape))) {

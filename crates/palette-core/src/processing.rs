@@ -38,6 +38,7 @@ mod round;
 mod sketch;
 mod skin;
 mod studio;
+mod styles;
 mod stylize;
 mod video;
 mod zoom;
@@ -64,6 +65,10 @@ pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
 pub enum Kind {
+    BevelEmboss,
+    Satin,
+    GradientOverlay,
+    PatternOverlay,
     SmartPortrait,
     LandscapeMixer,
     PhotoRestoration,
@@ -278,6 +283,10 @@ const CENTER_Y: Parameter = number("center_y", "Origin Y", 0., 1., 0.001);
 const SIZE: Parameter = number("size", "Size (px)", 0., 64., 0.1);
 /// Implemented operations only; unfinished catalog entries are never registered.
 pub const REGISTRY: &[Descriptor] = &[
+    styles::BEVEL,
+    styles::SATIN,
+    styles::GRADIENT,
+    styles::PATTERN,
     Descriptor {
         kind: Kind::ColorBalance,
         label: "Color Balance",
@@ -2410,7 +2419,7 @@ pub const REGISTRY: &[Descriptor] = &[
     },
     Descriptor {
         kind: Kind::SmartPortrait,
-        label: "Smart Portrait",
+        label: "Smart Portrait (Beta)",
         category: "Neural Filters",
         parameters: &[
             number("strength", "Strength", 0., 1., 0.01),
@@ -2428,7 +2437,7 @@ pub const REGISTRY: &[Descriptor] = &[
     },
     Descriptor {
         kind: Kind::LandscapeMixer,
-        label: "Landscape Mixer",
+        label: "Landscape Mixer (Beta)",
         category: "Neural Filters",
         parameters: &[
             number("strength", "Strength", 0., 1., 0.01),
@@ -2534,7 +2543,13 @@ impl Kind {
     }
     /// Construct valid editable defaults without allocating a document ID.
     pub fn default_operation(self) -> Operation {
+        if let Some(effect) = styles::default(self) {
+            return Operation::Effect(effect);
+        }
         match self {
+            Self::BevelEmboss | Self::Satin | Self::GradientOverlay | Self::PatternOverlay => {
+                unreachable!("handled style")
+            }
             Self::SmartPortrait => Operation::Filter(Filter::SmartPortrait {
                 method: crate::document::PortraitMethod::ExpressiveMouthV2,
                 strength: 1.,
@@ -3537,6 +3552,10 @@ impl Operation {
             Self::Filter(Filter::Posterize { .. }) => Kind::Posterize,
             Self::Filter(Filter::BoxBlur { .. }) => Kind::BoxBlur,
             Self::Filter(Filter::Median { .. }) => Kind::Median,
+            Self::Effect(Effect::BevelEmboss { .. }) => Kind::BevelEmboss,
+            Self::Effect(Effect::Satin { .. }) => Kind::Satin,
+            Self::Effect(Effect::GradientOverlay { .. }) => Kind::GradientOverlay,
+            Self::Effect(Effect::PatternOverlay { .. }) => Kind::PatternOverlay,
             Self::Effect(Effect::InnerShadow { .. }) => Kind::InnerShadow,
             Self::Effect(Effect::InnerGlow { .. }) => Kind::InnerGlow,
             Self::Effect(Effect::Stroke { .. }) => Kind::Stroke,
@@ -3556,6 +3575,11 @@ impl Operation {
     }
     /// Read a registered parameter by its stable key.
     pub fn value(&self, key: &str) -> Option<Value> {
+        if let Self::Effect(e) = self
+            && let Some(v) = styles::value(e, key)
+        {
+            return Some(v);
+        }
         if let Self::Filter(f) = self
             && let Some(v) = portrait::value(f, key)
         {
@@ -4924,6 +4948,11 @@ impl Operation {
             }
         }
 
+        if let Self::Effect(e) = self
+            && styles::set(e, key, value)
+        {
+            return Ok(());
+        }
         if let Self::Filter(f) = self
             && adjustments::set(f, key, value)
         {
@@ -7147,6 +7176,11 @@ impl Operation {
     }
     /// Scale image-space parameters for a reduced-resolution preview.
     pub fn scaled(&self, scale: f32) -> Self {
+        if let Self::Effect(e) = self
+            && let Some(e) = styles::scaled(e, scale)
+        {
+            return Self::Effect(e);
+        }
         let mut result = self.clone();
         if let Self::Filter(Filter::PhotoRestoration { radius, method, .. }) = &mut result {
             let max = if *method == crate::document::PhotoRestorationMethod::DirectionalV1 {
@@ -7325,8 +7359,15 @@ impl Operation {
 /// Styles have transparent padding beyond the source; preflight it at validation
 /// rather than letting a render-worker allocation error become a panic.
 pub fn effect_padding(effect: &Effect) -> Option<u32> {
+    if let Some(pad) = styles::padding(effect) {
+        return pad;
+    }
     let (spread, size) = match effect {
         Effect::ColorOverlay { .. } => return None,
+        Effect::BevelEmboss { .. }
+        | Effect::Satin { .. }
+        | Effect::GradientOverlay { .. }
+        | Effect::PatternOverlay { .. } => unreachable!("handled style"),
         Effect::Stroke { width, .. } => return Some(width.ceil() as u32 + 2),
         Effect::DropShadow { spread, size, .. }
         | Effect::OuterGlow { spread, size, .. }

@@ -1586,8 +1586,106 @@ pub struct FilterInstance {
 }
 
 /// Implemented layer-style operations; new styles extend this versioned enum.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BevelStyle {
+    Inner,
+    Outer,
+    Emboss,
+    Pillow,
+}
+impl BevelStyle {
+    pub const ALL: [Self; 4] = [Self::Inner, Self::Outer, Self::Emboss, Self::Pillow];
+}
+/// Bounded analytic relief contours, independent of proprietary preset assets.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StyleContour {
+    Linear,
+    Rounded,
+    Ring,
+    Cone,
+}
+impl StyleContour {
+    pub const ALL: [Self; 4] = [Self::Linear, Self::Rounded, Self::Ring, Self::Cone];
+}
+/// Source-relative gradient geometry; centers stay normalized when resized.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GradientStyle {
+    Linear,
+    Radial,
+    Angle,
+    Reflected,
+    Diamond,
+}
+impl GradientStyle {
+    pub const ALL: [Self; 5] = [
+        Self::Linear,
+        Self::Radial,
+        Self::Angle,
+        Self::Reflected,
+        Self::Diamond,
+    ];
+}
+/// Original procedural layer patterns. No third-party pattern assets are used.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum LayerPattern {
+    Checker,
+    Stripes,
+    Dots,
+    Weave,
+}
+impl LayerPattern {
+    pub const ALL: [Self; 4] = [Self::Checker, Self::Stripes, Self::Dots, Self::Weave];
+}
+
+/// Live styles retain all parameters and never overwrite layer source pixels.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Effect {
+    BevelEmboss {
+        style: BevelStyle,
+        depth: f32,
+        size: f32,
+        soften: f32,
+        angle: f32,
+        altitude: f32,
+        down: bool,
+        highlight: [u8; 3],
+        highlight_opacity: f32,
+        shadow: [u8; 3],
+        shadow_opacity: f32,
+        contour: StyleContour,
+        texture: bool,
+        surface: SurfaceTexture,
+        texture_scale: f32,
+        texture_depth: f32,
+    },
+    Satin {
+        color: [u8; 3],
+        opacity: f32,
+        angle: f32,
+        distance: f32,
+        size: f32,
+        contour: StyleContour,
+        invert: bool,
+    },
+    GradientOverlay {
+        start_color: [u8; 3],
+        end_color: [u8; 3],
+        opacity: f32,
+        style: GradientStyle,
+        angle: f32,
+        scale: f32,
+        reverse: bool,
+        center: [f32; 2],
+    },
+    PatternOverlay {
+        color: [u8; 3],
+        background: [u8; 3],
+        opacity: f32,
+        pattern: LayerPattern,
+        tile_size: f32,
+        angle: f32,
+        offset: [f32; 2],
+    },
     /// Blend constant RGB through the layer's alpha silhouette.
     ColorOverlay { color: [u8; 3], opacity: f32 },
     DropShadow {
@@ -1662,6 +1760,9 @@ pub struct Document {
     /// Canvas backing color, separate from editable raster layers (HEIF iovl).
     #[serde(default)]
     pub background: [u8; 4],
+    /// Visibility is independent of the backing's original RGBA, including alpha.
+    #[serde(default = "default_background_visible")]
+    pub background_visible: bool,
     pub layers: Vec<Layer>,
     pub active_layer: u64,
     pub selection: Option<Coverage>,
@@ -1674,6 +1775,10 @@ pub struct Document {
     /// the editor's RGBA8/sRGB working interpretation; profiles are not applied.
     #[serde(default)]
     pub metadata: DocumentMetadata,
+}
+
+fn default_background_visible() -> bool {
+    true
 }
 
 /// Bounded original metadata, preserved independently from raster source data.
@@ -1742,8 +1847,11 @@ impl Document {
     }
     /// Create a white default background of the requested bounded dimensions.
     pub fn new(width: u32, height: u32) -> Result<Self, String> {
-        let source = Raster::new(width, height, [255; 4])?;
-        Ok(Self::from_raster(source))
+        let source = Raster::new(width, height, [0; 4])?;
+        let mut document = Self::from_raster(source);
+        document.background = [255; 4];
+        document.active_mut().name = "Layer 1".into();
+        Ok(document)
     }
 
     /// Wrap a raster as an editable single-layer document.
@@ -1752,6 +1860,7 @@ impl Document {
             width: source.width(),
             height: source.height(),
             background: [0; 4],
+            background_visible: true,
             layers: vec![Layer {
                 id: 1,
                 name: "Background".into(),
@@ -1778,6 +1887,15 @@ impl Document {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    /// Effective canvas backing used by composition and compatible exports.
+    pub fn backing_color(&self) -> [u8; 4] {
+        if self.background_visible {
+            self.background
+        } else {
+            [0; 4]
+        }
     }
 
     /// Return the active layer; requires a validated document.
@@ -1923,7 +2041,13 @@ impl Document {
                         .div_ceil(u64::from(crate::raster::TILE));
                     let h = u64::from(layer.source.height() + 2 * pad)
                         .div_ceil(u64::from(crate::raster::TILE));
-                    let planes = if matches!(
+                    let planes = if let Effect::BevelEmboss { style, .. } = effect.effect {
+                        if matches!(style, BevelStyle::Inner | BevelStyle::Outer) {
+                            2
+                        } else {
+                            4
+                        }
+                    } else if matches!(
                         effect.effect,
                         Effect::Stroke {
                             position: StrokePosition::Center,

@@ -260,7 +260,7 @@ impl Renderer {
         {
             return Err("Composite region is outside the canvas".into());
         }
-        let mut result = Raster::new(region.width, region.height, document.background)?;
+        let mut result = Raster::new(region.width, region.height, document.backing_color())?;
         for layer in document
             .layers
             .iter()

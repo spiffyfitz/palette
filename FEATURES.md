@@ -83,7 +83,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
-- [x] Native v6 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4/v5 migration.
+- [x] Native v7 binary assets with tile sharing, canvas backing color, bounded decoding, preserved ICC/Exif bytes, original feather contours and v1/v2/v3/v4/v5/v6 migration.
 - [ ] Color-managed working profiles, richer metadata UI and future migrations.
 - [x] Explicit handling of unsupported features in `.paint` export: native backup first, cancellable compatibility dialog and separate baked copy.
 - [x] Persistent recent files, image-as-layer import, periodic recovery snapshots and restore/discard workflow.
@@ -119,11 +119,15 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 150 implemented operations (144 filters and six styles).
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 154 implemented operations (144 filters and ten styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
-- [ ] Filter Gallery and remaining layer styles, including bevel, satin and gradient/pattern overlays.
+- [x] Ten live layer styles, including Bevel/Emboss (contour and procedural texture), Satin, Gradient Overlay and Pattern Overlay. See [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md) for scope.
+- [x] Ctrl/Command/Shift layer multiselection and undoable selected-layer merge, with explicit OK/Cancel before baking live processing.
+- [x] Active-layer list ordered blending mode, effects, filters; individual toggle/edit/reorder/duplicate/remove.
+- [x] Docked canvas Background swatch, separate transparent raster content, undoable color/visibility, native preservation.
+- [ ] Filter Gallery; advanced Photoshop style controls and custom imported patterns/contours.
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
 - [x] Levels, five-point Curves, Motion Blur, High Pass, Mosaic and seeded monochrome/color Uniform/Gaussian Add Noise.
 - [x] Despeckle, Dust & Scratches, Reduce Noise with separate luminance/chroma controls, Pinch, Spherize, Ripple, Sharpen and Sharpen More.
@@ -190,6 +194,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
   stronger endpoints, lip separation, source teeth/procedural dental arch,
   frown closure, directional face shading, all/largest face targeting and live native/mask/history
   preservation. Generative age/hair/gaze/pose is not supplied.
+  Labeled (Beta) in filter menus, toolbars and layer lists.
 - [ ] Smart Portrait synthesis and remaining limitations of the partial first-six counterparts; remaining learned later-group capabilities and Filter Gallery remain deferred.
 
 - [x] Local Depth Blur: bundled inverse-depth model, click/manual focus, focal
@@ -220,6 +225,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
   Method is hidden while legacy rendering remains readable.
   V1 rendering remains available; learned scene synthesis and semantic masks are
   not implemented.
+  Labeled (Beta) in filter menus, toolbars and layer lists.
 - [x] Photo Restoration: legacy thin-scratch preservation plus multiscale curved/wide
   cracks, 0–200% Strength, 1–64 px radius, polarity, optional local facial-detail
   protection, harmonic fill, damage overlay and editable native/mask/history

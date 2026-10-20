@@ -29,7 +29,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Move whole layers through Selection > Move active layer or the layer context menu: drag with live rendering, Shift to constrain an axis, arrows to nudge (Shift for ten pixels), Escape to cancel. One drag is one undo command; pixels, masks and filters remain intact.
 - Horizontal/vertical canvas scrollbars appear only on overflowing axes, in workspace gutters clear of the layers panel. Drag their thumbs, click the rails, or use arrows/Page Up/Page Down/Home/End while focused. Fit removes the bars.
 - Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; 100% default zoom with slider snapping at actual size, fit and canvas corner resize.
-- Native open/save dialogs, file drop, atomic `.palette` v6 saving with shared binary assets and migration of existing v1/v2/v3/v4/v5 projects. PNG, JPEG, BMP, GIF, TIFF, WebP and still AVIF have real codec tests. AVIF export has quality/speed options and alpha.
+- Native open/save dialogs, file drop, atomic `.palette` v7 saving with shared binary assets and migration of existing v1/v2/v3/v4/v5/v6 projects. PNG, JPEG, BMP, GIF, TIFF, WebP and still AVIF have real codec tests. AVIF export has quality/speed options and alpha.
 - File > Import to canvas adds a raster as a separate layer with one undo command. Recent files persist across runs. Recovery copies of committed edits are made in the background approximately every 30 seconds; the next launch offers Restore, Discard or Later without overwriting original files.
 - Three original icon buttons beneath layer Opacity open Filters, Effects and Blending mode. Filters/effects use a compact toolbar at the top of the canvas, matching the Text/Selection bar height. Choose a stack instance, Add/Edit, toggle On, or use the … menu to reorder, duplicate, remove or manage a filter mask. The blend icon opens the existing mode catalog.
 - Filter > Blur > Gaussian Blur opens the same canvas toolbar with precise radius input. Parameter edits preview directly on the image; choose other settings from the parameter selector. Apply commits editable settings, Cancel/Escape restores the committed view, and Preview switches comparison on/off. Invert and Brightness share the nondestructive filter stack. [Layer control validation](docs/LAYER_PROCESSING_UI_VALIDATION.md).
@@ -158,7 +158,7 @@ parameter bar includes the reference picker, Strength, Luminance, Contrast and
 Saturation. This is conventional local Lab matching, not learned relighting.
 [Validation](docs/HARMONIZATION_VALIDATION.md).
 
-**Filter → Neural Filters → Smart Portrait** adds local smile/frown, surprise,
+**Filter → Neural Filters → Smart Portrait (Beta)** adds local smile/frown, surprise,
 anger and directional face shading, with all/largest face targeting and live
 nondestructive controls. Expression endpoints are stronger; high Happiness opens
 the lips and reuses visible teeth or renders a shaded procedural dental arch.
@@ -166,7 +166,7 @@ Negative Happiness narrows an existing smile. It reuses existing face landmarks;
 age/hair/gaze/head-pose synthesis remains unavailable.
 [Scope and validation](docs/SMART_PORTRAIT_VALIDATION.md).
 
-**Filter → Neural Filters → Landscape Mixer** now uses edge-aware sky replacement
+**Filter → Neural Filters → Landscape Mixer (Beta)** now uses edge-aware sky replacement
 around ridges/vegetation and transfers reference terrain colours while preserving
 source geometry. Sky placement keeps cloud proportions with one horizon-aligned
 cover crop. A compact fixed-size reference view supports horizon dragging;
@@ -185,3 +185,5 @@ extends to 200%, with a 1–64 px repair radius, damage polarity, a detection ov
 and optional local eye/brow/lip protection. Existing v1 saves retain their rendering.
 This conventional restoration preserves source pixels and does not reconstruct
 missing faces. [Current scope and verification](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md).
+
+Layer workflows now include ten live effect families, multi-selection with an undoable confirmed merge, an ordered active-layer stack and a separate docked Background swatch. See [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md). Native saves use version 7 and read versions 1–6.
