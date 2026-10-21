@@ -20,6 +20,8 @@ Neural Filters and AVIF support were intentionally removed on 2026-10-20 to redu
 
 ## Working now
 
+Menus, Save/Undo/Redo and open-document tabs share a compact top row. Overflowing tabs scroll horizontally, keyboard switching reveals the active tab, and dragging near an edge scrolls to more tabs. Native window controls retain their platform placement.
+
 New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properties > Default uses the same size. Use Fit or pan when the canvas is wider than the workspace.
 
 - Paint-style dark ribbon, split buttons, anchored flyouts, hover/press animation, compact document tabs, animated layers tray, three contextual brush controls and status bar.

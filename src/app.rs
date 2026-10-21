@@ -158,6 +158,9 @@ pub struct PaletteApp {
     file_rx: mpsc::Receiver<FileResult>,
     thumbnails: HashMap<(u64, u64), (palette_core::document::Layer, TextureHandle)>,
     pub canvas_rect: egui::Rect,
+    /// Last revealed tab and logical content/viewport widths. Layout changes
+    /// reveal it again; ordinary wheel scrolling must retain the user's offset.
+    tab_in_view: Option<(u64, f32, f32)>,
     pub selection_toolbar_rect: egui::Rect,
     pub(crate) move_tool_rect: egui::Rect,
     pub canvas_scrollbars: [Option<egui::Rect>; 2],
@@ -312,6 +315,7 @@ impl PaletteApp {
             file_rx,
             thumbnails: HashMap::new(),
             canvas_rect: egui::Rect::NOTHING,
+            tab_in_view: None,
             selection_toolbar_rect: egui::Rect::NOTHING,
             move_tool_rect: egui::Rect::NOTHING,
             canvas_scrollbars: [None, None],
@@ -1151,14 +1155,6 @@ impl PaletteApp {
                     .inner_margin(egui::Margin::symmetric(8, 3)),
             )
             .show(ui, |ui| self.menus(ui));
-        egui::Panel::top("tabs")
-            .exact_size(31.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(31, 31, 39))
-                    .inner_margin(egui::Margin::symmetric(10, 2)),
-            )
-            .show(ui, |ui| self.tabs(ui));
         let mut ribbon_expanded = !self.interface.ribbon_collapsed;
         let mut status_visible = self.interface.status;
         egui::Panel::top("ribbon")

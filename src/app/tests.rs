@@ -2,6 +2,7 @@ use super::*;
 mod gpu;
 mod layer_movement;
 mod move_tool;
+mod tabs;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 
 fn test_app(ctx: &Context) -> PaletteApp {
@@ -81,7 +82,15 @@ fn tab_state_and_unsaved_close_are_independent() {
     // Close the inactive, modified tab through its hover-only button. This must
     // prompt for that document without first activating it or losing its state.
     frame(&mut app, &ctx, vec![]);
-    frame(&mut app, &ctx, vec![Event::PointerMoved(pos2(45.0, 47.0))]);
+    let first_tab = ctx
+        .read_response(egui::Id::unique(("document-tab", first)))
+        .expect("first document tab")
+        .rect;
+    frame(
+        &mut app,
+        &ctx,
+        vec![Event::PointerMoved(first_tab.center())],
+    );
     let close_button = ctx
         .read_response(egui::Id::unique(("tab-close", first)))
         .expect("hover close control")
@@ -2148,11 +2157,11 @@ fn selection_submenus_and_blend_dropdown_change_real_settings() {
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
     // Chevron position from the reference-resolution ribbon capture.
-    click_ui(&mut app, &ctx, pos2(39., 117.));
+    click_ui(&mut app, &ctx, pos2(39., 86.));
     let wand = label_position(&mut app, &ctx, "      Magic Wand");
     click_ui(&mut app, &ctx, wand);
     assert_eq!(app.tool, Tool::Wand);
-    click_ui(&mut app, &ctx, pos2(39., 117.));
+    click_ui(&mut app, &ctx, pos2(39., 86.));
     let options = label_position(&mut app, &ctx, "Magic Wand options");
     click_ui(&mut app, &ctx, options);
     let contiguous = label_position(&mut app, &ctx, "Contiguous");
@@ -2485,7 +2494,7 @@ fn freeform_selection_is_available_through_the_ribbon_and_bounds_long_drags() {
     let mut app = test_app(&ctx);
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
-    click_ui(&mut app, &ctx, pos2(39., 117.));
+    click_ui(&mut app, &ctx, pos2(39., 86.));
     let freeform = label_position(&mut app, &ctx, "      Freeform selection");
     click_ui(&mut app, &ctx, freeform);
     assert_eq!(app.tool, Tool::Lasso);
@@ -3076,7 +3085,7 @@ fn selection_brush_options_are_reachable_precise_and_independent_of_paint_and_ot
     for _ in 0..3 {
         frame(&mut app, &ctx, vec![]);
     }
-    click_ui(&mut app, &ctx, pos2(39., 117.));
+    click_ui(&mut app, &ctx, pos2(39., 86.));
     let tool = label_position(&mut app, &ctx, "      Selection brush");
     click_ui(&mut app, &ctx, tool);
     assert_eq!(app.tool, Tool::SelectBrush);

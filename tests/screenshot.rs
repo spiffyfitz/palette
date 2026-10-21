@@ -16,6 +16,7 @@ fn main_window_matches_reviewed_baseline() {
 #[ignore = "requires an interactive Windows desktop and the reviewed UI scene baselines"]
 fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
     for scene in [
+        "tabs-overflow",
         "file-menu",
         "brushes",
         "colors",

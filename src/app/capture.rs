@@ -25,6 +25,17 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("tabs-overflow") => {
+                self.current_mut().name = "Mountain study 01.png".into();
+                for number in 2..=16 {
+                    self.new_document();
+                    self.current_mut().name = format!("Mountain study {number:02}.png");
+                }
+                self.active = 8;
+                self.current_mut().command("Capture dirty tab", |doc| {
+                    doc.active_mut().source.set(0, 0, [255, 0, 0, 255]);
+                });
+            }
             Some(
                 "processing-blur"
                 | "processing-shadow"

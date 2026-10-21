@@ -326,6 +326,13 @@ impl PaletteApp {
                     {
                         self.interface.ribbon_collapsed = !self.interface.ribbon_collapsed;
                     }
+                    // Allocate only the remaining width: overflowing tabs may
+                    // scroll, but must never push menus or the ribbon toggle away.
+                    ui.allocate_ui_with_layout(
+                        vec2(ui.available_width(), 28.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| self.tabs(ui),
+                    );
                 });
             });
     }
@@ -334,39 +341,105 @@ impl PaletteApp {
         let mut close = None;
         let mut reorder = None;
         let mut activate = None;
-        egui::ScrollArea::horizontal()
+        let active_id = self.current().id;
+        let reveal_active = self.tab_in_view.is_none_or(|(id, _, _)| id != active_id);
+        let mut active_rect = egui::Rect::NOTHING;
+        let edge_scroll_id = egui::Id::unique("document-tabs-edge-scroll");
+        let edge_offset = ui.ctx().data_mut(|d| d.remove_temp::<f32>(edge_scroll_id));
+        let mut area = egui::ScrollArea::horizontal()
             .id_salt("tabs-scroll")
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for (index, session) in self.sessions.iter().enumerate() {
-                        let label = format!(
-                            "{}{}",
-                            session.name,
-                            if session.modified() { " •" } else { "" }
-                        );
-                        let (response, close_clicked) =
-                            document_tab(ui, session.id, &label, index == self.active);
-                        if response.clicked() && !close_clicked {
-                            activate = Some(index);
-                        }
-                        response.dnd_set_drag_payload(TabDrag(session.id));
-                        if let Some(source) = response.dnd_release_payload::<TabDrag>() {
-                            reorder = Some((source.0, session.id));
-                        }
-                        if close_clicked {
-                            close = Some(session.id);
-                        }
-                        ui.add_space(5.0);
-                    }
-                    if ui
-                        .small_button("+")
-                        .on_hover_text("New document (Ctrl+N)")
-                        .clicked()
-                    {
-                        activate = Some(self.sessions.len());
-                    }
-                });
+            .max_height(28.0)
+            .min_scrolled_height(28.0)
+            .auto_shrink([false, false])
+            .scroll_source(egui::scroll_area::ScrollSource {
+                drag: egui::scroll_area::DragScroll::Never,
+                ..Default::default()
             });
+        if let Some(offset) = edge_offset {
+            area = area.horizontal_scroll_offset(offset);
+        }
+        let scroll = area.show(ui, |ui| {
+            // A floating rail overlays the bottom of the fixed-height row
+            // instead of creating a second strip when documents overflow.
+            ui.horizontal_centered(|ui| {
+                for (index, session) in self.sessions.iter().enumerate() {
+                    let label = format!(
+                        "{}{}",
+                        session.name,
+                        if session.modified() { " •" } else { "" }
+                    );
+                    let (response, close_clicked) =
+                        document_tab(ui, session.id, &label, index == self.active);
+                    if session.id == active_id {
+                        active_rect = response.rect;
+                    }
+                    if reveal_active && session.id == active_id {
+                        response.scroll_to_me(Some(egui::Align::Center));
+                    }
+                    if response.clicked() && !close_clicked {
+                        activate = Some(index);
+                    }
+                    response.dnd_set_drag_payload(TabDrag(session.id));
+                    if let Some(source) = response.dnd_release_payload::<TabDrag>() {
+                        reorder = Some((source.0, session.id));
+                    }
+                    if close_clicked {
+                        close = Some(session.id);
+                    }
+                    ui.add_space(5.0);
+                }
+                if ui
+                    .small_button("+")
+                    .on_hover_text("New document (Ctrl+N)")
+                    .clicked()
+                {
+                    activate = Some(self.sessions.len());
+                }
+            });
+        });
+        // Font/DPI changes and egui's sizing pass can settle after activation.
+        // Recheck when layout changes, but never fight manual scrolling while
+        // the tab list and viewport retain the same size.
+        let content_width = scroll.content_size.x;
+        let viewport_width = scroll.inner_rect.width();
+        if self.tab_in_view.is_some_and(|(_, content, viewport)| {
+            (content - content_width).abs() > 1.0 || (viewport - viewport_width).abs() > 1.0
+        }) {
+            self.tab_in_view = None;
+            ui.ctx().request_repaint();
+        } else if reveal_active && scroll.inner_rect.contains(active_rect.center()) {
+            self.tab_in_view = Some((active_id, content_width, viewport_width));
+        }
+        ui.interact(
+            scroll.inner_rect,
+            egui::Id::unique("document-tabs-viewport"),
+            Sense::hover(),
+        );
+        // Keep offscreen destinations reachable while reordering a long list.
+        // Only the tab viewport scrolls; menus and window chrome stay fixed.
+        if egui::DragAndDrop::payload::<TabDrag>(ui.ctx()).is_some()
+            && let Some(pointer) = ui.input(|i| i.pointer.interact_pos())
+            && scroll.inner_rect.contains(pointer)
+        {
+            const EDGE_WIDTH: f32 = 24.0;
+            const SCROLL_SPEED: f32 = 360.0;
+            let direction = if pointer.x < scroll.inner_rect.left() + EDGE_WIDTH {
+                -1.0
+            } else if pointer.x > scroll.inner_rect.right() - EDGE_WIDTH {
+                1.0
+            } else {
+                0.0
+            };
+            let current_offset = scroll.state.clamped_offset().x;
+            let max_offset = (scroll.content_size.x - scroll.inner_rect.width()).max(0.0);
+            let offset = (current_offset
+                + direction * SCROLL_SPEED * ui.input(|i| i.stable_dt.min(0.05)))
+            .clamp(0.0, max_offset);
+            if offset != current_offset {
+                ui.ctx().data_mut(|d| d.insert_temp(edge_scroll_id, offset));
+                ui.ctx().request_repaint();
+            }
+        }
         if let Some(index) = activate {
             if !self.finish_inline_text() {
                 self.after_text = Some(if index == self.sessions.len() {
@@ -550,7 +623,7 @@ fn document_tab(ui: &mut Ui, id: u64, label: &str, selected: bool) -> (egui::Res
             .x
             .min(200.0);
         let mut close_rect = egui::Rect::NOTHING;
-        let response = egui::Frame::new()
+        let frame = egui::Frame::new()
             .fill(if selected {
                 ui.visuals().selection.bg_fill
             } else {
@@ -565,8 +638,12 @@ fn document_tab(ui: &mut Ui, id: u64, label: &str, selected: bool) -> (egui::Res
                     close_rect = ui.allocate_exact_size(vec2(18.0, 20.0), Sense::hover()).0;
                 });
             })
-            .response
-            .interact(Sense::click_and_drag());
+            .response;
+        let response = ui.interact(
+            frame.rect,
+            egui::Id::unique(("document-tab", id)),
+            Sense::click_and_drag(),
+        );
         response.widget_info(|| {
             egui::WidgetInfo::selected(egui::Role::Tab, ui.is_enabled(), selected, label)
         });

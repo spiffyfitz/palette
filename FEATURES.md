@@ -15,6 +15,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Buildable native eframe/wgpu Windows executable and actual launch.
 - [x] Dark menus/ribbon, Paint-style grouping, original geometric icons.
 - [x] Slim document tabs: create, activate, reorder, integrated hover-only close, dirty state, shortcuts.
+- [x] Shared menu/action/tab row with bounded horizontal overflow, wheel/trackpad scrolling, active-tab reveal and drag-edge scrolling; native title-bar controls remain OS-owned.
 - [x] Independent documents, layers, zoom and undo history.
 - [x] Functional native file dialogs, file drops, background image open/export.
 - [x] PNG/JPEG/BMP/GIF/TIFF/WebP codec round trips.

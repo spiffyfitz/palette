@@ -66,6 +66,8 @@ Commitment inserts the Fontdue raster as a topmost layer in one undo command. Th
 
 ## Interface behavior
 
+Menus, Save/Undo/Redo and document tabs share one 34-point command row. The fixed controls retain their positions; tabs occupy the remaining width before the ribbon toggle. Overflow stays inside a horizontal scroll viewport with a floating rail. Newly activated tabs scroll into view; the remembered content/viewport widths invalidate that reveal when DPI, font layout or window size changes, without undoing manual scrolling. Dragging a tab near a viewport edge scrolls toward offscreen drop destinations. Window decorations remain native, so left- or right-side window controls never overlap the application row.
+
 `interface` owns logical-point metrics, theme and transient presentation state. `ribbon` uses original vector controls with short hover/press transitions, split-button flyouts and shared menu styling. Native egui popup placement handles anchors, nested menus, dismissal and available screen space. Menus use 32-point rows, rounded corners and soft shadows; animation timing approximates the supplied recording rather than reproducing WinUI exactly. The right layers tray animates its width and opacity over 180 ms, normally occupies 112 points, and expands to 180 for properties directly below the active thumbnail.
 
 `app::appearance` owns centered color and canvas-property transactions. OK changes drawing color or submits one undoable background bounds edit; Cancel/Escape leaves that state unchanged. Custom color slots are session-only preferences. On compact windows, dialog bodies scroll while footers stay reachable. View toggles change presentation without entering document history.

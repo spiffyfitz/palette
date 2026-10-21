@@ -24,6 +24,10 @@ fn main() -> eframe::Result {
     }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            // Leave all window controls to the OS/window manager. The command
+            // and document-tab row stays entirely inside the decorated client
+            // area on Windows, macOS and Linux, including left-side controls.
+            .with_decorations(true)
             .with_inner_size(window_size)
             .with_min_inner_size([780.0, 520.0])
             .with_title("Untitled — Palette"),
