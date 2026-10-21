@@ -12,7 +12,11 @@ cargo run --locked
 cargo run --locked -- path/to/image.png
 ```
 
-Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Command Line Tools. On Linux, install a C/C++ toolchain, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. NASM is not required: AVIF decoding uses rav1d's Rust fallback and encoding uses assembly-free rav1e. See [build notes](docs/BUILD.md) and the [dependency audit and compatibility patch](docs/DEPENDENCY_AUDIT.md).
+Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Command Line Tools. On Linux, install a C/C++ toolchain, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. Neural model runtimes, AVIF codecs and NASM are not required. See [build notes](docs/BUILD.md) and the [dependency audit](docs/DEPENDENCY_AUDIT.md).
+
+## Current scope
+
+Neural Filters and AVIF support were intentionally removed on 2026-10-20 to reduce dependencies, binary size and build requirements. All twelve operations formerly under Neural Filters are removed, including conventional approximations. PNG, JPEG, BMP, GIF, TIFF, WebP, `.paint` and `.palette` remain supported. Older projects containing a retired filter fail with an explicit diagnostic, including disabled filters; open them in an older build and remove or rasterize those filters before saving a compatible copy. No filter is silently discarded.
 
 ## Working now
 
@@ -29,7 +33,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Choose **Move** in the ribbon's Tools group: it moves selected pixels when a selection exists, otherwise the active layer. Drag anywhere on the canvas, Shift to constrain an axis, arrows to nudge (Shift for ten pixels), Escape to cancel. One drag is one undo command. Eligible raster selections and whole layers use cached GPU previews; selections with live processing retain CPU previews for correctness.
 - Horizontal/vertical canvas scrollbars appear only on overflowing axes, in workspace gutters clear of the layers panel. Drag their thumbs, click the rails, or use arrows/Page Up/Page Down/Home/End while focused. Fit removes the bars.
 - Pan with middle mouse or Space+drag; scroll to pan; Ctrl/Command+wheel to zoom around the pointer; 100% default zoom with slider snapping at actual size, fit and canvas corner resize.
-- Native open/save dialogs, file drop, atomic `.palette` v8 saving with shared binary assets and migration of existing v1/v2/v3/v4/v5/v6/v7 projects. PNG, JPEG, BMP, GIF, TIFF, WebP and still AVIF have real codec tests. AVIF export has quality/speed options and alpha.
+- Native open/save dialogs, file drop, atomic `.palette` v8 saving with shared binary assets and migration of existing v1/v2/v3/v4/v5/v6/v7 projects. PNG, JPEG, BMP, GIF, TIFF and WebP have real codec tests.
 - File > Import to canvas adds a raster as a separate layer with one undo command. Recent files persist across runs. Recovery copies of committed edits are made in the background approximately every 30 seconds; the next launch offers Restore, Discard or Later without overwriting original files.
 - Three original icon buttons beneath layer Opacity open Filters, Effects and Blending mode. Filters/effects use a compact toolbar at the top of the canvas, matching the Text/Selection bar height. Choose a stack instance, Add/Edit, toggle On, or use the … menu to reorder, duplicate, remove or manage a filter mask. The blend icon opens the existing mode catalog.
 - Filter > Blur > Gaussian Blur opens the same canvas toolbar with precise radius input. Parameter edits preview directly on the image; choose other settings from the parameter selector. Apply commits editable settings, Cancel/Escape restores the committed view, and Preview switches comparison on/off. Invert and Brightness share the nondestructive filter stack. [Layer control validation](docs/LAYER_PROCESSING_UI_VALIDATION.md).
@@ -57,7 +61,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Crop canvas to selection, horizontal/vertical flip, exact quarter-turns and custom-angle rotation. A selection limits flips/rotations to active-layer selected source pixels; without a selection they transform the whole document. Custom rotation uses alpha-safe bilinear sampling and an OK/Cancel dialog. Resize offers nearest or bilinear sampling with optional aspect lock; layers and live processing stacks are retained.
 - Consistent stroke opacity across pointer events/retracing, tile-sharing-aware undo accounting, and background fill/geometry jobs with stale-result protection.
 
-Unavailable ribbon tools and filter categories are visibly disabled. **Persistent vector shape objects, brush variants, polygon selection, mask painting and remaining layer effects are not available yet.** Text supports basic left-to-right layout with two bundled fonts and becomes raster content on Apply; system font browsing and complex-script shaping remain pending. The supplied `.paint` specimen opens as two editable layers. File > Export offers an experimental genuine HEIF `.paint` copy; masks/blends/live processing require a complete `.palette` save before compatibility conversion. The user confirmed the generated copy opens and looks correct in Microsoft Paint. Editing there and saving back remain separate unverified checks; see [specimen evidence and limits](docs/PAINT_RESEARCH.md). AVIF animation, HEIF rotation/crop properties and complete profile-aware processing are pending. Native projects retain original ICC/Exif bytes; flattened exports do not preserve metadata.
+Unavailable ribbon tools and filter categories are visibly disabled. **Persistent vector shape objects, brush variants, polygon selection, mask painting and remaining layer effects are not available yet.** Text supports basic left-to-right layout with two bundled fonts and becomes raster content on Apply; system font browsing and complex-script shaping remain pending. The supplied `.paint` specimen opens as two editable layers. File > Export offers an experimental genuine HEIF `.paint` copy; masks/blends/live processing require a complete `.palette` save before compatibility conversion. The user confirmed the generated copy opens and looks correct in Microsoft Paint. Editing there and saving back remain separate unverified checks; see [specimen evidence and limits](docs/PAINT_RESEARCH.md). Broader HEIF properties and complete profile-aware processing remain pending. Native projects retain original ICC/Exif bytes; flattened exports do not preserve metadata.
 
 Save/Save As preserve editable state in `.palette`. Export writes a composite image and does not mark the editable project saved. GIF imports its first frame; export does not create an animation. Animated WebP/APNG and TIFF imports display first-frame/default-image/first-page limitations, including when imported as a layer. JPEG composites transparency over white.
 
@@ -101,90 +105,9 @@ Stylize/render follow-up: Extrude, Oil Paint, Tiles, Trace Contour, Wind, Lens B
 
 Previous 121-entry catalog completion: Color Lookup loads 3D `.cube` LUTs; Displace loads real raster maps with Stretch/Tile fitting; Shear has a draggable five-knot curve; Custom has a 5×5 coefficient grid and presets. Use the contextual toolbar’s … menu for imports/editors. Imported data is embedded as bounded binary `.palette` assets; previews, masks, history and removal remain nondestructive. All 121 entries at that milestone had independent implementations; Gallery, remaining layer styles and processing optimization still need work. [Scope and validation](docs/EDITABLE_FILTERS_VALIDATION.md).
 
-Expanded filter audit: eleven more independent filters bring the catalog to **132**. Blur Gallery adds Field/Iris/Tilt-Shift/Path/Spin Blur; Render adds Flame/Picture Frame/Tree; Video adds De-Interlace/NTSC Colors; Other adds HSB/HSL. All use live removable filters. [Implementation and limits](docs/GALLERY_VIDEO_RENDER_VALIDATION.md). Local Mosaic Style Transfer, JPEG Artifacts Removal, Colorize, face-guided Skin Smoothing, cropped Super Zoom and Depth Blur have local implementations; three audited Neural Filter families have no counterpart, Color Transfer has a partial conventional implementation, and partial functionality still prevents full parity; [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md) distinguishes them from the conventional catalog.
+Expanded filter audit: eleven more independent filters bring the catalog to **132**. Blur Gallery adds Field/Iris/Tilt-Shift/Path/Spin Blur; Render adds Flame/Picture Frame/Tree; Video adds De-Interlace/NTSC Colors; Other adds HSB/HSL. All use live removable filters. [Implementation and limits](docs/GALLERY_VIDEO_RENDER_VALIDATION.md).
 
-The external audit also records the unimplemented Substance-based Parametric Filters family separately from Neural/AI and the 133 conventional entries; see [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md).
-
-Local neural processing: **Filter → Neural Filters → Style Transfer** runs the bundled Mosaic network in Rust inside Palette, with editable strength, live preview, masks, undo and native project preservation. No cloud compute, account, Python runtime, model download or separate service is required. The fixed 224 px working image limits fine detail; original size and alpha remain intact. Smart Portrait now has local expression warps and face shading; generative age/hair/gaze/pose and enlarged editable Super Zoom documents remain pending. [Exact status and validation](docs/NEURAL_FILTERS_FIRST_SIX.md).
-
-Local **JPEG Artifacts Removal** uses the bundled JPEG-trained DnCNN-3 model at source resolution, with overlapping tiles, editable strength and alpha preservation. Strength edits reuse a bounded restoration cache; obsolete renders cancel on edits/tab changes. [Model, validation and limits](docs/JPEG_RESTORATION_VALIDATION.md).
-
-Local **Colorize** uses the bundled ECCV16 model with editable Strength and Color Saturation, retaining full-resolution source luminance/alpha, masks, undo and native preservation. Color inference runs on a 256² working image; predicted colors may differ from the original scene. [Model, reference tests and limitations](docs/COLORIZE_VALIDATION.md).
-
-Local **Skin Smoothing** uses bundled face detection and 468-point landmarks
-to guide conventional edge-preserving smoothing. Strength, Blur and Smoothness
-stay editable; eyes/lips/brows are protected, original pixels/alpha remain
-intact, and masks, undo and native saving work normally. No detected face leaves
-the image unchanged. [Implementation and limits](docs/SKIN_SMOOTHING_VALIDATION.md).
-
-Local **Super Zoom** uses a bundled 3× learned luminance network for editable
-1–3× cropped magnification, Enhancement and a draggable source center. It keeps
-canvas size and original source pixels, supports masks/undo/native saving and
-runs offline. Its **… → Export enlarged whole image as PNG…** command outputs
-the complete visible image at 1–3×, without changing the editable project.
-Enlarged editable native documents remain unavailable.
-[Exact scope and validation](docs/SUPER_ZOOM_VALIDATION.md).
-
-**Full Photoshop filter parity has not been reached.** The catalog count only
-measures implemented Palette entries. Missing and partial capabilities and the
-requirements for reporting parity are tracked in the [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md).
-
-Local **Depth Blur** estimates relative depth with bundled MiDaS weights and
-offers click-to-focus, manual focal depth, focal range, blur radius and a depth-map
-view. It preserves original alpha and source pixels, with live editable previews,
-masks, native saving and undo. The defocus renderer is conventional Gaussian blur;
-it does not simulate occlusion-aware optics. [Scope and validation](docs/DEPTH_BLUR_VALIDATION.md).
-
-**Filter → Neural Filters → Color Transfer** matches global Lab colour statistics
-to an original warm palette or a reference image loaded with **Reference photo…**
-on its contextual toolbar (or its **…** menu).
-Strength, Luminance, Contrast and Saturation remain editable. Source pixels and
-alpha stay intact; projects retain the complete statistical profile and reopen
-without the reference file. This is conventional local processing, not Adobe's
-learned Color Transfer. [Scope and validation](docs/COLOR_TRANSFER_VALIDATION.md).
-
-**Filter → Neural Filters → Makeup Transfer** aligns a bounded reference-face
-atlas to local facial landmarks, transferring spatial colours, liner and highlights.
-Load a portrait with **Reference photo…**. Strength, Lips, Eyes, Cheeks, Edge softness
-and Luminance remain editable, with optional occlusion protection. Layer source
-pixels remain unchanged and output alpha is preserved. This is geometric transfer,
-not learned cosmetic isolation. New filters start with full Strength/Luminance;
-old v1 saves retain their original rendering.
-[Example validation and limits](docs/MAKEUP_SPATIAL_VALIDATION.md).
-
-**Filter → Neural Filters → Harmonization** matches colour and tone to a selected
-reference layer and follows its edits, masks and effects live. The compact
-parameter bar includes the reference picker, Strength, Luminance, Contrast and
-Saturation. This is conventional local Lab matching, not learned relighting.
-[Validation](docs/HARMONIZATION_VALIDATION.md).
-
-**Filter → Neural Filters → Smart Portrait (Beta)** adds local smile/frown, surprise,
-anger and directional face shading, with all/largest face targeting and live
-nondestructive controls. Expression endpoints are stronger; high Happiness opens
-the lips and reuses visible teeth or renders a shaded procedural dental arch.
-Negative Happiness narrows an existing smile. It reuses existing face landmarks;
-age/hair/gaze/head-pose synthesis remains unavailable.
-[Scope and validation](docs/SMART_PORTRAIT_VALIDATION.md).
-
-**Filter → Neural Filters → Landscape Mixer (Beta)** now uses edge-aware sky replacement
-around ridges/vegetation and transfers reference terrain colours while preserving
-source geometry. Sky placement keeps cloud proportions with one horizon-aligned
-cover crop. A compact fixed-size reference view supports horizon dragging;
-Spring/Summer/Autumn/Winter/Sunset grade both inputs. New references retain up to
-2048 px. **… → Refine mix…** offers a live Selection Brush to protect source areas
-and restore the automatic mix; corrections save as an editable filter mask.
-Method is hidden; existing Horizontal filters keep their legacy rendering.
-Loading a new reference or changing Sky detection opts into edge-aware mode. This conventional counterpart
-does not synthesize terrain or provide semantic object segmentation.
-[Scope and validation](docs/LANDSCAPE_EDGES_VALIDATION.md).
-[Protection brush](docs/LANDSCAPE_PROTECTION_VALIDATION.md).
-
-**Filter → Neural Filters → Photo Restoration** repairs thin scratches and wider,
-curved cracks, expands faded tones and reduces luminance/colour noise. Strength
-extends to 200%, with a 1–64 px repair radius, damage polarity, a detection overlay
-and optional local eye/brow/lip protection. Existing v1 saves retain their rendering.
-This conventional restoration preserves source pixels and does not reconstruct
-missing faces. [Current scope and verification](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md).
+Substance-based Parametric Filters and full Photoshop quality/control parity remain outside the implemented conventional catalog.
 
 Layer workflows now include ten live effect families, multi-selection with an undoable confirmed merge, an ordered active-layer stack and a separate docked Background swatch. See [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md). Native saves use version 8 and read versions 1–7.
 

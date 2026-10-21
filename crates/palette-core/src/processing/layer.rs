@@ -76,7 +76,6 @@ impl Style {
 }
 /// Immutable evaluated appearance, including spatial style extents.
 pub struct PreparedLayer {
-    reference: std::sync::OnceLock<Option<crate::document::ColorReference>>,
     visible: std::sync::OnceLock<Option<[i64; 4]>>,
     pub(super) original: Layer,
     pixels: Option<Raster>,
@@ -183,23 +182,7 @@ impl PreparedLayer {
             },
         })
     }
-    /// Streaming statistics include evaluated masks/styles inside source bounds.
-    pub(crate) fn reference_profile(
-        &self,
-        cancel: &dyn Fn() -> bool,
-    ) -> Result<Option<crate::document::ColorReference>, String> {
-        if let Some(r) = self.reference.get() {
-            return Ok(r.clone());
-        }
-        let r = super::color_transfer::reference_from_pixels(
-            self.original.source.width(),
-            self.original.source.height(),
-            |x, y| self.pixel(x.into(), y.into()),
-            cancel,
-        )?;
-        let _ = self.reference.set(r.clone());
-        Ok(r)
-    }
+
     /// Signed source-space lookup includes styles outside the source bounds.
     pub fn pixel(&self, x: i64, y: i64) -> [u8; 4] {
         let mut front = self.content(x, y);
@@ -418,37 +401,6 @@ pub fn has_neighborhood(layer: &Layer) -> bool {
     layer.filters.iter().any(|f| {
         f.enabled
             && match f.filter {
-                Filter::SmartPortrait { .. } => super::portrait::active(&f.filter),
-                Filter::PhotoRestoration { strength, .. } => strength > 0.,
-                Filter::LandscapeMixer { strength, .. } => strength > 0.,
-                Filter::Harmonization {
-                    reference_layer,
-                    strength,
-                    ..
-                } => reference_layer.is_some() && strength > 0.,
-                Filter::ColorTransfer { strength, .. } => strength > 0.,
-                Filter::MakeupTransfer {
-                    strength,
-                    lips,
-                    eyes,
-                    cheeks,
-                    model,
-                    ..
-                } => {
-                    strength > 0.
-                        && (lips > 0.
-                            || eyes > 0.
-                            || (model == crate::document::MakeupModel::FaceMeshSpatialV2
-                                && cheeks > 0.))
-                }
-                Filter::DepthBlur {
-                    radius, show_depth, ..
-                } => radius > 0. || show_depth,
-                Filter::SuperZoom { .. } => true,
-                Filter::SkinSmoothing { strength, .. }
-                | Filter::Colorize { strength, .. }
-                | Filter::StyleTransfer { strength, .. }
-                | Filter::JpegArtifactsRemoval { strength, .. } => strength > 0.,
                 Filter::FieldBlur { .. }
                 | Filter::IrisBlur { .. }
                 | Filter::TiltShift { .. }
@@ -587,7 +539,6 @@ pub fn prepare_layer_cancel(
     }
     if !has_neighborhood(layer) {
         return Ok(PreparedLayer {
-            reference: std::sync::OnceLock::new(),
             visible: std::sync::OnceLock::new(),
             original: layer.clone(),
             pixels: None,
@@ -601,60 +552,6 @@ pub fn prepare_layer_cancel(
         }
         let before = pixels.clone();
         match filter.filter {
-            Filter::SmartPortrait { .. } => {
-                pixels = super::portrait::evaluate(&pixels, &filter.filter, cancel)?;
-            }
-            Filter::LandscapeMixer { .. } => {
-                pixels = super::landscape::evaluate(&pixels, &filter.filter, cancel)?;
-            }
-            Filter::PhotoRestoration { .. } => {
-                pixels = super::photo_restoration::evaluate(&pixels, &filter.filter, cancel)?;
-            }
-            Filter::Harmonization {
-                reference_layer: None,
-                ..
-            } => {}
-            Filter::Harmonization { .. } => {
-                return Err("Use the document renderer for reference-layer filters".into());
-            }
-            Filter::MakeupTransfer { .. } => {
-                pixels = super::makeup::evaluate(&pixels, &filter.filter, cancel)?
-            }
-            Filter::ColorTransfer { .. } => {
-                pixels = super::color_transfer::evaluate(&pixels, &filter.filter, cancel)?
-            }
-            Filter::DepthBlur { .. } => {
-                pixels = super::depth::evaluate(&pixels, &filter.filter, cancel)?
-            }
-            Filter::SuperZoom {
-                model,
-                zoom,
-                enhancement,
-                center,
-            } => {
-                pixels = super::zoom::evaluate(&pixels, model, zoom, enhancement, center, cancel)?;
-            }
-            Filter::SkinSmoothing {
-                model,
-                strength,
-                blur,
-                range,
-            } => {
-                pixels = super::skin::evaluate(&pixels, model, strength, blur, range, cancel)?;
-            }
-            Filter::Colorize {
-                model,
-                strength,
-                saturation,
-            } => {
-                pixels = super::colorize::evaluate(&pixels, model, strength, saturation, cancel)?;
-            }
-            Filter::JpegArtifactsRemoval { model, strength } => {
-                pixels = super::restoration::evaluate(&pixels, model, strength, cancel)?;
-            }
-            Filter::StyleTransfer { style, strength } => {
-                pixels = super::neural::style_transfer(&pixels, style, strength, cancel)?;
-            }
             Filter::FieldBlur { .. }
             | Filter::IrisBlur { .. }
             | Filter::TiltShift { .. }
@@ -1017,7 +914,6 @@ pub fn prepare_layer_cancel(
         super::style_options::finish(&mut styles[count - 1..], &effect.effect, &pixels, cancel)?;
     }
     Ok(PreparedLayer {
-        reference: std::sync::OnceLock::new(),
         visible: std::sync::OnceLock::new(),
         original: layer.clone(),
         pixels: Some(pixels),

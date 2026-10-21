@@ -4,51 +4,6 @@ use super::*;
 mod gpu_probe;
 mod layer_scenes;
 
-/// Original procedural comparison scene; no third-party or user photos are fixtures.
-fn landscape_capture(warm: bool) -> Raster {
-    let mut r = Raster::new(819, 594, [0; 4]).unwrap();
-    for y in 0..594 {
-        for x in 0..819 {
-            let u = x as f32 / 818.;
-            let v = y as f32 / 593.;
-            let ridge = 0.43 + (u * 13.).sin() * 0.035 + (u * 31.).cos() * 0.018;
-            let far = 0.32 + (u * 11.).sin() * 0.055;
-            let p = if v > ridge {
-                let texture = ((x * 13 + y * 17) % 19) as u8;
-                if warm {
-                    [135 + texture, 90 + texture, 45 + texture, 255]
-                } else {
-                    [28 + texture, 100 + texture, 32 + texture, 255]
-                }
-            } else if v > far {
-                if warm {
-                    [100, 80, 115, 255]
-                } else {
-                    [80, 105, 135, 255]
-                }
-            } else {
-                let t = (v / 0.45).clamp(0., 1.);
-                if warm {
-                    [
-                        (120. + 125. * t) as u8,
-                        (75. + 85. * t) as u8,
-                        (150. - 65. * t) as u8,
-                        255,
-                    ]
-                } else {
-                    [
-                        (55. + 110. * t) as u8,
-                        (125. + 75. * t) as u8,
-                        (210. + 30. * t) as u8,
-                        255,
-                    ]
-                }
-            };
-            r.set(x, y, p);
-        }
-    }
-    r
-}
 #[derive(Default)]
 pub(super) struct CaptureState {
     pub scene: Option<String>,
@@ -198,33 +153,9 @@ impl PaletteApp {
                 | "processing-ntsc"
                 | "processing-deinterlace"
                 | "processing-hsb-hsl"
-                | "processing-style-transfer"
-                | "processing-jpeg-artifacts"
-                | "processing-colorize"
-                | "processing-skin-smoothing"
-                | "processing-smart-portrait"
-                | "processing-smart-portrait-smile"
-                | "processing-smart-portrait-frown"
-                | "processing-color-transfer"
-                | "processing-color-transfer-reference"
-                | "processing-makeup"
-                | "processing-makeup-reference"
-                | "processing-makeup-spatial"
-                | "processing-harmonization"
-                | "processing-photo-restoration"
-                | "processing-photo-restoration-damage"
-                | "processing-photo-restoration-boost"
-                | "processing-landscape"
-                | "processing-landscape-reference"
-                | "processing-landscape-reference-winter"
-                | "processing-landscape-protection"
-                | "processing-depth-blur"
-                | "processing-depth-map"
-                | "processing-super-zoom"
-                | "processing-super-zoom-options"
                 | "processing-shear-curve",
             ) => {
-                use palette_core::processing::{Kind, Operation, Value};
+                use palette_core::processing::{Kind, Operation};
                 self.current_mut().document =
                     Document::from_raster(Raster::new(819, 594, [0; 4]).expect("capture canvas"));
                 self.current_mut().document.background =
@@ -354,30 +285,6 @@ impl PaletteApp {
                             | "processing-ntsc"
                             | "processing-deinterlace"
                             | "processing-hsb-hsl"
-                            | "processing-style-transfer"
-                            | "processing-jpeg-artifacts"
-                            | "processing-colorize"
-                            | "processing-skin-smoothing"
-                            | "processing-smart-portrait"
-                            | "processing-smart-portrait-smile"
-                            | "processing-smart-portrait-frown"
-                            | "processing-color-transfer"
-                            | "processing-color-transfer-reference"
-                            | "processing-makeup"
-                            | "processing-makeup-reference"
-                            | "processing-makeup-spatial"
-                            | "processing-harmonization"
-                            | "processing-photo-restoration"
-                            | "processing-photo-restoration-damage"
-                            | "processing-photo-restoration-boost"
-                            | "processing-landscape"
-                            | "processing-landscape-reference"
-                            | "processing-landscape-reference-winter"
-                            | "processing-landscape-protection"
-                            | "processing-depth-blur"
-                            | "processing-depth-map"
-                            | "processing-super-zoom"
-                            | "processing-super-zoom-options"
                             | "processing-shear-curve"
                     )
                 );
@@ -578,297 +485,11 @@ impl PaletteApp {
                         Some("processing-ntsc") => Kind::NtscColors,
                         Some("processing-deinterlace") => Kind::Deinterlace,
                         Some("processing-hsb-hsl") => Kind::HsbHsl,
-                        Some("processing-style-transfer") => Kind::StyleTransfer,
-                        Some("processing-jpeg-artifacts") => Kind::JpegArtifactsRemoval,
-                        Some("processing-colorize") => Kind::Colorize,
-                        Some("processing-skin-smoothing") => Kind::SkinSmoothing,
-                        Some(
-                            "processing-smart-portrait"
-                            | "processing-smart-portrait-smile"
-                            | "processing-smart-portrait-frown",
-                        ) => Kind::SmartPortrait,
-                        Some("processing-harmonization") => Kind::Harmonization,
-                        Some(
-                            "processing-photo-restoration"
-                            | "processing-photo-restoration-damage"
-                            | "processing-photo-restoration-boost",
-                        ) => Kind::PhotoRestoration,
-                        Some(
-                            "processing-landscape"
-                            | "processing-landscape-reference"
-                            | "processing-landscape-reference-winter"
-                            | "processing-landscape-protection",
-                        ) => Kind::LandscapeMixer,
-                        Some(
-                            "processing-makeup"
-                            | "processing-makeup-reference"
-                            | "processing-makeup-spatial",
-                        ) => Kind::MakeupTransfer,
-                        Some(
-                            "processing-color-transfer" | "processing-color-transfer-reference",
-                        ) => Kind::ColorTransfer,
-                        Some("processing-depth-blur" | "processing-depth-map") => Kind::DepthBlur,
-                        Some("processing-super-zoom" | "processing-super-zoom-options") => {
-                            Kind::SuperZoom
-                        }
-
                         _ => Kind::GaussianBlur,
                     };
-                    if kind == Kind::Colorize {
-                        let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-gray.png")).expect("public-domain colorize fixture").to_rgba8();
-                        let layer = self.current_mut().document.active_mut();
-                        layer.source =
-                            Raster::from_rgba(image.width(), image.height(), image.as_raw())
-                                .expect("colorize raster");
-                        layer.offset = [280, 169];
-                    }
-                    if matches!(
-                        kind,
-                        Kind::SkinSmoothing
-                            | Kind::SmartPortrait
-                            | Kind::PhotoRestoration
-                            | Kind::MakeupTransfer
-                            | Kind::SuperZoom
-                            | Kind::DepthBlur
-                            | Kind::ColorTransfer
-                    ) {
-                        let image=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).expect("public-domain portrait fixture").to_rgba8();
-                        let layer = self.current_mut().document.active_mut();
-                        layer.source =
-                            Raster::from_rgba(image.width(), image.height(), image.as_raw())
-                                .expect("portrait raster");
-                        layer.offset = [280, 169];
-                        if matches!(
-                            self.capture.scene.as_deref(),
-                            Some(
-                                "processing-smart-portrait-smile"
-                                    | "processing-smart-portrait-frown"
-                            )
-                        ) {
-                            // Enlarge a head crop so endpoint mouth behaviour is
-                            // inspectable at the reference window size.
-                            let head =
-                                image::imageops::crop_imm(&image, 48, 0, 128, 128).to_image();
-                            let head = image::imageops::resize(
-                                &head,
-                                384,
-                                384,
-                                image::imageops::FilterType::CatmullRom,
-                            );
-                            let layer = self.current_mut().document.active_mut();
-                            layer.source = Raster::from_rgba(384, 384, head.as_raw()).unwrap();
-                            layer.offset = [218, 105];
-                        }
-                    }
-                    if kind == Kind::Harmonization {
-                        let doc = &mut self.current_mut().document;
-                        doc.active_mut().name = "Reference background".into();
-                        for y in 0..594 {
-                            for x in 0..819 {
-                                doc.active_mut().source.set(
-                                    x,
-                                    y,
-                                    [
-                                        (110 + x * 90 / 819) as u8,
-                                        (70 + y * 90 / 594) as u8,
-                                        70,
-                                        255,
-                                    ],
-                                );
-                            }
-                        }
-                        doc.add_layer();
-                        doc.active_mut().name = "Foreground".into();
-                        let p=image::load_from_memory(include_bytes!("../../crates/palette-core/tests/fixtures/neural/colorize-astronaut-original.png")).unwrap().to_rgba8();
-                        doc.active_mut().source =
-                            Raster::from_rgba(p.width(), p.height(), p.as_raw()).unwrap();
-                        doc.active_mut().offset = [280, 169];
-                    }
-                    if kind == Kind::LandscapeMixer {
-                        self.current_mut().document.active_mut().source = landscape_capture(false);
-                    }
-                    if kind == Kind::PhotoRestoration {
-                        // Original deterministic damage on a public-domain NASA
-                        // photo: no supplied user photograph becomes a fixture.
-                        let layer = self.current_mut().document.active_mut();
-                        for y in 0..layer.source.height() {
-                            for x in 0..layer.source.width() {
-                                let mut p = layer.source.get(x, y);
-                                for v in &mut p[..3] {
-                                    *v = (65. + f32::from(*v) * 0.58).round() as u8;
-                                }
-                                if ((78..=80).contains(&x) && (24..230).contains(&y))
-                                    || (x == y + 20 && y > 130 && y < 220)
-                                {
-                                    p[..3].fill(245);
-                                }
-                                layer.source.set(x, y, p);
-                            }
-                        }
-                    }
-                    self.open_processing(kind, None);
-                    if matches!(
-                        self.capture.scene.as_deref(),
-                        Some("processing-smart-portrait-smile" | "processing-smart-portrait-frown")
-                    ) {
-                        let value = if self.capture.scene.as_deref()
-                            == Some("processing-smart-portrait-smile")
-                        {
-                            1.
-                        } else {
-                            -1.
-                        };
-                        let d = self.processing_dialog.as_mut().unwrap();
-                        d.operation
-                            .set_value("happiness", Value::Number(value))
-                            .unwrap();
-                        d.operation
-                            .set_value("lighting", Value::Number(0.))
-                            .unwrap();
-                    }
-                    if matches!(
-                        self.capture.scene.as_deref(),
-                        Some(
-                            "processing-landscape-reference"
-                                | "processing-landscape-reference-winter"
-                                | "processing-landscape-protection"
-                        )
-                    ) {
-                        let Operation::Filter(Filter::LandscapeMixer {
-                            reference,
-                            reference_name,
-                            ..
-                        }) = &mut self.processing_dialog.as_mut().unwrap().operation
-                        else {
-                            unreachable!();
-                        };
-                        *reference = Some(
-                            palette_core::processing::landscape::reference_from_raster(
-                                &landscape_capture(true),
-                                &|| false,
-                            )
-                            .unwrap(),
-                        );
-                        *reference_name = "Original sunset landscape".into();
-                    }
-                    if self.capture.scene.as_deref()
-                        == Some("processing-landscape-reference-winter")
-                    {
-                        let d = self.processing_dialog.as_mut().unwrap();
-                        d.operation.set_value("winter", Value::Number(1.)).unwrap();
-                        d.parameter = 10;
-                    }
-                    if self.capture.scene.as_deref() == Some("processing-landscape-protection") {
-                        let d = self.processing_dialog.as_mut().unwrap();
-                        let (width, height) = (
-                            d.original.active().source.width(),
-                            d.original.active().source.height(),
-                        );
-                        let sample = Document::from_raster(d.original.active().source.clone());
-                        let mut brush = palette_core::selection::brush::Stroke::new(
-                            &sample,
-                            [330., 200.],
-                            palette_core::selection::brush::Settings {
-                                diameter: 160.,
-                                hardness: 0.7,
-                                edge_aware: false,
-                                ..Default::default()
-                            },
-                        )
-                        .unwrap();
-                        brush.extend([480., 240.]).unwrap();
-                        let values = brush
-                            .coverage()
-                            .unwrap()
-                            .values
-                            .iter()
-                            .map(|v| 255 - v)
-                            .collect();
-                        d.filter_mask = Some(palette_core::raster::Coverage {
-                            width,
-                            height,
-                            enabled: true,
-                            values: std::sync::Arc::new(values),
-                        });
-                        d.pick_origin = false;
-                        d.protection.as_mut().unwrap().editing = true;
-                    }
-                    if self.capture.scene.as_deref() == Some("processing-photo-restoration-boost") {
-                        self.processing_dialog
-                            .as_mut()
-                            .unwrap()
-                            .operation
-                            .set_value("strength", palette_core::processing::Value::Number(2.))
-                            .unwrap();
-                    }
-                    if self.capture.scene.as_deref() == Some("processing-photo-restoration-damage")
-                    {
-                        let d = self.processing_dialog.as_mut().unwrap();
-                        d.operation
-                            .set_value(
-                                "show_damage",
-                                palette_core::processing::Value::Boolean(true),
-                            )
-                            .unwrap();
-                        d.parameter = 6;
-                    }
-                    if self.capture.scene.as_deref() == Some("processing-makeup-spatial") {
-                        let mut reference =
-                            palette_core::processing::makeup::reference_from_raster(
-                                &self.current().document.active().source,
-                                "Original cyan/lilac pattern".into(),
-                                &|| false,
-                            )
-                            .unwrap();
-                        let t = std::sync::Arc::make_mut(reference.texture.as_mut().unwrap());
-                        t.source_key = [0; 32];
-                        let p = t.pixels.as_mut().unwrap();
-                        for y in 0..512 {
-                            for x in 0..512 {
-                                p.set(
-                                    x,
-                                    y,
-                                    match (x / 12) % 3 {
-                                        0 => [30, 220, 200, 255],
-                                        1 => [190, 70, 230, 255],
-                                        _ => [10, 10, 10, 255],
-                                    },
-                                );
-                            }
-                        }
-                        if let Some(d) = &mut self.processing_dialog
-                            && let palette_core::processing::Operation::Filter(
-                                Filter::MakeupTransfer {
-                                    reference: r,
-                                    protect_occlusions,
-                                    ..
-                                },
-                            ) = &mut d.operation
-                        {
-                            *r = reference;
-                            *protect_occlusions = false;
-                        }
-                    }
 
+                    self.open_processing(kind, None);
                     if let Some(d) = &mut self.processing_dialog {
-                        if kind == Kind::DepthBlur
-                            && self.capture.scene.as_deref() == Some("processing-depth-map")
-                        {
-                            d.operation
-                                .set_value(
-                                    "show_depth",
-                                    palette_core::processing::Value::Boolean(true),
-                                )
-                                .expect("capture depth map");
-                        }
-                        if kind == Kind::SuperZoom {
-                            d.operation
-                                .set_value(
-                                    "center_y",
-                                    palette_core::processing::Value::Number(0.25),
-                                )
-                                .expect("capture zoom center");
-                        }
                         let edit = match kind {
                             Kind::ColorBalance => Some(("midtone_red", 0.6)),
                             Kind::ChannelMixer => Some(("red_green", 0.6)),
@@ -1085,12 +706,6 @@ impl PaletteApp {
                         backup_complete: false,
                     });
                 }
-            }
-            Some("avif-export") => {
-                self.avif_export = Some(super::files::AvifExport {
-                    path: PathBuf::from("target/capture.avif"),
-                    options: io::AvifOptions::default(),
-                })
             }
             Some("recovery") => {
                 self.recovery_prompt = true;
@@ -1353,9 +968,10 @@ impl PaletteApp {
         if self.current().texture.is_none()
             || !self.display_is_current()
             || self.processing_worker.busy
-            || self.processing_dialog.as_ref().is_some_and(|d| {
-                d.ready != Some(d.ticket) || d.protection.as_ref().is_some_and(|p| p.pending())
-            })
+            || self
+                .processing_dialog
+                .as_ref()
+                .is_some_and(|d| d.ready != Some(d.ticket))
             || self.selection_brush_worker.busy
             || self
                 .current()

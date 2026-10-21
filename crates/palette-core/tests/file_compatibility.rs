@@ -7,6 +7,81 @@ use palette_core::{
 use std::{fs, io::Write, sync::Arc};
 
 #[test]
+fn removed_neural_filters_are_rejected_without_changing_current_or_legacy_projects() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("retired-filter.palette");
+    let mut doc = Document::new(4, 4).unwrap();
+    let id = doc.allocate_id();
+    doc.active_mut().filters.push(FilterInstance {
+        id,
+        enabled: false,
+        filter: Filter::Invert,
+        mask: None,
+    });
+    io::save_project(&path, &doc).unwrap();
+    let original = fs::read(&path).unwrap();
+    let length = u32::from_le_bytes(original[12..16].try_into().unwrap()) as usize;
+    let manifest: serde_json::Value = serde_json::from_slice(&original[16..16 + length]).unwrap();
+    for name in [
+        "SmartPortrait",
+        "LandscapeMixer",
+        "PhotoRestoration",
+        "Harmonization",
+        "MakeupTransfer",
+        "ColorTransfer",
+        "DepthBlur",
+        "SuperZoom",
+        "SkinSmoothing",
+        "Colorize",
+        "JpegArtifactsRemoval",
+        "StyleTransfer",
+    ] {
+        for version in [1u32, 8] {
+            let mut metadata = if version == 1 {
+                serde_json::to_value(&doc).unwrap()
+            } else {
+                manifest.clone()
+            };
+            metadata["layers"][0]["filters"][0]["filter"] =
+                serde_json::json!({name: {"strength": 1.0}});
+            let json = serde_json::to_vec(&metadata).unwrap();
+            let mut bytes = b"PALETTE\0".to_vec();
+            bytes.extend_from_slice(&version.to_le_bytes());
+            if version == 1 {
+                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+                encoder.write_all(&json).unwrap();
+                bytes.extend(encoder.finish().unwrap());
+            } else {
+                bytes.extend_from_slice(&(json.len() as u32).to_le_bytes());
+                bytes.extend_from_slice(&json);
+                bytes.extend_from_slice(&original[16 + length..]);
+            }
+            fs::write(&path, &bytes).unwrap();
+            let error = match io::open(&path) {
+                Err(error) => error,
+                Ok(_) => panic!("retired filters must fail clearly"),
+            };
+            assert!(
+                error.to_string().contains("Neural Filters"),
+                "{name}: {error}"
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+    }
+}
+
+#[test]
+fn avif_import_and_export_are_explicitly_unsupported_and_preserve_existing_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("existing.avif");
+    fs::write(&path, b"existing file").unwrap();
+    let error = io::open(&path).err().unwrap();
+    assert!(error.to_string().contains("AVIF support has been removed"));
+    assert!(io::export(&path, &Document::new(4, 4).unwrap()).is_err());
+    assert_eq!(fs::read(path).unwrap(), b"existing file");
+}
+
+#[test]
 fn detected_animation_and_page_notices_match_the_imported_pixels_and_survive_misnamed_files() {
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes, notice) in [
@@ -180,108 +255,6 @@ fn version_two_defaults_missing_backing_to_transparent_then_saves_current_versio
     assert_eq!(fs::read(&path).unwrap(), v2);
     io::save_project(&path, &migrated).unwrap();
     assert_eq!(&fs::read(&path).unwrap()[8..12], &8u32.to_le_bytes());
-}
-
-#[test]
-fn real_avif_encodes_decodes_dimensions_alpha_and_quality_without_overwriting_on_error() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut source = Raster::new(32, 24, [0; 4]).unwrap();
-    for y in 0..24 {
-        for x in 0..32 {
-            source.set(
-                x,
-                y,
-                [
-                    (x * 7) as u8,
-                    (y * 9) as u8,
-                    90,
-                    if x < 8 {
-                        0
-                    } else if x < 16 {
-                        128
-                    } else {
-                        255
-                    },
-                ],
-            );
-        }
-    }
-    let doc = Document::from_raster(source);
-    let path = dir.path().join("image.avif");
-    io::export_avif(
-        &path,
-        &doc,
-        io::AvifOptions {
-            quality: 90,
-            speed: 10,
-        },
-    )
-    .unwrap();
-    let bytes = fs::read(&path).unwrap();
-    assert_eq!(&bytes[4..8], b"ftyp");
-    let decoded = io::open(&path).unwrap();
-    assert_eq!([decoded.width, decoded.height], [32, 24]);
-    for (x, alpha) in [(4, 0), (12, 128), (24, 255)] {
-        assert!(decoded.active().source.get(x, 12)[3].abs_diff(alpha) <= 1);
-    }
-    let original = doc.active().source.get(24, 12);
-    let actual = decoded.active().source.get(24, 12);
-    assert!(
-        original[..3]
-            .iter()
-            .zip(&actual[..3])
-            .all(|(a, b)| a.abs_diff(*b) < 18)
-    );
-    io::export_avif(
-        &path,
-        &doc,
-        io::AvifOptions {
-            quality: 25,
-            speed: 10,
-        },
-    )
-    .unwrap();
-    assert_ne!(fs::read(&path).unwrap(), bytes);
-    let old = fs::read(&path).unwrap();
-    assert!(
-        io::export_avif(
-            &path,
-            &doc,
-            io::AvifOptions {
-                quality: 0,
-                speed: 10
-            }
-        )
-        .is_err()
-    );
-    assert_eq!(fs::read(&path).unwrap(), old);
-    fs::write(&path, &old[..old.len() / 2]).unwrap();
-    assert!(io::open(&path).is_err());
-}
-
-#[test]
-fn avif_opaque_single_pixel_and_ten_bit_sources_are_decoded_by_the_real_codec() {
-    let dir = tempfile::tempdir().unwrap();
-    for (w, h, depth) in [
-        (1, 1, ravif::BitDepth::Eight),
-        (17, 9, ravif::BitDepth::Ten),
-    ] {
-        let pixels = vec![ravif::RGBA8::new(180, 90, 30, 255); w * h];
-        let encoded = ravif::Encoder::new()
-            .with_quality(95.)
-            .with_speed(10)
-            .with_bit_depth(depth)
-            .with_num_threads(Some(1))
-            .encode_rgba(ravif::Img::new(&pixels, w, h))
-            .unwrap();
-        let path = dir.path().join("opaque.avif");
-        fs::write(&path, encoded.avif_file).unwrap();
-        let doc = io::open(&path).unwrap();
-        assert_eq!([doc.width, doc.height], [w as u32, h as u32]);
-        let p = doc.active().source.get(0, 0);
-        assert_eq!(p[3], 255);
-        assert!(p[0].abs_diff(180) < 10 && p[1].abs_diff(90) < 10 && p[2].abs_diff(30) < 10);
-    }
 }
 
 #[test]

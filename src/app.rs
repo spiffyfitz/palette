@@ -89,7 +89,6 @@ struct RenderResult {
     )>,
 }
 enum FileResult {
-    ZoomExported(PathBuf, Result<(), String>),
     Imported {
         session: u64,
         generation: u64,
@@ -148,7 +147,6 @@ pub struct PaletteApp {
     allow_quit: bool,
     busy: bool,
     pending_files: usize,
-    zoom_export: Option<Arc<std::sync::atomic::AtomicBool>>,
     render_tx: mpsc::SyncSender<RenderRequest>,
     render_rx: mpsc::Receiver<RenderResult>,
     render_ticket: Arc<AtomicU64>,
@@ -186,7 +184,6 @@ pub struct PaletteApp {
     recovery_seen: HashMap<u64, u64>,
     recovery_timer: std::time::Instant,
     deferred_close: bool,
-    avif_export: Option<files::AvifExport>,
     paint_export: Option<files::PaintExport>,
     feather_dialog: Option<advanced::FeatherDialog>,
     feather_worker: feather::Worker,
@@ -304,7 +301,6 @@ impl PaletteApp {
             allow_quit: false,
             busy: false,
             pending_files: 0,
-            zoom_export: None,
             render_tx,
             render_rx,
             render_ticket,
@@ -348,7 +344,6 @@ impl PaletteApp {
             recovery_seen: HashMap::new(),
             recovery_timer: std::time::Instant::now(),
             deferred_close: false,
-            avif_export: None,
             paint_export: None,
             feather_dialog: None,
             feather_worker: feather::Worker::new(ctx.clone()),
@@ -369,7 +364,6 @@ impl PaletteApp {
     pub fn close_pending_none(&self) -> bool {
         !self.recovery_prompt
             && self.merge_dialog.is_none()
-            && self.avif_export.is_none()
             && self.paint_export.is_none()
             && self.feather_dialog.is_none()
             && self.processing_dialog.is_none()
@@ -416,8 +410,7 @@ impl PaletteApp {
             .add_filter(
                 "Images and Palette projects",
                 &[
-                    "palette", "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "avif",
-                    "paint",
+                    "palette", "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "paint",
                 ],
             )
             .pick_files()
@@ -472,7 +465,6 @@ impl PaletteApp {
                     .add_filter("GIF — limited palette", &["gif"])
                     .add_filter("TIFF", &["tiff"])
                     .add_filter("WebP — lossless", &["webp"])
-                    .add_filter("AVIF — quality options", &["avif"])
                     .add_filter("Microsoft Paint project — experimental", &["paint"])
                     .set_file_name(format!("{}.png", session.name))
                     .save_file()
@@ -497,23 +489,12 @@ impl PaletteApp {
                 revision: self.current().history.revision,
                 backup_complete: false,
             });
-        } else if export && io::extension(&path) == "avif" {
-            self.avif_export = Some(files::AvifExport {
-                path,
-                options: io::AvifOptions::default(),
-            });
         } else {
-            self.start_save(path, export, None, ctx);
+            self.start_save(path, export, ctx);
         }
     }
 
-    fn start_save(
-        &mut self,
-        path: PathBuf,
-        export: bool,
-        options: Option<io::AvifOptions>,
-        ctx: &Context,
-    ) {
+    fn start_save(&mut self, path: PathBuf, export: bool, ctx: &Context) {
         self.current_mut().end_gesture();
         let session = self.current();
         let document = session.document.clone();
@@ -524,9 +505,7 @@ impl PaletteApp {
         self.pending_files += 1;
         self.busy = true;
         std::thread::spawn(move || {
-            let result = if let Some(options) = options {
-                io::export_avif(&path, &document, options)
-            } else if export {
+            let result = if export {
                 io::export(&path, &document)
             } else {
                 io::save_project(&path, &document)
@@ -659,18 +638,6 @@ impl PaletteApp {
             self.pending_files = self.pending_files.saturating_sub(1);
             self.busy = self.pending_files != 0;
             match result {
-                FileResult::ZoomExported(path, result) => {
-                    self.zoom_export = None;
-                    match result {
-                        Ok(()) => {
-                            self.message = format!("Exported enlarged image {}", path.display())
-                        }
-                        Err(error) if error == "Processing cancelled" => {
-                            self.message = "Super Zoom export cancelled".into()
-                        }
-                        Err(error) => self.error = Some(error),
-                    }
-                }
                 result @ (FileResult::Imported { .. } | FileResult::Recovered(..)) => {
                     self.handle_auxiliary_file_result(result, ctx)
                 }
@@ -1051,7 +1018,6 @@ impl PaletteApp {
     fn shortcuts(&mut self, ctx: &Context) {
         if self.recovery_prompt
             || self.merge_dialog.is_some()
-            || self.avif_export.is_some()
             || self.paint_export.is_some()
             || self.feather_dialog.is_some()
             || self.processing_dialog.is_some()
@@ -1279,7 +1245,6 @@ mod tests;
 
 impl Drop for PaletteApp {
     fn drop(&mut self) {
-        self.cancel_zoom_export();
         self.render_ticket.fetch_add(1, Ordering::Relaxed);
         self.processing_worker
             .ticket

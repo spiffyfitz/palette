@@ -338,267 +338,9 @@ impl ChannelSpace {
     pub const ALL: [Self; 3] = [Self::Rgb, Self::Hsb, Self::Hsl];
 }
 
-/// Immutable bundled neural profiles; new weights require a distinct variant
-/// so saved projects never silently change models when Palette is upgraded.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum NeuralStyle {
-    MosaicV1,
-}
-impl NeuralStyle {
-    /// Stable parameter control order.
-    pub const ALL: [Self; 1] = [Self::MosaicV1];
-}
-
-/// Bundled restoration identities; new weights/geometry require a new variant.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum JpegModel {
-    Dncnn3V1,
-}
-impl JpegModel {
-    /// Stable parameter control order.
-    pub const ALL: [Self; 1] = [Self::Dncnn3V1];
-}
-
-/// Immutable bundled automatic colorization profiles.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ColorizeModel {
-    Eccv16Fp16V1,
-}
-impl ColorizeModel {
-    /// Stable parameter control order; new weights need a new profile identity.
-    pub const ALL: [Self; 1] = [Self::Eccv16Fp16V1];
-}
-
-/// Immutable bundled face-geometry and conventional smoothing contract.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SkinModel {
-    FaceMeshV1,
-}
-impl SkinModel {
-    /// Stable control order; changed geometry/weights require a new profile.
-    pub const ALL: [Self; 1] = [Self::FaceMeshV1];
-}
-
-/// Immutable local super-resolution graph and cropped-output pixel contract.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ZoomModel {
-    Espcn3xCropV1,
-}
-impl ZoomModel {
-    /// Stable profile selector order; new output contracts need a new variant.
-    pub const ALL: [Self; 1] = [Self::Espcn3xCropV1];
-}
-
-/// Immutable learned inverse-depth model and adapter contract.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum DepthModel {
-    MidasSmallV1,
-}
-
-/// Sufficient statistics for a reference image in encoded-sRGB/D65 CIE Lab.
-/// Keeping this bounded profile makes the filter independent of external files.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ColorReference {
-    pub name: String,
-    pub width: u32,
-    pub height: u32,
-    pub mean: [f64; 3],
-    pub deviation: [f64; 3],
-}
-
-/// Versioned statistical color-transfer contract, independent of learned models.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ColorTransferMethod {
-    LabStatisticsV1,
-}
-
-/// Portable makeup colours, with an optional bounded face atlas for spatial detail.
-/// Legacy projects retain their original mean-colour contract.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct MakeupReference {
-    pub name: String,
-    pub width: u32,
-    pub height: u32,
-    pub lips: [f64; 3],
-    pub eyes: [f64; 3],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub texture: Option<Arc<MakeupTexture>>,
-}
-
-/// Bounded reference face crop and landmark correspondence for spatial makeup.
-/// Pixels are detached into native binary assets; metadata stays small.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct MakeupTexture {
-    pub pixels: Option<Raster>,
-    pub points: Arc<Vec<[f64; 2]>>,
-    pub baseline: [f64; 3],
-    pub skin_plane: [[f64; 3]; 3],
-    pub source_key: [u8; 32],
-}
-
-/// Fixed face geometry and conventional regional colour-transfer contract.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum MakeupModel {
-    FaceMeshLabV1,
-    FaceMeshSpatialV2,
-}
-
-/// Immutable contract for conventional scanned-photo restoration.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PhotoRestorationMethod {
-    /// Directional damage detection, interpolation and edge-aware cleanup.
-    DirectionalV1,
-    /// Multiscale connected crack detection and asymmetric boundary repair.
-    MultiscaleV2,
-}
-
-/// Which contrast polarity to consider damage. Old saves retain both polarities.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PhotoDamageType {
-    Bright,
-    Dark,
-    #[default]
-    Both,
-}
-
-/// Immutable conventional horizon-aligned landscape compositing contract.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum LandscapeMethod {
-    HorizonBlendV1,
-    /// Edge-aware sky replacement and terrain palette transfer.
-    EdgeAwareV2,
-}
-
-fn default_landscape_edges() -> f32 {
-    0.5
-}
-
-/// Fixed face geometry with conventional expression warps and diffuse shading.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PortraitMethod {
-    /// Original conservative texture-only deformation; retained for old files.
-    FaceMeshWarpV1,
-    /// Stronger endpoints, lip separation and local procedural mouth infill.
-    ExpressiveMouthV2,
-}
-
 /// Only implemented filters enter the model and the registry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Filter {
-    /// Local landmark deformation, not generative age/hair/pose synthesis.
-    SmartPortrait {
-        method: PortraitMethod,
-        strength: f32,
-        happiness: f32,
-        surprise: f32,
-        anger: f32,
-        light_direction: f32,
-        lighting: f32,
-        all_faces: bool,
-    },
-    /// Local reference compositing and seasonal grading, without scene synthesis.
-    LandscapeMixer {
-        method: LandscapeMethod,
-        reference: Option<Raster>,
-        reference_name: String,
-        #[serde(default = "default_landscape_edges")]
-        edge_sensitivity: f32,
-        strength: f32,
-        sky: f32,
-        terrain: f32,
-        detail: f32,
-        horizon: f32,
-        reference_horizon: f32,
-        feather: f32,
-        spring: f32,
-        summer: f32,
-        autumn: f32,
-        winter: f32,
-        sunset: f32,
-    },
-    /// Conventional scan restoration; no learned face reconstruction.
-    PhotoRestoration {
-        method: PhotoRestorationMethod,
-        #[serde(default)]
-        damage_type: PhotoDamageType,
-        #[serde(default)]
-        protect_faces: bool,
-        strength: f32,
-        enhancement: f32,
-        scratches: f32,
-        radius: u8,
-        noise: f32,
-        color_noise: f32,
-        show_damage: bool,
-    },
-    /// Live reference-layer Lab matching, resolved by the document compositor.
-    Harmonization {
-        reference_layer: Option<u64>,
-        strength: f32,
-        luminance: f32,
-        contrast: f32,
-        saturation: f32,
-    },
-    /// Learned facial landmarks guide conventional lip and upper-lid matching.
-    MakeupTransfer {
-        model: MakeupModel,
-        reference: MakeupReference,
-        strength: f32,
-        lips: f32,
-        eyes: f32,
-        #[serde(default)]
-        cheeks: f32,
-        #[serde(default)]
-        protect_occlusions: bool,
-        feather: f32,
-        luminance: f32,
-    },
-    /// Global reference-based color matching; this is not neural inference.
-    ColorTransfer {
-        method: ColorTransferMethod,
-        reference: ColorReference,
-        strength: f32,
-        luminosity: f32,
-        contrast: f32,
-        saturation: f32,
-    },
-    /// Learned relative depth guides an independently implemented Gaussian blur.
-    DepthBlur {
-        model: DepthModel,
-        radius: f32,
-        focus: f32,
-        range: f32,
-        pick_focus: bool,
-        center: [f32; 2],
-        show_depth: bool,
-    },
-    /// Learned magnification clipped to source dimensions, not viewport zoom.
-    SuperZoom {
-        model: ZoomModel,
-        zoom: f32,
-        enhancement: f32,
-        center: [f32; 2],
-    },
-    /// Learned facial geometry guides conventional smoothing; source is intact.
-    SkinSmoothing {
-        model: SkinModel,
-        strength: f32,
-        blur: f32,
-        range: f32,
-    },
-    Colorize {
-        model: ColorizeModel,
-        strength: f32,
-        saturation: f32,
-    },
-    JpegArtifactsRemoval {
-        model: JpegModel,
-        strength: f32,
-    },
-    StyleTransfer {
-        style: NeuralStyle,
-        strength: f32,
-    },
     FieldBlur {
         pins: [BlurPin; 8],
         pin: u8,
@@ -1437,12 +1179,6 @@ impl Filter {
     /// Logical bytes retained by embedded filter assets, excluding shared copies.
     pub fn asset_bytes(&self) -> usize {
         match self {
-            Self::LandscapeMixer { reference, .. } => {
-                reference.as_ref().map_or(0, Raster::byte_len)
-            }
-            Self::MakeupTransfer { reference, .. } => reference.texture.as_ref().map_or(0, |t| {
-                t.pixels.as_ref().map_or(0, Raster::byte_len) + t.points.len() * 16
-            }),
             Self::Displace { map: Some(m), .. } => m.byte_len(),
             Self::ColorLookup { lut: Some(l), .. } => l.values.len() * 12,
             _ => 0,
@@ -1455,9 +1191,7 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get(*pin as usize).map(|p| p.center),
             Self::PathBlur { path, point, .. } => path.get(*point as usize).copied(),
-            Self::DepthBlur { center, .. }
-            | Self::SuperZoom { center, .. }
-            | Self::IrisBlur { center, .. }
+            Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }
             | Self::Flame { center, .. }
@@ -1485,9 +1219,7 @@ impl Filter {
         match self {
             Self::FieldBlur { pins, pin, .. } => pins.get_mut(*pin as usize).map(|p| &mut p.center),
             Self::PathBlur { path, point, .. } => path.get_mut(*point as usize),
-            Self::DepthBlur { center, .. }
-            | Self::SuperZoom { center, .. }
-            | Self::IrisBlur { center, .. }
+            Self::IrisBlur { center, .. }
             | Self::TiltShift { center, .. }
             | Self::SpinBlur { center, .. }
             | Self::Flame { center, .. }
@@ -1982,18 +1714,6 @@ impl Document {
             }
             for f in &layer.filters {
                 match &f.filter {
-                    Filter::LandscapeMixer {
-                        reference: Some(r), ..
-                    } => r.allocations(&mut output),
-                    Filter::MakeupTransfer { reference, .. } => {
-                        if let Some(t) = &reference.texture {
-                            if let Some(p) = &t.pixels {
-                                p.allocations(&mut output);
-                            }
-                            output
-                                .insert(Arc::as_ptr(&t.points) as usize, t.points.capacity() * 16);
-                        }
-                    }
                     Filter::Displace { map: Some(map), .. } => map.allocations(&mut output),
                     Filter::ColorLookup { lut: Some(lut), .. } => {
                         output.insert(
@@ -2247,7 +1967,6 @@ impl Document {
                 return Err("Selection dimensions must match the canvas".into());
             }
         }
-        crate::processing::harmonization::validate_links(self)?;
         Ok(())
     }
 }

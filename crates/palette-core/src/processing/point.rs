@@ -64,19 +64,7 @@ pub(crate) fn point_filter(filter: &Filter, pixel: [u8; 4], x: u32, y: u32) -> [
     let input = std::array::from_fn(|c| f32::from(pixel[c]) / 255.);
     let luminance = || input[0] * 0.2126 + input[1] * 0.7152 + input[2] * 0.0722;
     let result = match *filter {
-        Filter::PhotoRestoration { .. }
-        | Filter::LandscapeMixer { .. }
-        | Filter::SmartPortrait { .. }
-        | Filter::Harmonization { .. }
-        | Filter::MakeupTransfer { .. }
-        | Filter::ColorTransfer { .. }
-        | Filter::DepthBlur { .. }
-        | Filter::SuperZoom { .. }
-        | Filter::SkinSmoothing { .. }
-        | Filter::Colorize { .. }
-        | Filter::JpegArtifactsRemoval { .. }
-        | Filter::StyleTransfer { .. }
-        | Filter::FieldBlur { .. }
+        Filter::FieldBlur { .. }
         | Filter::IrisBlur { .. }
         | Filter::TiltShift { .. }
         | Filter::PathBlur { .. }

@@ -61,12 +61,7 @@ impl PaletteApp {
                         self.save(&ctx, true, true);
                         ui.close();
                     }
-                    if self.zoom_export.is_some()
-                        && menu_item(ui, "Cancel Super Zoom export", "", None, true).clicked()
-                    {
-                        self.cancel_zoom_export();
-                        ui.close();
-                    }
+
                     ui.separator();
                     if menu_item(
                         ui,
@@ -243,7 +238,6 @@ impl PaletteApp {
                                 });
                         });
                         let scene = match category.label {
-                            "Neural Filters" => Some("neural-menu"),
                             "Adjustments" => Some("adjustments-menu"),
                             "Blur" => Some("blur-menu"),
                             "Noise" => Some("noise-menu"),
@@ -267,7 +261,6 @@ impl PaletteApp {
                     }
                 });
                 for scene in [
-                    "neural-menu",
                     "filter-menu",
                     "adjustments-menu",
                     "noise-menu",

@@ -2,8 +2,6 @@
 //! a cancellation ticket; only Apply mutates the original full-resolution model.
 mod assets;
 mod editors;
-mod landscape;
-mod landscape_brush;
 mod origin;
 mod style_editors;
 mod toolbar;
@@ -52,17 +50,12 @@ pub(super) struct Dialog {
     pub instance: Option<u64>,
     pub operation: Operation,
     pub(super) filter_mask: Option<palette_core::raster::Coverage>,
-    pub(super) protection: Option<landscape_brush::Protection>,
     pub original: Document,
     pub preview: bool,
     pub ticket: u64,
     requested: Option<u64>,
     pub ready: Option<u64>,
     pub image: Option<TextureHandle>,
-    pub(super) reference_image: Option<TextureHandle>,
-    pub(super) show_reference: bool,
-    pub(super) reference_rect: egui::Rect,
-    pub(super) reference_image_rect: egui::Rect,
     pub(super) parameter: usize,
     pub(super) pick_origin: bool,
     pub(super) origin_drag: bool,
@@ -70,46 +63,6 @@ pub(super) struct Dialog {
     pub(super) import_notice: Option<String>,
 }
 impl Dialog {
-    pub(super) fn reference_ready(&self) -> bool {
-        match &self.operation {
-            Operation::Filter(Filter::Harmonization {
-                reference_layer, ..
-            }) => reference_layer.is_some_and(|id| {
-                palette_core::processing::harmonization::can_reference(
-                    &self.original,
-                    self.layer,
-                    id,
-                )
-            }),
-            _ => true,
-        }
-    }
-    /// Whole-image export replaces this draft's crop, then enlarges the visible
-    /// composite. Other committed layers, filters, masks and styles stay active.
-    pub(super) fn enlargement(&self) -> Result<(Document, f32, f32), String> {
-        let Operation::Filter(Filter::SuperZoom {
-            zoom, enhancement, ..
-        }) = &self.operation
-        else {
-            return Err("Whole-image enlargement requires Super Zoom".into());
-        };
-        let mut doc = self.original.clone();
-        if doc.active_layer != self.layer {
-            return Err("Processing layer changed".into());
-        }
-        if let Some(id) = self.instance {
-            let index = doc
-                .active()
-                .filters
-                .iter()
-                .position(|f| f.id == id)
-                .ok_or("Filter no longer exists")?;
-            doc.active_mut().filters.remove(index);
-        }
-        palette_core::processing::super_zoom_dimensions(doc.width, doc.height, *zoom)?;
-        doc.validate()?;
-        Ok((doc, *zoom, *enhancement))
-    }
     /// Build an isolated preview/apply snapshot without mutating the open tab.
     pub(super) fn document(&self) -> Result<Document, String> {
         let mut doc = self.original.clone();
@@ -167,13 +120,12 @@ struct Request {
     session: u64,
     generation: u64,
     document: Document,
-    reference: Option<Filter>,
 }
 struct Ready {
     ticket: u64,
     session: u64,
     generation: u64,
-    result: Result<(ColorImage, Option<ColorImage>), String>,
+    result: Result<ColorImage, String>,
 }
 pub(super) struct Worker {
     tx: mpsc::SyncSender<Request>,
@@ -200,19 +152,7 @@ impl Worker {
                     if cancelled() {
                         return Err("Processing cancelled".into());
                     }
-                    let reference = request
-                        .reference
-                        .as_ref()
-                        .map(|f| {
-                            palette_core::processing::landscape::reference_preview(f, &cancelled)
-                        })
-                        .transpose()?
-                        .flatten()
-                        .map(|r| texture_image(&r, 512));
-                    if cancelled() {
-                        return Err("Processing cancelled".into());
-                    }
-                    Ok((texture_image(&pixels, 2048), reference))
+                    Ok(texture_image(&pixels, 2048))
                 })();
                 if results
                     .send(Ready {
@@ -251,66 +191,6 @@ pub(super) enum Action {
     Mask(u64, MaskAction),
 }
 impl PaletteApp {
-    pub(super) fn export_whole_zoom(&mut self, ctx: &Context) {
-        if self.zoom_export.is_some() || self.busy {
-            return;
-        }
-        let Some(d) = &self.processing_dialog else {
-            return;
-        };
-        let (document, scale, enhancement) = match d.enlargement() {
-            Ok(request) => request,
-            Err(error) => {
-                self.error = Some(error);
-                return;
-            }
-        };
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Export enlarged whole image — project stays editable")
-            .add_filter("PNG image", &["png"])
-            .set_file_name(format!("{}-enlarged.png", self.current().name))
-            .save_file()
-        else {
-            return;
-        };
-        self.start_zoom_export(path, document, scale, enhancement, ctx);
-    }
-
-    pub(super) fn start_zoom_export(
-        &mut self,
-        path: PathBuf,
-        document: Document,
-        scale: f32,
-        enhancement: f32,
-        ctx: &Context,
-    ) {
-        if self.zoom_export.is_some() || self.pending_files >= 4 {
-            return;
-        }
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        self.zoom_export = Some(cancel.clone());
-        self.pending_files += 1;
-        self.busy = true;
-        self.message =
-            "Enlarging whole image locally; File → Cancel Super Zoom export stops this job".into();
-        let tx = self.file_tx.clone();
-        let repaint = ctx.clone();
-        std::thread::spawn(move || {
-            let result = io::export_super_zoom_png(&path, &document, scale, enhancement, &|| {
-                cancel.load(Ordering::Relaxed)
-            })
-            .map_err(|e| e.to_string());
-            let _ = tx.send(FileResult::ZoomExported(path, result));
-            repaint.request_repaint();
-        });
-    }
-
-    pub(super) fn cancel_zoom_export(&mut self) {
-        if let Some(cancel) = &self.zoom_export {
-            cancel.store(true, Ordering::Relaxed);
-            self.message = "Cancelling Super Zoom export…".into();
-        }
-    }
     pub(crate) fn open_processing(&mut self, kind: Kind, instance: Option<u64>) {
         if !self.close_pending_none() {
             return;
@@ -337,25 +217,7 @@ impl PaletteApp {
         {
             options.global_light = self.current().document.global_light;
         }
-        if instance.is_none()
-            && let Operation::Filter(Filter::Harmonization {
-                reference_layer, ..
-            }) = &mut operation
-        {
-            let doc = &self.current().document;
-            *reference_layer = doc
-                .layers
-                .iter()
-                .rev()
-                .find(|l| {
-                    palette_core::processing::harmonization::can_reference(
-                        doc,
-                        doc.active_layer,
-                        l.id,
-                    )
-                })
-                .map(|l| l.id);
-        }
+
         if instance.is_none() && operation.kind() == Kind::DiffuseGlow {
             let [r, g, b, _] = self.background.to_srgba_unmultiplied();
             operation
@@ -447,8 +309,6 @@ impl PaletteApp {
             instance,
             operation,
             filter_mask: filter_mask.clone(),
-            protection: (kind == Kind::LandscapeMixer)
-                .then(|| landscape_brush::Protection::new(filter_mask)),
             pick_origin: true,
             origin_drag: false,
             import: None,
@@ -459,10 +319,6 @@ impl PaletteApp {
             requested: None,
             ready: None,
             image: None,
-            reference_image: None,
-            show_reference: true,
-            reference_rect: egui::Rect::NOTHING,
-            reference_image_rect: egui::Rect::NOTHING,
             parameter: kind
                 .descriptor()
                 .parameters
@@ -473,7 +329,6 @@ impl PaletteApp {
                             Kind::OuterGlow | Kind::InnerGlow => "radius",
                             Kind::DropShadow | Kind::InnerShadow => "angle",
                             Kind::Stroke => "width",
-                            Kind::SmartPortrait => "happiness",
                             _ => "",
                         }
                 })
@@ -508,7 +363,7 @@ impl PaletteApp {
                 continue;
             }
             match ready.result {
-                Ok((image, reference)) => {
+                Ok(image) => {
                     let full_size =
                         image.size == [d.original.width as usize, d.original.height as usize];
                     d.image = Some(ctx.load_texture(
@@ -521,9 +376,6 @@ impl PaletteApp {
                         },
                     ));
                     d.ready = Some(ready.ticket);
-                    d.reference_image = reference.map(|r| {
-                        ctx.load_texture("landscape-reference-preview", r, TextureOptions::LINEAR)
-                    });
                 }
                 Err(error) => self.error = Some(error),
             }
@@ -551,14 +403,6 @@ impl PaletteApp {
                     session: d.session,
                     generation: d.generation,
                     document,
-                    reference: if d.preview
-                        && d.show_reference
-                        && let Operation::Filter(f @ Filter::LandscapeMixer { .. }) = &d.operation
-                    {
-                        Some(f.clone())
-                    } else {
-                        None
-                    },
                 };
                 if self.processing_worker.tx.try_send(request).is_ok() {
                     self.processing_worker.busy = true;
@@ -574,11 +418,11 @@ impl PaletteApp {
         }
     }
     pub(super) fn apply_processing(&mut self) {
-        if self.processing_dialog.as_ref().is_some_and(|d| {
-            d.import.is_some()
-                || !d.reference_ready()
-                || d.protection.as_ref().is_some_and(|p| p.pending())
-        }) {
+        if self
+            .processing_dialog
+            .as_ref()
+            .is_some_and(|d| d.import.is_some())
+        {
             return;
         }
         let Some(d) = self.processing_dialog.take() else {

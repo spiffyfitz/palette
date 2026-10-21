@@ -1,10 +1,8 @@
 //! Explicit project saving versus flattened export, with bounded decoding and
 //! same-directory atomic replacement. A failed encoder never touches the target.
 use crate::{composite, document::Document, raster::Raster};
-mod avif;
 pub mod paint;
 mod project;
-pub use avif::{AvifOptions, export_avif};
 use flate2::read::ZlibDecoder;
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage};
 use std::{
@@ -29,6 +27,36 @@ pub enum FileError {
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Invalid(String),
+}
+
+/// Retired filters must never become a silent no-op when an older project opens.
+/// Keep this diagnostic independent of the removed model/runtime implementation.
+pub(super) fn project_json_error(error: serde_json::Error) -> FileError {
+    let message = error.to_string();
+    let removed = [
+        "SmartPortrait",
+        "LandscapeMixer",
+        "PhotoRestoration",
+        "Harmonization",
+        "MakeupTransfer",
+        "ColorTransfer",
+        "DepthBlur",
+        "SuperZoom",
+        "SkinSmoothing",
+        "Colorize",
+        "JpegArtifactsRemoval",
+        "StyleTransfer",
+    ];
+    if removed
+        .iter()
+        .any(|name| message.contains(&format!("unknown variant `{name}`")))
+    {
+        FileError::Invalid(
+            "This project uses Neural Filters, which have been removed from Palette. Open it with an older build and remove or rasterize those filters before saving a compatible copy. The original file has not been changed.".into(),
+        )
+    } else {
+        FileError::Json(error)
+    }
 }
 
 /// Lowercase UTF-8 extension used for explicit format dispatch.
@@ -63,10 +91,9 @@ pub fn open_with_report(path: &Path) -> Result<ImportReport, FileError> {
             document,
             notice: None,
         }),
-        "avif" => avif::read(path).map(|document| ImportReport {
-            document,
-            notice: None,
-        }),
+        "avif" => Err(FileError::Invalid(
+            "AVIF support has been removed from Palette.".into(),
+        )),
         "heif" | "heic" => Err(FileError::Invalid("HEIF/HEIC is not enabled.".into())),
         _ => {
             let mut reader = ImageReader::open(path)?.with_guessed_format()?;
@@ -164,7 +191,7 @@ pub fn read_project(path: &Path) -> Result<Document, FileError> {
             "Decompressed project exceeds the 256 MiB limit".into(),
         ));
     }
-    let document: Document = serde_json::from_slice(&json)?;
+    let document: Document = serde_json::from_slice(&json).map_err(project_json_error)?;
     document.validate().map_err(FileError::Invalid)?;
     Ok(document)
 }
@@ -203,9 +230,6 @@ pub fn save_project(path: &Path, document: &Document) -> Result<(), FileError> {
 
 /// Atomically encode the composite, with an explicit white background for JPEG.
 pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
-    if extension(path) == "avif" {
-        return export_avif(path, document, AvifOptions::default());
-    }
     document.validate().map_err(FileError::Invalid)?;
     let format = match extension(path).as_str() {
         "png" => ImageFormat::Png,
@@ -216,7 +240,7 @@ pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
         "webp" => ImageFormat::WebP,
         _ => {
             return Err(FileError::Invalid(
-                "Choose PNG, JPEG, BMP, GIF, TIFF, WebP or AVIF for flattened export".into(),
+                "Choose PNG, JPEG, BMP, GIF, TIFF, or WebP for flattened export".into(),
             ));
         }
     };
@@ -242,52 +266,6 @@ pub fn export(path: &Path, document: &Document) -> Result<(), FileError> {
             image.to_rgb8().write_to(file, format)?;
         } else {
             image.write_to(file, format)?;
-        }
-        Ok(())
-    })
-}
-
-/// Export the entire visible composite at 1–3× using local learned enlargement.
-/// This is an explicit flattened PNG export, never a project save. Cancellation
-/// is checked after encoding as well, before atomic replacement of the target.
-pub fn export_super_zoom_png(
-    path: &Path,
-    document: &Document,
-    scale: f32,
-    enhancement: f32,
-    cancel: &dyn Fn() -> bool,
-) -> Result<(), FileError> {
-    if extension(path) != "png" {
-        return Err(FileError::Invalid(
-            "Whole-image Super Zoom export requires a .png filename".into(),
-        ));
-    }
-    document.validate().map_err(FileError::Invalid)?;
-    crate::processing::super_zoom_dimensions(document.width, document.height, scale)
-        .map_err(FileError::Invalid)?;
-    if !enhancement.is_finite() || !(0. ..=1.).contains(&enhancement) {
-        return Err(FileError::Invalid(
-            "Super Zoom enhancement must be between 0 and 1".into(),
-        ));
-    }
-    let raster = composite::Renderer::default()
-        .render_cancel(document, cancel)
-        .map_err(FileError::Invalid)?;
-    let output = crate::processing::super_zoom_enlarge_cancel(&raster, scale, enhancement, cancel)
-        .map_err(FileError::Invalid)?;
-    atomic_write(path, |file| {
-        if cancel() {
-            return Err(FileError::Invalid("Processing cancelled".into()));
-        }
-        use image::ImageEncoder;
-        image::codecs::png::PngEncoder::new(file).write_image(
-            &output.rgba(),
-            output.width(),
-            output.height(),
-            image::ExtendedColorType::Rgba8,
-        )?;
-        if cancel() {
-            return Err(FileError::Invalid("Processing cancelled".into()));
         }
         Ok(())
     })

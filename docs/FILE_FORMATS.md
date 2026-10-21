@@ -11,13 +11,13 @@
 | GIF | First frame | Still export | Indexed colors; limited transparency; no animation preservation |
 | TIFF | First page, with notice | Export | RGBA round-trip tested; multipage editing/metadata preservation not supported |
 | WebP | First frame if animated, with notice | Export lossless | RGBA round-trip tested; no animation preservation |
-| AVIF | Still image | Export with quality/speed | Real 8-bit RGBA/RGB, 10-bit decode, dimensions/alpha/quality tested on Windows |
+| AVIF | No | No | Intentionally removed; existing files are never overwritten by an unsupported export |
 | Microsoft `.paint` | Verified subset | Experimental layered export | Two editable specimen layers locally; user confirms generated output opens/looks correct in Paint |
 | HEIF/HEIC | No | No | No libheif dependency linked yet |
 
 Raster imports create a single editable source layer. They do not recreate layers absent from a flat format. Raster export writes the rendered composite; the project path and dirty state remain unchanged. Save creates a `.palette` project, even when the tab originated from PNG/JPEG. Unsupported output extensions fail before touching the target.
 
-The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Still AVIF uses avif-decode 3.0/rav1d and ravif 0.13/rav1e. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports and AVIF imports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
+The six ordinary raster formats use image 0.25.10 with explicitly enabled codecs. Tests exercise dimensions for all six formats and exact RGBA for PNG/TIFF/WebP. Images are converted to straight-alpha RGBA8 in assumed sRGB. Ordinary decoders now apply Exif orientation and retain original ICC/Exif bytes in the native document. Working profile conversion is not implemented; flattened exports do not preserve metadata. Animation is not preserved. `open_with_report` returns a transient notice based on the detected codec, including misnamed raster files. Animated WebP, APNG (PNG default image), GIF (first frame) and TIFF (first page) notices are presented for both opening and importing layers. Still PNG/WebP imports have no animation notice; a TIFF notice describes the first-page policy even for a single-page file.
 
 ## `.palette` version 8 — current writer (versions 1–7 migration)
 
@@ -72,10 +72,6 @@ Local source/composite round trips and an independent raw-BGRA/Deflate/Pillow or
 ## Shape and layer movement preservation
 
 The shape and polygon/curve tools commit raster pixels and selection coverage; a native project preserves those pixels and coverage, not a persistent editable path. Selection transforms and arbitrary rotation preserve current layer processing properties without adding new format structures. Whole-layer movement changes the existing signed layer offset and preserves source, masks, filters and effects. The underlying selection/layer model remains compatible with the v1 migration reader; the current writer stores it in v6. A translated layer with a mask and live filter has a real `.palette` round-trip test. These geometry changes do not establish `.paint` interoperability. AVIF support is independently provided by the codec path above.
-
-## Still AVIF scope
-
-Export settings: RGB quality 1–100 (default 80), speed 1–10 (default 8), 8-bit output, maximum alpha quality, up to four encoder threads. Opening verifies coded sequence dimensions (maximum 16384 per axis and 64 megapixels), one sequence header per primary/alpha item and the existing 256 MiB input bound. Decoder output is converted to RGBA8; 8/10-bit inputs are tested, while the implemented 12-bit downconversion still needs an external fixture. Non-still/animation streams and HEIF irot/imir/clap properties are rejected explicitly because this decoder adapter does not apply them. HDR/profile-aware conversion and broader derived-image conformance remain open. RGB is lossy; use native project saving or PNG for lossless pixels.
 
 ## Recent files and recovery
 
@@ -193,137 +189,9 @@ New variants: FieldBlur (eight BlurPin {center, radius} values, selected pin and
 Pin and point indices are zero-based; video field names refer to one-based image rows. FieldBlur count is 1–8, selected pin must be active, every stored pin radius is finite 0–128 and every center is normalized 0–1. Every PathBlur coordinate is validated even when its handle is not selected. Pixel extents, angles, colors and remaining domains use the typed registry. All data fits the existing bounded JSON metadata; no new assets or framing/version migration. Earlier application builds reject unfamiliar variants. The shared all-catalog native/mask/region/Paint checks now cover 138 operations (132 filters, six styles). [Validation](GALLERY_VIDEO_RENDER_VALIDATION.md).
 
 
-## Bundled local neural profile
+## Retired filter compatibility
 
-Version 6 metadata now permits `StyleTransfer { style: "MosaicV1", strength: 0..1 }`.
-`MosaicV1` identifies the immutable `onnx-mosaic-9-fa646ded-v1` profile and SHA-256
-`fa646dedade881243f8d5a2ceb7de2b93675b21fc24f7482894ac4851a9a0a47`.
-The model bytes are embedded in Palette, not repeated in each project. The same
-profile/algorithm must be retained by future readers; new weights need new IDs.
-No pixel, mask, asset framing or prior variant changed, so no version migration
-is needed. Older Palette builds reject this unfamiliar variant explicitly.
-Strength and model identity remain editable after save/reopen, and the existing
-native source/mask pipeline stays lossless. Flat or Paint export bakes appearance
-under the existing unsupported-feature warning, without discarding the native
-original. No network or external inference service is involved in reopening.
-
-
-Version 6 also permits `JpegArtifactsRemoval { model: "Dncnn3V1", strength: 0..1 }`.
-The immutable model profile is `dncnn3-6e7dcb19-v1`, with exact graph hash
-`6e7dcb19f0f37aac698e846f0364bc01e0939d0582a8f3e974d8be8fd3388f24`.
-Original pixels, dimensions, alpha, mask coverage and filter order are retained;
-no new assets, framing or previous variants changed. The weights are bundled in
-Palette, so opening the native project requires no download or external runtime.
-Older builds reject the unfamiliar variant. Incompatible flat/Paint exports use
-the existing native-backup and baked-appearance workflow. [Model contract](JPEG_RESTORATION_VALIDATION.md).
-
-
-Native v6 also permits `Colorize { model: "Eccv16Fp16V1", strength: 0..1,
-saturation: 0..2 }`. Profile `eccv16-f16-5ce703af-v1` pins graph SHA-256
-`5ce703afdc738da5a435d23369c617004abea7be54342568b3ddd0fd96ac8938`, compact
-kernel storage, Lab normalization, direct chroma reconstruction and gamut
-handling. Weights are bundled in Palette, not repeated in native projects.
-Original source pixels, masks, geometry and complete editable parameters survive
-roundtrip. No existing variant/asset/framing changed; older builds reject the
-new variant explicitly. A new weight or pixel contract requires a new profile.
-See [Colorize validation](COLORIZE_VALIDATION.md).
-
-Native v6 also permits `SkinSmoothing { model: "FaceMeshV1", strength, blur,
-range }`, all numbers finite in 0..1. The model identifier pins bundled face
-geometry and conventional smoothing conventions. Parameters are face-relative
-and unchanged when building reduced previews. Source/masks/layer properties
-and filter order remain separate assets/metadata. Old variants and container
-framing are unchanged; older applications reject this new enum variant rather
-than silently losing it. Paint and flat-image exports bake supported appearance
-using the existing native-backup policy. [Exact scope](SKIN_SMOOTHING_VALIDATION.md).
-
-Native v6 also permits `SuperZoom { model: "Espcn3xCropV1", zoom: 1..3,
-enhancement: 0..1, center: [0..1, 0..1] }`, with finite numeric values. It is an
-explicit source-sized crop; canvas/source dimensions and filter-mask coordinates
-remain unchanged. Model weights are bundled in Palette; parameters are unchanged
-in reduced previews. No framing/asset migration occurs, and older builds reject
-the new enum variant. Sources remain lossless and the existing flat/Paint
-compatibility policy applies. [Exact contract](SUPER_ZOOM_VALIDATION.md).
-
-Native v6 also permits `ColorTransfer` with `method: "LabStatisticsV1"`, Strength,
-Luminance and Contrast in finite 0..1 and Saturation in finite 0..2. Its embedded
-`ColorReference` contains a sanitized name, original dimensions and three float64
-Lab means/deviations. This is sufficient to reproduce this statistical method;
-the full reference image is not embedded or required on reopen. Native parsing
-uses `serde_json/float_roundtrip` for exact float64 preservation and validates
-profile names, dimensions and bounded finite statistics before use. The model
-does not contain a filesystem reference or a learned graph. No container framing
-changed; older readers reject the unknown enum. [Exact contract](COLOR_TRANSFER_VALIDATION.md).
-
-Native v6 additionally permits `MakeupTransfer` with `MakeupModel::FaceMeshLabV1`,
-finite Strength/Lips/Eyes/Feather/Luminance in 0..1 and an embedded
-`MakeupReference` (sanitized name, dimensions, and relative lip/eye Lab offsets).
-The bounded float64 profile fully specifies the reference for this method; no
-photo, path or landmarks are stored. Existing float-roundtrip parsing preserves
-its values exactly. No binary framing or asset migration occurs; older readers
-reject the unknown enum. [Contract](MAKEUP_TRANSFER_VALIDATION.md).
-
-Spatial makeup v2 retains the `MakeupTransfer` variant and introduces immutable
-`FaceMeshSpatialV2`. Cheeks defaults to zero and Protect occlusions to false when
-reading older fields, keeping v1 output unchanged. `MakeupReference.texture` is
-optional. A bounded square 128–512 raster is detached through the existing filter
-asset slot into tile frames; its 468 points, finite Lab plane/baseline and SHA-256
-source key remain metadata. The original input photo/path is not stored; the face
-crop is. Missing/inline/oversized assets and invalid points are rejected. The v6
-framing is unchanged; older readers reject the new model/asset explicitly.
-
-Harmonization stores a stable optional layer ID and finite strength/luminance/
-contrast/saturation. Resolution is live and does not serialize sampled pixels.
-Cycles (including disabled links) are invalid; missing references are tolerated
-for reversible deletion and render as no-ops. [Spatial makeup](MAKEUP_SPATIAL_VALIDATION.md)
-and [Harmonization](HARMONIZATION_VALIDATION.md) describe contracts and tests.
-
-Photo Restoration serializes `PhotoRestoration` with immutable `DirectionalV1`,
-Strength/Photo enhancement/Scratch reduction/Noise reduction/Color noise reduction
-in 0–1, integer Repair radius in 1–8 and the Show detected damage boolean. There
-are no external assets or additional frames. All parameters are validated before
-save/render; native v6 framing is unchanged. Older readers reject the unknown
-variant. The diagnostic overlay remains enabled after saving when explicitly
-applied in that mode. [Scope](PHOTO_RESTORATION_VALIDATION.md).
-
-`SmartPortrait` pins `PortraitMethod::FaceMeshWarpV1` or `ExpressiveMouthV2` with finite expression,
-strength, lighting-angle/intensity and all-faces parameters. It uses existing
-filter masks; it has no embedded reference/model asset or external file link.
-Native v6 framing is unchanged, and older readers reject the unknown filter
-variant. Preview resizing retains its dimensionless face-space parameters.
-V2 is the new default, with stronger expression endpoints, lip separation and
-local mouth infill. Existing V1 instances keep their appearance until an
-expression is edited; the method change participates in Apply/Cancel/history.
-Older readers reject the unknown V2 method rather than silently changing pixels.
-
-`LandscapeMixer` originally used immutable `LandscapeMethod::HorizonBlendV1`, all twelve
-numeric parameters, a bounded reference name and optional reference raster.
-Native v6 detaches the latter into the existing filter `map` asset slot (at most
-512 × 512). Inline/missing/misbound/oversized assets are rejected during manifest
-preflight. Reopening requires no external reference file. Older readers reject
-the new filter variant; framing/version and existing documents are unchanged.
-
-`EdgeAwareV2` adds sky/terrain-aware processing and `edge_sensitivity` (0–1,
-default 0.5 when absent). Its binary reference limit is 2048 × 2048; manifest
-preflight still enforces 512 × 512 for `HorizonBlendV1`. Existing methods do not
-upgrade on decode/save. Reference-preview window state and textures are UI-only
-and are never serialized. Old readers reject the new method. Version 6 framing,
-asset deduplication, masks and atomic-save rules remain unchanged.
-The sky-warping fix corrects EdgeAwareV2 placement and donor colour extension;
-it requires no new serialized parameters or asset conversion. HorizonBlendV1
-retains its original pixel behavior.
-Landscape brush corrections reuse the existing `FilterInstance.mask` coverage
-asset: source rasters, filter parameters, framing and version are unchanged.
-The Method compatibility parameter is hidden in the UI but remains serialized.
-
-`MultiscaleV2` extends Photo Restoration to Strength 0–2 and nominal radius 1–64.
-`damage_type` is Bright/Dark/Both; missing fields default to Both. `protect_faces`
-defaults to false when absent, preserving old v1 saves. New v2 filters select
-Bright, enabled protection and radius 12. Method changes or controls beyond the
-v1 range opt into v2; decoding/saving alone does not. V1 retains its original
-0–1 Strength / 1–8 radius validation. Source assets are unchanged; v6 framing and
-asset layout need no migration. Older readers reject the unknown v2 method.
-[Contract and legacy hash](PHOTO_RESTORATION_CRACKS_VALIDATION.md).
+Neural Filters and AVIF support were intentionally removed on 2026-10-20 to reduce dependencies, binary size and build requirements. All twelve operations formerly under Neural Filters are removed, including conventional approximations. PNG, JPEG, BMP, GIF, TIFF, WebP, `.paint` and `.palette` remain supported. Older projects containing a retired filter fail with an explicit diagnostic, including disabled filters; open them in an older build and remove or rasterize those filters before saving a compatible copy. No filter is silently discarded.
 
 ## Version 7: Background visibility and live styles
 

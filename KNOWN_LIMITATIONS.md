@@ -1,36 +1,8 @@
 # Known limitations
 
+Neural Filters and AVIF support were intentionally removed on 2026-10-20 to reduce dependencies, binary size and build requirements. All twelve operations formerly under Neural Filters are removed, including conventional approximations. PNG, JPEG, BMP, GIF, TIFF, WebP, `.paint` and `.palette` remain supported. Older projects containing a retired filter fail with an explicit diagnostic, including disabled filters; open them in an older build and remove or rasterize those filters before saving a compatible copy. No filter is silently discarded.
+
 Layer presentation now uses bounded persistent GPU textures and GPU composition, including masks, effects, opacity and all 19 blend modes. Filter/effect preparation and local model inference still run on the CPU when their inputs change. Unsupported adapters, memory/dimension limits and moving document-anchored materials use the correct CPU fallback. Cold/evicted appearances remain costly; dense 4K/8K dragging and other platforms are unmeasured. [GPU scope and measurements](docs/GPU_COMPOSITOR_VALIDATION.md).
-
-Smart Portrait and Landscape Mixer carry **(Beta)** labels throughout filter
-menus, contextual toolbars and layer filter lists while their photographic
-quality and capability limits remain under review.
-
-Landscape Mixer v2 estimates an edge-aware sky matte and preserves source
-terrain geometry with reference palette transfer. Similar sky/rock/snow colours,
-dark skies, reflections and unusual foreground can confuse this conventional
-estimator; no semantic segmentation or scene synthesis is supplied. New
-references allow 2048 px, while legacy v1 retains its 512 px limit and horizontal
-blend until explicitly upgraded. A fixed-size graded reference view helps
-alignment. Sky placement preserves aspect with a horizon-aligned cover crop;
-large donor foreground gaps receive smooth colour extension, not rebuilt clouds.
-**… → Refine mix…** provides a Selection Brush to protect source areas and erase
-that protection. It masks the entire mix, including seasonal grades, and cannot
-force automatic foreground to become sky. [Protection workflow](docs/LANDSCAPE_PROTECTION_VALIDATION.md).
-[Scope and validation](docs/LANDSCAPE_EDGES_VALIDATION.md).
-
-Photo Restoration now has a conventional multiscale wide/curved crack counterpart,
-with 0–200% Strength, polarity, optional local facial-detail protection and harmonic
-fill. It does not reconstruct faces, print texture or large missing areas. Strong
-settings can select real lines/highlights; protection can leave cracks near eyes
-or lips. Inspect the damage overlay or restrict a filter mask. Smart Portrait
-now has stronger local geometric expressions, lip separation, procedural mouth
-infill and face shading; the fallback teeth are an approximation, not recovered
-anatomy. Existing teeth detection is heuristic. Generative age, hair,
-gaze and head-pose changes remain unavailable. Existing texture can stretch at
-strong settings, and missed faces remain unchanged.
-[Smart Portrait scope](docs/SMART_PORTRAIT_VALIDATION.md).
-[Photo Restoration scope](docs/PHOTO_RESTORATION_CRACKS_VALIDATION.md).
 
 - This is a runnable foundation with core Paint editing, Phase 3 file workflows and the first Phase 4 blend/coverage/mask and Phase 5 processing slices, not complete Paint/Photoshop equivalence. Disabled controls identify unfinished functionality.
 - `.paint` support is experimental and limited to the verified direct 8-bit RGBA unci/iovl graph, whole-item Deflate/zlib or packed raw pixels. The supplied two-layer specimen and generated files round-trip locally. The user confirms generated output opens and looks correct in Microsoft Paint. Independent layer editing there and saving back have not been reported/tested; no broader variant compatibility is asserted. General HEIF/HEIC, nested derived sources, tiled/other bit depths, unsupported essential properties and unknown metadata preservation remain unsupported. See docs/PAINT_RESEARCH.md.
@@ -45,7 +17,7 @@ strong settings, and missed faces remain unchanged.
 - Images are limited to 64 megapixels; raster imports also limit each dimension to 16384. Images exceeding the GPU texture dimension use a reduced display texture while retaining full source/composite data; high-zoom detail on those images needs tiled display textures. This is not a production-scale 8K editor yet.
 - History is capped at 256 commands and 128 MiB of uniquely retained backing buffers beyond the current document. Large destructive operations can exceed that budget and lose their undo entry; render textures, live documents, gesture coverage and structural metadata are outside that budget; retained opaque ICC/Exif buffers are counted. Memory/runtime behavior for fully painted 4K/8K multi-document workloads still needs benchmarking.
 - General edits still trigger full background composition. Brush/pencil/eraser samples recompose only changed bounds and upload GPU subimages when a compatible full-resolution display cache exists; reduced display textures and documents containing spatial filters/styles use progressive full background snapshots. Spatial filter painting is live but can lag; it does not run full filters on the UI thread. One full render can be queued; obsolete general-edit epochs cannot overwrite newer state, but running jobs are not cancelled. Large stroke bounding boxes can still be expensive. Spatial layers use a conservative 128 MiB/eight-entry LRU, including retained sources/masks, but no per-stage cache. A prepared layer exceeding that budget is recomputed. Enabled style outputs are preflighted against a 512 MiB per-layer estimate; this is not a process memory cap. Gaussian scratch is tiled, while evaluated foreground/style rasters are retained full-size. Only parameter-preview processing supports in-flight cancellation; resize/preparation and main render work can delay cancellation. Rendering is CPU; wgpu presents the result. The measured region timings exclude input, texture conversion/upload and presentation; they do not establish smooth 4K/8K interaction.
-- Recent files and recovery persist under the platform application-data directory. Recovery covers committed document edits, not in-flight text/construction drafts, undo history or viewports. A snapshot is approximately every 30 seconds when edits are stable; the last interval can be lost after a crash. No backup browser or snapshot retention policy yet. A damaged recovery sidecar reports an error; its valid .palette file can be opened manually. Old lease files are retained, while locked live instances are skipped. Profile conversion is not implemented: imports become RGBA8 with an sRGB working interpretation; supported ordinary decoders preserve original ICC/Exif bytes in the native project and apply Exif orientation. Flat exports omit metadata, and AVIF import metadata preservation is pending.
+- Recent files and recovery persist under the platform application-data directory. Recovery covers committed document edits, not in-flight text/construction drafts, undo history or viewports. A snapshot is approximately every 30 seconds when edits are stable; the last interval can be lost after a crash. No backup browser or snapshot retention policy yet. A damaged recovery sidecar reports an error; its valid .palette file can be opened manually. Old lease files are retained, while locked live instances are skipped. Profile conversion is not implemented: imports become RGBA8 with an sRGB working interpretation; supported ordinary decoders preserve original ICC/Exif bytes in the native project and apply Exif orientation. Flat exports omit metadata.
 - GIF imports one frame and exports a still image with palette/transparency limitations. Animated WebP imports its first frame, APNG imports its PNG default image and TIFF imports its first page. Open and import-as-layer display explicit notices; animation/multipage editing and unusual metadata remain unsupported. JPEG export uses white for transparency. Ordinary codec tests use small fixtures; they are not a comprehensive conformance/fuzz suite.
 - Native dialogs are synchronous modal dialogs; decoding/encoding/rendering run in background workers. Four concurrent file jobs are allowed; further requests report an error.
 - Canvas crop/resize changes bounds while retaining hidden source pixels. Painting/movement expands the active source buffer as necessary; masks are reanchored with it. Selection move/resize/rotation now previews processed pixels on a background worker. Movement is integer-only. Resizing clamps crossing edges to one pixel rather than flipping; Shift retains aspect ratio within pixel rounding. Resizing is bilinear, with no interactive nearest-neighbor option yet.
@@ -59,9 +31,6 @@ strong settings, and missed faces remain unchanged.
 - New documents and the Image Properties Default action use 1280 x 720 at 100% zoom. The full canvas can extend beyond a narrow workspace; pan or Fit reveals its edges and resize handle. Whole-layer movement is integer translation; resizing/rotating an individual layer, unlinking masks and moving shape objects remain pending. Layer drag previews now use cached GPU composition with regional CPU fallback; general tiled movement remains pending.
 - Integer zoom uses nearest sampling. Fractional coordinates are correct, but smooth downsampling, comprehensive DPI and keyboard/screen-reader testing remain pending.
 - Distribution installers, macOS app signing/notarization and Linux packages are not produced by this milestone.
-
-- Still AVIF uses avif-decode 3/rav1d and ravif 0.13/rav1e. Windows tests cover 8-bit RGBA, opaque RGB, single-pixel and 10-bit input, quality changes, dimensions, alpha and malformed/truncated input. 12-bit conversion is implemented but not independently tested. Animation/non-still streams and HEIF irot/imir/clap properties are rejected explicitly; HDR/color-management, derived-image conformance and broad external fixture/fuzz coverage remain pending. Encoding uses 8-bit RGB with maximum alpha quality; it is not a lossless project format. Decoder scratch allocations and running jobs are not fully cancellable. Rust 1.98+ is required; codec assembly is disabled and NASM/system AVIF libraries are unnecessary. Rust-fallback decoding may be slower than the former assembly path. The manifest-only wrapper patch needs maintenance until upstream exposes assembly control. [Dependency audit](docs/DEPENDENCY_AUDIT.md).
-- Image-as-layer import uses the existing paste semantics: it preserves other layers, selects the new raster and expands canvas bounds for a larger image. If the target document changes during decode, the import is cancelled with a status message. Four file jobs and one recovery job can run; recents use last-writer-wins storage across simultaneous app instances.
 
 - Phase 4 selection/mask slice: Wand uses Oklab distance with alpha as a separate dimension in assumed sRGB; it is not an ICC-managed comparison. Tolerance 100 explicitly selects every eligible canvas pixel. Antialiasing smooths the hard region by a one-pixel tent, so a boundary can include neighboring partial coverage. The contiguous frontier is capped at one million pending spans and the exact-color cache at 4096 entries. Existing 64-megapixel mask bounds apply; merged sampling also allocates a composite.
 - Feathering uses pixel-integrated Gaussian weights below 5 px and a three-box Gaussian approximation at larger radii (radius is sigma, 0–128 pixels), with byte rounding between passes and clamped canvas edges. Small-radius processing has a bounded wider convolution cost; fractional changes still obey RGBA8 coverage precision. Selection feathering previews current coverage on a bounded background worker, retaining the original until toolbar release or dialog Apply. Intermediate slider requests are coalesced; obsolete running work finishes and is discarded, so very large masks can lag. Explicit tool/tab/save/undo actions finish a pending toolbar adjustment synchronously when its final worker result is not ready; this can stall that action. Layer-mask feathering still has no live preview. Toolbar settings also set the radius for each new rectangle, lasso or Wand region before combination, rather than repeatedly blurring the accumulated result. Creation previews show the raw contour, then the committed feathered/combined selection. Ordinary ants trace the retained original contour (or 50% coverage for selections without an original). Faint ants show the feather’s nonzero byte-coverage extent, which can extend farther than the nominal Gaussian sigma radius. Legacy feathered selections have no recoverable original contour until a new selection/feather operation establishes one.
@@ -109,73 +78,9 @@ Stylize/render batch: independent equivalents, not Photoshop-identical algorithm
 
 Editable catalog completion: independent implementations, not Photoshop-identical control/output parity. Color Lookup imports only UTF-8 3D `.cube` tables (size 2–33, 4 MiB text limit); no 1D/shaper LUTs, 3DL/CSP/device-link formats, tetrahedral interpolation or profile conversion. Output is trilinear encoded RGB, with byte rounding; domains and finite table values are bounded. Displacement maps are limited to 1024×1024 PNG/JPEG/BMP/GIF/TIFF/WebP, use red/green with 128 neutral and ignore blue; transparent coverage reduces displacement. Channels are taken from oriented decoded pixels, without profile transforms. Animation/page notices use the existing first-frame/page policy. No PSD map importer. Shear has five fixed-height horizontal knots with linear/bounded Catmull–Rom interpolation, not arbitrary point counts. Custom uses a fixed 5×5 signed kernel, nonzero scale, offset and optional alpha filtering; no arbitrary kernel sizes or kernel-file import/export. Preserve-alpha mode fills missing/less-covered neighbor color from the center to prevent fringes; alpha mode convolves premultiplied RGBA and can clip signed results. Asset decode/parse is background work tied to a draft; abandoning a job drops its result, without interrupting a running codec. Native file chooser interaction itself is not automated. Existing full-render/cache/color-management and cross-platform gates remain. [Validation](docs/EDITABLE_FILTERS_VALIDATION.md).
 
-Expanded catalog: 132 conventional filters does not mean every Photoshop capability. Two wholly missing audited Neural Filter families, partial Makeup Transfer, partial conventional Color Transfer, and other partial neural/conventional coverage, raw development and previously excluded tools remain unavailable; [audit](docs/PHOTOSHOP_FILTER_AUDIT.md). Field Blur supports eight bounded pins; Iris/Tilt-Shift/Spin use one region per instance, Path uses one quadratic curve. Variable-focus defocus interpolates six Gaussian scales; Path/Spin have bounded 25/33-tap shutter sampling. Procedural frames/fire/trees are original, with four frame styles and three tree forms rather than Adobe preset/species assets. NTSC is a conservative legacy gamut approximation, not color-managed broadcast certification. [Exact scope and evidence](docs/GALLERY_VIDEO_RENDER_VALIDATION.md).
-
 Expanded photographic defaults measured about 4.05–4.44 s for cold 4K variable-focus blur and 5.24 s for Path Blur on the documented quarter-coverage workload. Spin and other new operations measured roughly 0.22–0.36 s. Dense input/end-to-end interaction can cost more; the current CPU path is not a frame-rate guarantee.
 
-The external audit also records the unimplemented Substance-based Parametric Filters family separately from Neural/AI and the 133 conventional entries; see [coverage audit](docs/PHOTOSHOP_FILTER_AUDIT.md).
-
-Neural follow-up: one bundled Mosaic Style Transfer profile is implemented locally. It uses a 224 × 224 working image fitted without aspect distortion; small details are limited, arbitrary reference styles and high-resolution inference are not supported. Alpha is preserved, with a gray inference matte for transparency. JPEG Artifacts Removal is also implemented with the bundled DnCNN-3 luminance network. It preserves source alpha/chroma but cannot reconstruct chroma compression damage; dense large images remain expensive CPU workloads and large previews are reduced. A 128 MiB bounded source/restoration cache accelerates strength changes. Colorize also runs locally with 256² semantic inference and a 64² chroma field. It reuses original Lab luminance/alpha but gamut clipping can shift displayed luminance; predicted colors are not guaranteed historical colors. Face-guided Skin Smoothing now uses learned geometry with conventional smoothing. Smart Portrait now supplies local geometric expressions and conventional shading, with generative age/hair/gaze/pose still missing; Super Zoom now supports learned cropped magnification, plus whole-image enlarged PNG export, with enlarged editable documents still missing. Model planning and each individual operator finish before cancellation is observed. No cloud or external runtime is used; macOS/Linux inference and broad photographic quality have not been validated. [Exact status](docs/NEURAL_FILTERS_FIRST_SIX.md).
-
-JPEG restoration has a substantial initial CPU cost: the dev-build opaque 1280 × 720 benchmark measured 65.22 seconds on this machine, while a cached strength change took 44.65 ms. UI and cancellation remain responsive; this is not instantaneous high-resolution cleanup. [Measured scope](docs/JPEG_RESTORATION_VALIDATION.md).
-
-Colorize adds about 64.5 MB of bundled weights. Inference is float32 with compact fp16 convolution-kernel storage; the profile identity pins these quantized weights and the pixel contract. The low-resolution color field can bleed across edges and infer incorrect colors. No user hints, arbitrary colorization models, ICC/HDR adapter or cross-platform runtime acceptance is supplied. [Exact scope](docs/COLORIZE_VALIDATION.md).
-
-Face-guided Skin Smoothing uses learned facial geometry with explicitly
-conventional smoothing, not a learned skin-restoration network. The short-range
-128² detector may miss small, occluded, profile or inverted faces; no detection
-leaves the source unchanged. It treats at most eight faces and has 384² working
-patches. Geometry coverage protects eyes/lips/brows but does not semantically
-segment beards, glasses, makeup or hair inside the face; use filter masks for
-those cases. Neck/hands/body skin and manual targeting of missed faces are not
-supported. Two NASA portraits plus roll/multiple-face regression checks do not
-establish broad photo-quality/fairness acceptance. [Exact scope](docs/SKIN_SMOOTHING_VALIDATION.md).
-
-Super Zoom currently produces a same-canvas crop with a fixed 3× luminance
-network, editable magnification up to 3×, Enhancement and a source center.
-Its explicit whole-image PNG export increases output dimensions at 1–3× while
-leaving the source project untouched. The canvas preview shows the crop; export
-uses the whole visible composite and ignores its source center. Enlarged editable
-native documents, arbitrary scale factors, face-specific restoration and denoising
-controls remain missing. Large permitted outputs can use hundreds of MiB and
-significant CPU time. PNG encoding finishes before cancellation is observed;
-cancelled output is discarded before atomic replacement.
-Color is bilinear, alpha geometric; the model may ring, soften or invent detail.
-This is partial coverage, not Photoshop parity. [Exact scope and evidence](docs/SUPER_ZOOM_VALIDATION.md).
-
-Depth Blur uses a fixed 256² MiDaS relative inverse-depth field and conventional
-Gaussian scale-space defocus, preserving source alpha. It is not metric depth,
-learned reblurring or an occlusion-aware lens renderer; depth discontinuities can
-bleed color, and thin hair, unusual scenes, transparency and extreme aspect ratios
-can be misestimated. There is no subject targeting/correction brush, bokeh model,
-separate depth-map layer or ancillary haze/color/noise controls. Focus changes reuse
-the inferred field but recompute blur scales; large dense layers can lag previews.
-The model adds 66.8 MB to the executable. Broad photo-quality and macOS/Linux
-execution remain unverified. [Exact scope and evidence](docs/DEPTH_BLUR_VALIDATION.md).
-
-Color Transfer is a conventional global Lab moment matcher in Neural Filters,
-not a neural/semantic transfer model. Profiles retain reference statistics rather
-than reference pixels; a different future image-based method would require
-reimport. Source L* is retained when Luminance is zero before RGB gamut clipping,
-which can still shift displayed brightness. Channel gain is capped at 8 and
-constant channels cannot acquire new variation. There are no semantic/local
-correspondences, cross-channel covariance, Adobe presets or profile-aware/HDR
-processing. Reference decoding finishes before cancellation; statistics/preview
-jobs cancel between rows/chunks. Large images can lag despite background work.
-[Exact contract](docs/COLOR_TRANSFER_VALIDATION.md).
-
-Makeup Transfer spatial v2 transfers a bounded face atlas, including liner, colour
-gradients, highlights and cheeks. It is a geometric warp, not learned cosmetic
-isolation. Skin texture and lighting can transfer; alignment can be imperfect.
-Protect occlusions mirrors a clearer eye when dark occlusion is detected, so
-intentional asymmetric styles should disable it. Clear portraits and filter masks
-remain useful. [Spatial evidence](docs/MAKEUP_SPATIAL_VALIDATION.md).
-
-Harmonization uses global Lab statistics from a live reference layer. It does not
-infer lighting direction, physical shadows or semantic scene regions. Reference
-visibility is ignored and blend modes against other layers/exterior effects are
-not sampled. Missing or invisible-content references give a no-op; cycles are
-rejected. [Contract](docs/HARMONIZATION_VALIDATION.md).
+Substance-based Parametric Filters and full Photoshop quality/control parity remain outside the implemented conventional catalog.
 
 ## Layer effect workflow scope
 

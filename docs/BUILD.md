@@ -17,7 +17,7 @@ The executable is `target/debug/palette.exe` on Windows or `target/debug/palette
 
 ## Windows
 
-Install Visual Studio Build Tools with Desktop development with C++, the MSVC toolchain and Windows SDK; install the Rust MSVC target. The UI runs through wgpu's available native backend. A modern graphics driver is required. AVIF decoding/encoding use Rust implementations with codec assembly disabled; **NASM is not required**. The small vendored avif-decode manifest patch must remain with the checkout; its Rust source is unchanged upstream. See [the dependency audit](DEPENDENCY_AUDIT.md). Tract's local-model kernels still use the standard MSVC compiler/assembler supplied by Build Tools. `./scripts/dev.ps1 build --release --locked` passes directly through to Cargo without changing PATH or downloading tools.
+Install Visual Studio Build Tools with Desktop development with C++, the MSVC toolchain and Windows SDK; install the Rust MSVC target. The UI runs through wgpu's available native backend. A modern graphics driver is required. The application no longer includes AVIF codecs or model inference. NASM and separate inference libraries are not required. `./scripts/dev.ps1 build --release --locked` passes directly through to Cargo without changing PATH or downloading tools.
 
 Windows smoke capture:
 
@@ -36,13 +36,13 @@ Debug capture scenes select actual interface states for repeatable visual review
 .\target\debug\palette.exe --screenshot target/colors-small.png --screenshot-scene colors --screenshot-size 780x520
 ```
 
-Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `avif-export`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite now covers the default window plus 184 scenes (see tests/screenshot.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
+Supported scenes: `file-menu`, `brushes`, `colors`, `text`, `properties`, `layers`, `shapes`, `selection`, `catalog`, `rotate-custom`, `selected-shape`, `polygon-preview`, `curve-preview`, `selection-resize-preview`, `selection-rotate-preview`, `recovery`, `close-dialog`, `paint-project`, `paint-export`, `selection-options`, `wand-settings`, `mask-layer`, `feather-selection`, `width`. Scene selection requires `--screenshot` and does not add editor controls. The regression suite covers the main window and the supported scenes listed in tests/screenshot.rs.rs for the complete list) against `tests/fixtures/*-windows.png`, all at 1386 x 963. `--screenshot-size` accepts 780-3840 by 520-2160 logical points. Review changed images before replacing baselines. Capture scenes are developer diagnostics, not file-format or native-input acceptance tests.
 
 If Windows reports that `palette.exe` is locked by a running session, leave that session open and build/test separately with `--target-dir target/transform-milestone`. This milestone used that fallback initially; the ordinary target build also succeeded after the lock cleared.
 
 ## macOS
 
-Install Xcode Command Line Tools (`xcode-select --install`) and Rust for the host architecture. Both Intel and Apple Silicon codec builds use the Rust fallback and do not require NASM. Build natively on each architecture. A future universal distribution can combine independently built `aarch64-apple-darwin` and `x86_64-apple-darwin` binaries with `lipo`; this has not been performed here. No platform-specific model code is needed.
+Install Xcode Command Line Tools (`xcode-select --install`) and Rust for the host architecture. Neither architecture needs NASM, model assets or an inference runtime. Build natively on each architecture. A future universal distribution can combine independently built `aarch64-apple-darwin` and `x86_64-apple-darwin` binaries with `lipo`; this has not been performed here. The core editing engine is shared.
 
 The eventual `.app` needs a bundle identifier, icon, Info.plist, document associations, signing and notarization. This milestone only supplies a native Cargo executable; it does not claim a signed distributable.
 
@@ -64,7 +64,7 @@ Future packages should bundle required license notices, declare portal/Zenity/ru
 
 `.github/workflows/ci.yml` checks formatting, Clippy, unit/integration tests and builds on Windows, Ubuntu, Apple Silicon macOS and Intel macOS. Runner labels were checked against [GitHub's runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). It has not been executed remotely in this session. The desktop screenshot test is explicitly ignored in normal CI; run it on a controlled interactive Windows desktop.
 
-The CI matrix executes the same AVIF/native/recovery tests and release build on each target without installing NASM. It deliberately sets `NASM` to a nonexistent executable so future accidental codec assembly activation fails, even on a runner that has NASM preinstalled. Standard platform compilers/linkers remain required. This configuration has not been run remotely here; local validation is Windows only. See [the dependency audit](DEPENDENCY_AUDIT.md) and [roadmap gates](../ROADMAP.md).
+The CI matrix runs native project, raster codec, editing and recovery tests plus release builds on each target. Standard platform compilers/linkers remain required. This configuration has not been run remotely here; local validation is Windows only. See [the dependency audit](DEPENDENCY_AUDIT.md).
 
 Current Phase 5 desktop suite covers 56 states, including the six additional processing editors and Pixelate/Other menus; see [style/filter validation](STYLE_FILTER_CONTROLS_VALIDATION.md). Cold CPU diagnostics for this batch: `cargo run -p palette-core --example processing_extended_benchmark --locked`.
 
@@ -101,72 +101,9 @@ Expanded-catalog diagnostics: `cargo run -p palette-core --example processing_ex
 Expanded-catalog validation completed on Windows: fmt, strict workspace Clippy, 337 ordinary tests, native build/launch, and both ignored screenshot functions (179 states, 225.09 s). See docs/GALLERY_VIDEO_RENDER_VALIDATION.md for exact commands and limits; no macOS/Linux runtime claim.
 
 
-## Offline neural processing
 
-The main workspace includes `palette-neural`: Rust CPU inference plus the bundled
-Mosaic style network. No Python, ONNX Runtime DLL, model download, account or
-network connection is needed to use the compiled application. The normal build
-embeds `crates/palette-neural/models/mosaic-9.onnx`; retain its exact bytes and
-BSD notice when packaging. First model planning occurs lazily in a worker.
-`cargo test --workspace --locked --offline` works after Cargo dependencies have
-been fetched, using the checked-in independent reference fixture. Python/ONNX
-Runtime are optional development tools for regenerating that fixture only.
+## Lean release builds
 
-Debug captures `processing-style-transfer` and `neural-menu` exercise the real
-local filter toolbar and branch. See [neural status and validation](NEURAL_FILTERS_FIRST_SIX.md).
+Neural Filters and AVIF are removed from the workspace and lockfile. No model files, vendor codec patch, Python tooling, model downloads, NASM or inference runtime are required. PNG/JPEG/BMP/GIF/TIFF/WebP and the independent safe-Rust Paint subset remain.
 
-Local learned-style CPU benchmark:
-`cargo run -p palette-core --example processing_extended_benchmark --locked -- --neural`.
-This evaluates only the bundled style at 1280 × 720 and 3840 × 2160, with a fresh
-prepared-layer cache and shared process-wide model plan. See neural validation
-for exact measurements and limitations.
-
-
-JPEG Artifacts Removal is also compiled into Palette. Its model and MIT notice
-are under `crates/palette-neural/models/`; no Python or model installation is
-required by users. `tools/export-jpeg-model.py` is a local development-only
-export/reference tool. The new `processing-jpeg-artifacts` native scene and
-`cargo run -p palette-core --example jpeg_benchmark --locked --offline`
-benchmark are documented in [JPEG validation](JPEG_RESTORATION_VALIDATION.md).
-
-Colorize also runs entirely in Palette, using the bundled 64.5 MB compact
-ECCV16 graph and its BSD-2-Clause notice. Neither Python nor a separate model
-installation is required by users. `tools/export-colorize-model.py` is a local
-development-only export/reference tool. Debug scene `processing-colorize`
-shows the live toolbar and a credited public-domain photo fixture. Measure
-CPU inference/reconstruction with
-`cargo run -p palette-core --example colorize_benchmark --locked --offline`.
-See [Colorize validation](COLORIZE_VALIDATION.md) for reference errors,
-timings, licenses and the limits of inferred colors.
-
-Face-guided Skin Smoothing embeds two additional Apache-2.0 geometry graphs,
-about 2.94 MB total, with their full license/attribution under
-`crates/palette-neural/models/`. No new system/native library is needed. Debug
-scene `processing-skin-smoothing` exercises the real live toolbar on a credited
-NASA fixture. `tools/skin-reference.py` is a local development-only independent
-ONNX Runtime/NumPy reference generator; it is not needed to build or run Palette.
-Run `cargo run -p palette-core --example skin_benchmark --locked --offline`
-for CPU diagnostics. [Contracts and validation](SKIN_SMOOTHING_VALIDATION.md).
-
-On memory-constrained Windows hosts, use `-j 1` with Cargo build/test/Clippy.
-Building the many model-linked integration tests in parallel exhausted the
-Windows commit/page-file limit during this milestone; the log reported LLVM
-out-of-memory and metadata mapping errors. Serial compilation avoids that
-concurrent linker/compiler peak without changing the application or system
-page-file settings. RustRover can pass `-j 1` in its Cargo run configuration.
-
-Cropped Super Zoom embeds the 240 KB ESPCN graph in the existing Rust inference
-runtime; it adds no native library or installation/download step. Debug scene
-`processing-super-zoom` shows the real cropped-output toolbar and credited NASA
-fixture. `tools/zoom-reference.py` is a local development-only ONNX Runtime /
-PyTorch / NumPy reference generator. Run
-`cargo run -p palette-core --example zoom_benchmark -j 1 --locked --offline`
-for representative cropped-filter CPU diagnostics. This does not benchmark
-larger-document output, which is unimplemented. [Exact scope](SUPER_ZOOM_VALIDATION.md).
-
-The local Super Zoom workspace validation used
-`cargo test --workspace -j 1 --locked --offline -- --test-threads=2`.
-The app has one bounded inference worker; limiting test concurrency keeps many
-independent UI fixtures from competing for it and exceeding the existing preview
-deadline. This setting changes the test harness, not production scheduling or
-timeout behavior. Native screenshot tests still run with `--test-threads=1`.
+Release uses Thin LTO and one code-generation unit; this can increase linking time while reducing linked code. `target/release/deps` and `build` are Cargo caches, not distribution assets. Old removed-feature build artifacts may remain until an explicit Cargo clean; no automatic cleanup deletes development caches. Ship the executable with required third-party/font notices. Keep the optional PDB for diagnostics.

@@ -1,5 +1,7 @@
 # Phase 3: file compatibility and document management
 
+> Historical evidence: Neural Filters and AVIF were removed on 2026-10-20. Feature/model paths and prior codec requirements below describe older builds. Current scope: [dependency audit](DEPENDENCY_AUDIT.md) and [file compatibility](FILE_FORMATS.md).
+
 Historical build evidence below used NASM. Current builds disable codec assembly
 and require no NASM; see the [dependency audit](DEPENDENCY_AUDIT.md).
 

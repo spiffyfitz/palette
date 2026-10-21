@@ -5,12 +5,10 @@ mod adjustments;
 mod artistic;
 mod cellular;
 mod cinematic;
-pub mod color_transfer;
-mod colorize;
+mod color_space;
 mod conventional;
 mod creative;
 mod cutout;
-mod depth;
 mod distort;
 mod drawing;
 pub mod editable;
@@ -18,38 +16,28 @@ mod extended;
 mod gallery;
 mod gaussian;
 mod generators;
-pub mod harmonization;
-pub mod landscape;
 mod layer;
-pub mod makeup;
 mod media;
 pub mod menu;
 mod neighborhood;
-mod neural;
 mod optical;
 mod painting;
-mod photo_restoration;
 mod pixelate;
 mod point;
-mod portrait;
-mod restoration;
 mod retouch;
 mod round;
 mod sketch;
-mod skin;
 mod studio;
 pub mod style_options;
 mod styles;
 mod stylize;
 mod video;
-mod zoom;
 use crate::document::{
-    ApertureShape, BlurPin, ChannelSpace, ColorizeModel, DaubStyle, DepthSource, DiffuseMode,
-    Effect, ExtrudeShape, FieldInterpolation, Filter, FilterEdges, FlareStyle, FrameStyle,
-    GlassSurface, GrainStyle, HalftoneStyle, JpegModel, LightKind, MapFit, MezzotintStyle,
-    NeuralStyle, NoiseDistribution, ShearInterpolation, SkinModel, SmartBlurMode, StrokeDirection,
-    StrokePosition, SurfaceTexture, TileFill, TreeForm, VideoField, WindMethod, ZigZagStyle,
-    ZoomModel,
+    ApertureShape, BlurPin, ChannelSpace, DaubStyle, DepthSource, DiffuseMode, Effect,
+    ExtrudeShape, FieldInterpolation, Filter, FilterEdges, FlareStyle, FrameStyle, GlassSurface,
+    GrainStyle, HalftoneStyle, LightKind, MapFit, MezzotintStyle, NoiseDistribution,
+    ShearInterpolation, SmartBlurMode, StrokeDirection, StrokePosition, SurfaceTexture, TileFill,
+    TreeForm, VideoField, WindMethod, ZigZagStyle,
 };
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
@@ -58,13 +46,7 @@ pub use layer::{
     prepare_layer_cancel, same_appearance,
 };
 pub use neighborhood::{box_blur_cancel, median_cancel};
-pub use palette_neural::face::{ID as SKIN_ID, LICENSE as SKIN_LICENSE, NOTICE as SKIN_NOTICE};
-pub use palette_neural::{
-    COLORIZE_ID, COLORIZE_LICENSE, DEPTH_ID, DEPTH_NOTICE, JPEG_ID, JPEG_LICENSE, MOSAIC_ID,
-    MOSAIC_LICENSE, ZOOM_ID, ZOOM_NOTICE,
-};
 pub(crate) use point::point_filter;
-pub use zoom::{super_zoom_dimensions, super_zoom_enlarge_cancel};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Stable identifiers for the implemented processing catalog.
@@ -73,18 +55,6 @@ pub enum Kind {
     Satin,
     GradientOverlay,
     PatternOverlay,
-    SmartPortrait,
-    LandscapeMixer,
-    PhotoRestoration,
-    Harmonization,
-    MakeupTransfer,
-    ColorTransfer,
-    DepthBlur,
-    SuperZoom,
-    SkinSmoothing,
-    Colorize,
-    JpegArtifactsRemoval,
-    StyleTransfer,
     FieldBlur,
     IrisBlur,
     TiltShift,
@@ -236,7 +206,6 @@ pub enum Kind {
 #[derive(Clone, Copy, Debug)]
 /// UI-independent input constraints, shared by model validation and controls.
 pub enum ParameterType {
-    Layer,
     Number { min: f32, max: f32, step: f32 },
     Color,
     Boolean,
@@ -2380,235 +2349,6 @@ pub const REGISTRY: &[Descriptor] = &[
             },
         ],
     },
-    Descriptor {
-        kind: Kind::StyleTransfer,
-        label: "Style Transfer",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            Parameter {
-                key: "style",
-                label: "Bundled style",
-                kind: ParameterType::Choice(&["Mosaic (local)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::JpegArtifactsRemoval,
-        label: "JPEG Artifacts Removal",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            Parameter {
-                key: "model",
-                label: "Bundled model",
-                kind: ParameterType::Choice(&["DnCNN-3 (local luminance)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::Colorize,
-        label: "Colorize",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("saturation", "Color saturation", 0., 2., 0.01),
-            Parameter {
-                key: "model",
-                label: "Bundled model",
-                kind: ParameterType::Choice(&["ECCV16 compact (local)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::SkinSmoothing,
-        label: "Skin Smoothing",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("blur", "Blur", 0., 1., 0.01),
-            number("range", "Smoothness", 0., 1., 0.01),
-            Parameter {
-                key: "model",
-                label: "Face geometry",
-                kind: ParameterType::Choice(&["Face Mesh (local)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::SuperZoom,
-        label: "Super Zoom",
-        category: "Neural Filters",
-        parameters: &[
-            number("zoom", "Zoom (crop)", 1., 3., 0.01),
-            number("enhancement", "Enhancement", 0., 1., 0.01),
-            number("center_x", "Source center X", 0., 1., 0.001),
-            number("center_y", "Source center Y", 0., 1., 0.001),
-            Parameter {
-                key: "model",
-                label: "Bundled model",
-                kind: ParameterType::Choice(&["ESPCN 3x (local crop)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::DepthBlur,
-        label: "Depth Blur",
-        category: "Neural Filters",
-        parameters: &[
-            number("radius", "Blur radius", 0., 64., 0.1),
-            Parameter {
-                key: "pick_focus",
-                label: "Click to focus",
-                kind: ParameterType::Boolean,
-            },
-            number("focus", "Focal depth", 0., 1., 0.01),
-            number("range", "Focal range", 0., 1., 0.01),
-            number("center_x", "Focus point X", 0., 1., 0.001),
-            number("center_y", "Focus point Y", 0., 1., 0.001),
-            Parameter {
-                key: "show_depth",
-                label: "Show depth map",
-                kind: ParameterType::Boolean,
-            },
-            Parameter {
-                key: "model",
-                label: "Depth model",
-                kind: ParameterType::Choice(&["MiDaS small (local)"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::ColorTransfer,
-        label: "Color Transfer",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("luminosity", "Luminance", 0., 1., 0.01),
-            number("contrast", "Contrast", 0., 1., 0.01),
-            number("saturation", "Saturation", 0., 2., 0.01),
-            Parameter {
-                key: "method",
-                label: "Method",
-                kind: ParameterType::Choice(&["Lab statistics"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::SmartPortrait,
-        label: "Smart Portrait (Beta)",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("happiness", "Happiness", -1., 1., 0.01),
-            number("surprise", "Surprise", 0., 1., 0.01),
-            number("anger", "Anger", 0., 1., 0.01),
-            number("light_direction", "Light direction", -180., 180., 1.),
-            number("lighting", "Lighting strength", 0., 1., 0.01),
-            Parameter {
-                key: "all_faces",
-                label: "All faces",
-                kind: ParameterType::Boolean,
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::LandscapeMixer,
-        label: "Landscape Mixer (Beta)",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("sky", "Reference sky", 0., 1., 0.01),
-            number("terrain", "Reference terrain", 0., 1., 0.01),
-            number("detail", "Retain terrain detail", 0., 1., 0.01),
-            number("horizon", "Source horizon", 0.02, 0.98, 0.01),
-            number("reference_horizon", "Reference horizon", 0.02, 0.98, 0.01),
-            number("feather", "Horizon softness", 0., 0.5, 0.01),
-            number("spring", "Spring", 0., 1., 0.01),
-            number("summer", "Summer", 0., 1., 0.01),
-            number("autumn", "Autumn", 0., 1., 0.01),
-            number("winter", "Winter", 0., 1., 0.01),
-            number("sunset", "Sunset", 0., 1., 0.01),
-            number("edge_sensitivity", "Sky detection", 0., 1., 0.01),
-            Parameter {
-                key: "method",
-                label: "Method",
-                kind: ParameterType::Choice(&["Horizontal (legacy)", "Edge-aware landscape"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::MakeupTransfer,
-        label: "Makeup Transfer",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 1., 0.01),
-            number("lips", "Lips", 0., 1., 0.01),
-            number("eyes", "Eyes", 0., 1., 0.01),
-            number("cheeks", "Cheeks", 0., 1., 0.01),
-            Parameter {
-                key: "protect_occlusions",
-                label: "Protect occlusions",
-                kind: ParameterType::Boolean,
-            },
-            number("feather", "Edge softness", 0., 1., 0.01),
-            number("luminance", "Luminance", 0., 1., 0.01),
-            Parameter {
-                key: "model",
-                label: "Method",
-                kind: ParameterType::Choice(&["Feature colour (legacy)", "Spatial detail"]),
-            },
-        ],
-    },
-    Descriptor {
-        kind: Kind::Harmonization,
-        label: "Harmonization",
-        category: "Neural Filters",
-        parameters: &[
-            Parameter {
-                key: "reference_layer",
-                label: "Reference layer",
-                kind: ParameterType::Layer,
-            },
-            number("strength", "Strength", 0., 1., 0.01),
-            number("luminance", "Luminance", 0., 1., 0.01),
-            number("contrast", "Contrast", 0., 1., 0.01),
-            number("saturation", "Saturation", 0., 2., 0.01),
-        ],
-    },
-    Descriptor {
-        kind: Kind::PhotoRestoration,
-        label: "Photo Restoration",
-        category: "Neural Filters",
-        parameters: &[
-            number("strength", "Strength", 0., 2., 0.01),
-            number("enhancement", "Photo enhancement", 0., 1., 0.01),
-            number("scratches", "Scratch reduction", 0., 1., 0.01),
-            number("radius", "Repair radius", 1., 64., 1.),
-            number("noise", "Noise reduction", 0., 1., 0.01),
-            number("color_noise", "Color noise reduction", 0., 1., 0.01),
-            Parameter {
-                key: "show_damage",
-                label: "Show detected damage",
-                kind: ParameterType::Boolean,
-            },
-            Parameter {
-                key: "damage_type",
-                label: "Damage type",
-                kind: ParameterType::Choice(&["Bright cracks", "Dark scratches", "Both"]),
-            },
-            Parameter {
-                key: "method",
-                label: "Method",
-                kind: ParameterType::Choice(&["Thin scratches (legacy)", "Multiscale cracks"]),
-            },
-            Parameter {
-                key: "protect_faces",
-                label: "Protect facial details",
-                kind: ParameterType::Boolean,
-            },
-        ],
-    },
 ];
 impl Kind {
     /// Metadata for this implemented operation.
@@ -2627,106 +2367,7 @@ impl Kind {
             Self::BevelEmboss | Self::Satin | Self::GradientOverlay | Self::PatternOverlay => {
                 unreachable!("handled style")
             }
-            Self::SmartPortrait => Operation::Filter(Filter::SmartPortrait {
-                method: crate::document::PortraitMethod::ExpressiveMouthV2,
-                strength: 1.,
-                happiness: 0.3,
-                surprise: 0.,
-                anger: 0.,
-                light_direction: -45.,
-                lighting: 0.15,
-                all_faces: true,
-            }),
-            Self::LandscapeMixer => Operation::Filter(Filter::LandscapeMixer {
-                method: crate::document::LandscapeMethod::EdgeAwareV2,
-                edge_sensitivity: 0.5,
-                reference: None,
-                reference_name: String::new(),
-                strength: 1.,
-                sky: 1.,
-                terrain: 0.65,
-                detail: 0.85,
-                horizon: 0.45,
-                reference_horizon: 0.45,
-                feather: 0.08,
-                spring: 0.,
-                summer: 0.,
-                autumn: 0.5,
-                winter: 0.,
-                sunset: 0.2,
-            }),
-            Self::PhotoRestoration => Operation::Filter(Filter::PhotoRestoration {
-                method: crate::document::PhotoRestorationMethod::MultiscaleV2,
-                damage_type: crate::document::PhotoDamageType::Bright,
-                protect_faces: true,
-                strength: 1.,
-                enhancement: 0.35,
-                scratches: 1.,
-                radius: 12,
-                noise: 0.2,
-                color_noise: 0.3,
-                show_damage: false,
-            }),
-            Self::Harmonization => Operation::Filter(Filter::Harmonization {
-                reference_layer: None,
-                strength: 1.,
-                luminance: 1.,
-                contrast: 1.,
-                saturation: 1.,
-            }),
-            Self::MakeupTransfer => Operation::Filter(Filter::MakeupTransfer {
-                model: crate::document::MakeupModel::FaceMeshSpatialV2,
-                reference: makeup::rose_reference(),
-                strength: 1.,
-                lips: 1.,
-                eyes: 1.,
-                cheeks: 0.75,
-                protect_occlusions: true,
-                feather: 0.2,
-                luminance: 1.,
-            }),
-            Self::ColorTransfer => Operation::Filter(Filter::ColorTransfer {
-                method: crate::document::ColorTransferMethod::LabStatisticsV1,
-                reference: color_transfer::warm_reference(),
-                strength: 1.,
-                luminosity: 0.,
-                contrast: 1.,
-                saturation: 1.,
-            }),
-            Self::DepthBlur => Operation::Filter(Filter::DepthBlur {
-                model: crate::document::DepthModel::MidasSmallV1,
-                radius: 16.,
-                focus: 0.5,
-                range: 0.2,
-                pick_focus: true,
-                center: [0.5; 2],
-                show_depth: false,
-            }),
-            Self::SuperZoom => Operation::Filter(Filter::SuperZoom {
-                model: ZoomModel::Espcn3xCropV1,
-                zoom: 3.,
-                enhancement: 1.,
-                center: [0.5; 2],
-            }),
-            Self::SkinSmoothing => Operation::Filter(Filter::SkinSmoothing {
-                model: SkinModel::FaceMeshV1,
-                strength: 0.7,
-                blur: 0.4,
-                range: 0.5,
-            }),
-            Self::Colorize => Operation::Filter(Filter::Colorize {
-                model: ColorizeModel::Eccv16Fp16V1,
-                strength: 1.,
-                saturation: 1.,
-            }),
-            Self::JpegArtifactsRemoval => Operation::Filter(Filter::JpegArtifactsRemoval {
-                model: JpegModel::Dncnn3V1,
-                strength: 1.,
-            }),
-            Self::StyleTransfer => Operation::Filter(Filter::StyleTransfer {
-                style: NeuralStyle::MosaicV1,
-                strength: 1.,
-            }),
+
             Self::FieldBlur => Operation::Filter(Filter::FieldBlur {
                 pins: std::array::from_fn(|i| BlurPin {
                     center: [0.15 + (i % 4) as f32 * 0.23, 0.35 + (i / 4) as f32 * 0.3],
@@ -3480,7 +3121,6 @@ pub enum Operation {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
-    Layer(Option<u64>),
     Number(f32),
     Color([u8; 3]),
     Boolean(bool),
@@ -3496,18 +3136,7 @@ impl Operation {
             Self::Effect(Effect::Configured { .. }) => {
                 unreachable!("unwrapped effect configuration")
             }
-            Self::Filter(Filter::SmartPortrait { .. }) => Kind::SmartPortrait,
-            Self::Filter(Filter::PhotoRestoration { .. }) => Kind::PhotoRestoration,
-            Self::Filter(Filter::LandscapeMixer { .. }) => Kind::LandscapeMixer,
-            Self::Filter(Filter::Harmonization { .. }) => Kind::Harmonization,
-            Self::Filter(Filter::MakeupTransfer { .. }) => Kind::MakeupTransfer,
-            Self::Filter(Filter::ColorTransfer { .. }) => Kind::ColorTransfer,
-            Self::Filter(Filter::DepthBlur { .. }) => Kind::DepthBlur,
-            Self::Filter(Filter::SuperZoom { .. }) => Kind::SuperZoom,
-            Self::Filter(Filter::SkinSmoothing { .. }) => Kind::SkinSmoothing,
-            Self::Filter(Filter::Colorize { .. }) => Kind::Colorize,
-            Self::Filter(Filter::JpegArtifactsRemoval { .. }) => Kind::JpegArtifactsRemoval,
-            Self::Filter(Filter::StyleTransfer { .. }) => Kind::StyleTransfer,
+
             Self::Filter(Filter::FieldBlur { .. }) => Kind::FieldBlur,
             Self::Filter(Filter::IrisBlur { .. }) => Kind::IrisBlur,
             Self::Filter(Filter::TiltShift { .. }) => Kind::TiltShift,
@@ -3678,41 +3307,7 @@ impl Operation {
         {
             return Some(v);
         }
-        if let Self::Filter(f) = self
-            && let Some(v) = portrait::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = photo_restoration::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = landscape::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = harmonization::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = makeup::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = color_transfer::value(f, key)
-        {
-            return Some(v);
-        }
-        if let Self::Filter(f) = self
-            && let Some(v) = depth::value(f, key)
-        {
-            return Some(v);
-        }
+
         if let Self::Filter(f) = self
             && let Some(value) = adjustments::value(f, key)
         {
@@ -3734,57 +3329,6 @@ impl Operation {
             return Some(v);
         }
         match (self, key) {
-            (Self::Filter(Filter::SuperZoom { model, .. }), "model") => Some(Value::Choice(
-                ZoomModel::ALL.iter().position(|v| v == model).unwrap(),
-            )),
-            (Self::Filter(Filter::SuperZoom { zoom, .. }), "zoom") => Some(Value::Number(*zoom)),
-            (Self::Filter(Filter::SuperZoom { enhancement, .. }), "enhancement") => {
-                Some(Value::Number(*enhancement))
-            }
-            (Self::Filter(Filter::SkinSmoothing { strength, .. }), "strength") => {
-                Some(Value::Number(*strength))
-            }
-            (Self::Filter(Filter::SkinSmoothing { blur, .. }), "blur") => {
-                Some(Value::Number(*blur))
-            }
-            (Self::Filter(Filter::SkinSmoothing { range, .. }), "range") => {
-                Some(Value::Number(*range))
-            }
-            (Self::Filter(Filter::SkinSmoothing { model, .. }), "model") => Some(Value::Choice(
-                SkinModel::ALL.iter().position(|v| v == model).unwrap(),
-            )),
-            (Self::Filter(Filter::Colorize { strength, .. }), "strength") => {
-                Some(Value::Number(*strength))
-            }
-            (Self::Filter(Filter::Colorize { saturation, .. }), "saturation") => {
-                Some(Value::Number(*saturation))
-            }
-            (Self::Filter(Filter::Colorize { model, .. }), "model") => Some(Value::Choice(
-                ColorizeModel::ALL
-                    .iter()
-                    .position(|v| v == model)
-                    .expect("bundled colorizer"),
-            )),
-            (Self::Filter(Filter::JpegArtifactsRemoval { strength, .. }), "strength") => {
-                Some(Value::Number(*strength))
-            }
-            (Self::Filter(Filter::JpegArtifactsRemoval { model, .. }), "model") => {
-                Some(Value::Choice(
-                    JpegModel::ALL
-                        .iter()
-                        .position(|v| v == model)
-                        .expect("bundled model"),
-                ))
-            }
-            (Self::Filter(Filter::StyleTransfer { strength, .. }), "strength") => {
-                Some(Value::Number(*strength))
-            }
-            (Self::Filter(Filter::StyleTransfer { style, .. }), "style") => Some(Value::Choice(
-                NeuralStyle::ALL
-                    .iter()
-                    .position(|v| v == style)
-                    .expect("bundled style"),
-            )),
             (Self::Filter(Filter::IrisBlur { radius: v, .. }), "radius") => Some(Value::Number(*v)),
             (Self::Filter(Filter::IrisBlur { width: v, .. }), "width") => Some(Value::Number(*v)),
             (Self::Filter(Filter::IrisBlur { height: v, .. }), "height") => Some(Value::Number(*v)),
@@ -5005,7 +4549,6 @@ impl Operation {
             .find(|p| p.key == key)
             .ok_or("Unknown processing parameter")?;
         match (parameter.kind, value) {
-            (ParameterType::Layer, Value::Layer(id)) if id != Some(0) => {}
             (ParameterType::Color, Value::Color(_)) => {}
             (ParameterType::Boolean, Value::Boolean(_)) => {}
             (ParameterType::Choice(options), Value::Choice(n)) if n < options.len() => {}
@@ -5020,11 +4563,7 @@ impl Operation {
         {
             return Err("Input black must be below input white".into());
         }
-        if let Self::Filter(f) = self
-            && portrait::set(f, key, value)
-        {
-            return Ok(());
-        }
+
         if let Self::Filter(f) = self
             && let Some(c) = f.center_mut()
             && let Value::Number(n) = value
@@ -5071,87 +4610,8 @@ impl Operation {
         {
             return Ok(());
         }
-        if let Self::Filter(f) = self
-            && depth::set(f, key, value)
-        {
-            return Ok(());
-        }
-        if let Self::Filter(f) = self
-            && color_transfer::set(f, key, value)
-        {
-            return Ok(());
-        }
-        if let Self::Filter(f) = self
-            && photo_restoration::set(f, key, value)
-        {
-            return Ok(());
-        }
-        if let Self::Filter(f) = self
-            && landscape::set(f, key, value)
-        {
-            return Ok(());
-        }
-        if let Self::Filter(f) = self
-            && harmonization::set(f, key, value)
-        {
-            return Ok(());
-        }
-        if let Self::Filter(f) = self
-            && makeup::set(f, key, value)
-        {
-            return Ok(());
-        }
+
         match (self, key, value) {
-            (Self::Filter(Filter::SuperZoom { model, .. }), "model", Value::Choice(n)) => {
-                *model = ZoomModel::ALL[n]
-            }
-            (Self::Filter(Filter::SuperZoom { zoom, .. }), "zoom", Value::Number(n)) => *zoom = n,
-            (
-                Self::Filter(Filter::SuperZoom { enhancement, .. }),
-                "enhancement",
-                Value::Number(n),
-            ) => *enhancement = n,
-            (
-                Self::Filter(Filter::SkinSmoothing { strength, .. }),
-                "strength",
-                Value::Number(n),
-            ) => *strength = n,
-            (Self::Filter(Filter::SkinSmoothing { blur, .. }), "blur", Value::Number(n)) => {
-                *blur = n
-            }
-            (Self::Filter(Filter::SkinSmoothing { range, .. }), "range", Value::Number(n)) => {
-                *range = n
-            }
-            (Self::Filter(Filter::SkinSmoothing { model, .. }), "model", Value::Choice(n)) => {
-                *model = SkinModel::ALL[n]
-            }
-            (Self::Filter(Filter::Colorize { strength, .. }), "strength", Value::Number(n)) => {
-                *strength = n
-            }
-            (Self::Filter(Filter::Colorize { saturation, .. }), "saturation", Value::Number(n)) => {
-                *saturation = n
-            }
-            (Self::Filter(Filter::Colorize { model, .. }), "model", Value::Choice(n)) => {
-                *model = ColorizeModel::ALL[n]
-            }
-            (
-                Self::Filter(Filter::JpegArtifactsRemoval { strength, .. }),
-                "strength",
-                Value::Number(n),
-            ) => *strength = n,
-            (
-                Self::Filter(Filter::JpegArtifactsRemoval { model, .. }),
-                "model",
-                Value::Choice(n),
-            ) => *model = JpegModel::ALL[n],
-            (
-                Self::Filter(Filter::StyleTransfer { strength, .. }),
-                "strength",
-                Value::Number(n),
-            ) => *strength = n,
-            (Self::Filter(Filter::StyleTransfer { style, .. }), "style", Value::Choice(n)) => {
-                *style = NeuralStyle::ALL[n]
-            }
             (Self::Filter(Filter::IrisBlur { radius: v, .. }), "radius", Value::Number(n)) => {
                 *v = n;
             }
@@ -7274,8 +6734,6 @@ impl Operation {
             return Err("Input black must be below input white".into());
         }
         if let Self::Filter(f) = self {
-            photo_restoration::validate(f)?;
-            landscape::validate(f)?;
             editable::validate_assets(f)?;
             gallery::validate(f)?;
         }
@@ -7310,15 +6768,7 @@ impl Operation {
             return Self::Effect(e);
         }
         let mut result = self.clone();
-        if let Self::Filter(Filter::PhotoRestoration { radius, method, .. }) = &mut result {
-            let max = if *method == crate::document::PhotoRestorationMethod::DirectionalV1 {
-                8.
-            } else {
-                64.
-            };
-            *radius = (f32::from(*radius) * scale).round().clamp(1., max) as u8;
-            return result;
-        }
+
         if let Self::Filter(Filter::FieldBlur { pins, .. }) = &mut result {
             for p in pins {
                 p.radius *= scale;

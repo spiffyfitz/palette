@@ -7,15 +7,8 @@ description = "A native Paint-style raster editor with a nondestructive document
 license = "MIT"
 
 [workspace]
-members = ["crates/palette-core", "crates/palette-neural"]
-exclude = ["vendor/avif-decode"]
+members = ["crates/palette-core"]
 resolver = "3"
-
-# Upstream 3.0.0 hard-enables rav1d/asm on x86. This manifest-only patch
-# selects its existing Rust fallback; source and license remain upstream.
-# Remove when upstream exposes the equivalent option. See vendor/avif-decode/PATCH.md.
-[patch.crates-io]
-avif-decode = { path = "vendor/avif-decode" }
 
 [dependencies]
 palette-core = { path = "crates/palette-core" }
@@ -34,3 +27,8 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+# Whole-program optimization; retain the default opt-level 3 for pixel processing.
+lto = "thin"
+codegen-units = 1

@@ -4,7 +4,7 @@
 
 Phase 0 found an empty Git repository, two screenshot attachments and no `Untitled.paint`. The implementation uses a two-package Cargo workspace: `palette-core` owns editing mathematics and serialized documents; the root `palette` binary owns eframe/egui interaction and wgpu presentation. Core never depends on egui, winit or the operating system.
 
-Current stable releases were checked with Cargo and primary documentation: [eframe 0.37](https://docs.rs/eframe/0.37.0/eframe/), [image 0.25.10](https://docs.rs/image/0.25.10/image/) and [rfd 0.17.2](https://docs.rs/rfd/0.17.2/rfd/). Cargo.lock pins the complete resolution. The toolchain here is Rust 1.99.1; the declared minimum is now 1.98, required by avif-decode 3, and has not been independently tested.
+Current stable releases were checked with Cargo and primary documentation: [eframe 0.37](https://docs.rs/eframe/0.37.0/eframe/), [image 0.25.10](https://docs.rs/image/0.25.10/image/) and [rfd 0.17.2](https://docs.rs/rfd/0.17.2/rfd/). Cargo.lock pins the complete resolution. The toolchain here is Rust 1.99.1; the declared minimum is now 1.98, and has not been independently tested.
 
 egui permits one shared native interface across the three target operating systems. Original vector geometry keeps icon shapes consistent at different DPI settings. Native title bars retain OS window management; title-bar appearance is intentionally OS-owned. wgpu renders the UI and now composites cached layer appearances for document presentation. The independent CPU compositor remains the correctness oracle, export path and fallback; filter/effect preparation still runs on the CPU.
 
@@ -114,7 +114,7 @@ The next Phase 2 slices are real brush variants, typography parity and gesture-c
 
 `io::project` writes version 6 with a bounded JSON manifest and sequential binary zlib assets. Raster descriptors reference shared 128 x 128 tile assets, preserving exact tile bytes and padding. Masks and opaque ICC/Exif metadata reference assets too. Arc identity deduplicates shared source allocations. Encoding streams each asset into the same-directory temporary file and backfills its compressed length; no whole-document pixel JSON or archive extraction is involved. Readers preflight all references/lengths/geometry, enforce aggregate decoded limits and verify exact decompression lengths/checksums before constructing a validated document. v1 remains a separate migration reader; v2 binary assets load with transparent backing. See FILE_FORMATS.md for the wire specification.
 
-`io::avif` combines BSD-licensed rav1d decoding via avif-decode 3 with rav1e/ravif encoding and the MPL-2.0 avif-parse container parser. AV1 sequence metadata bounds dimensions before full decode; multiple sequence headers, non-still streams and unapplied HEIF transformative properties are rejected. RGB quality/speed are explicit; alpha uses maximum quality. Export remains a flattened composite and never marks native state saved. The codecs require Rust 1.98+ and use their assembly-free Rust paths, retaining 8/10/12-bit decoding without NASM or a runtime codec DLL. A small, version-pinned manifest patch of avif-decode fixes its x86/x64 dependency defaults; the upstream source remains unchanged. [Rationale and audit](docs/DEPENDENCY_AUDIT.md).
+AVIF and neural processing have been removed, together with their codec/runtime dependencies and model assets. Native project and Paint handling remain independent of those features. See [dependency audit](docs/DEPENDENCY_AUDIT.md).
 
 `app::files` owns import, recents, export options and recovery presentation. Import snapshots the originating session/generation, decodes off-thread and inserts through existing paste semantics in one command. A changed or closed target rejects its result. File/tab actions requested during inline text are queued through AfterText. File drops wait until dialogs/drafts are finished.
 
@@ -333,143 +333,6 @@ Processing drafts own their import receiver; workers load bounded assets outside
 `processing::generators` owns original deterministic Flame/Picture Frame/Tree algorithms. Analytic coverage and seeded texture create RGBA content without source mutation. The tree emits bounded recursive branch capsules and leaf clusters before one final layer-opacity mix. `processing::video` reconstructs retained interlace fields and implements point-local YIQ gamut limiting and RGB/HSB/HSL channel conversion. Registry metadata supplies all parameter domains; new enum variants retain native v6 framing and ordinary mask/history/cache behavior. Origins and geometry guides use the existing transactional placement path. [Algorithms, limits and validation](docs/GALLERY_VIDEO_RENDER_VALIDATION.md); [external coverage boundary](docs/PHOTOSHOP_FILTER_AUDIT.md).
 
 
-### Local neural processing
-
-`palette-neural` is a workspace crate containing checksum-pinned bundled Mosaic, DnCNN-3 and ECCV16 models and Tract 0.23.9 CPU inference. It has no network, subprocess, Python, external-service or user-model-loading API. A process-wide cancellable mutex bounds inference to one graph at a time and retains one compiled plan plus one exact input/output pair per profile (~1.8 MiB combined for cached tensors, in addition to weights and graph activations). A shared CPU pool is limited to at most four math threads, leaving a core free when available. Cancellation is checked between operators; planning and individual operators are not preempted. Failed/cancelled graph states are discarded.
-
-Core adapts straight RGBA to premultiplied area-averaged RGB over neutral gray, fits the content into a 224² edge-extended working image without aspect distortion, evaluates the bundled network, resamples color to source dimensions and restores source alpha exactly. Strength blends colors before the existing per-filter masks, subsequent filters, layer mask, opacity and effects. Source pixels remain unmodified. The typed `NeuralStyle::MosaicV1` identity must retain the same weights/algorithm contract; future models need new identities. The model is embedded, so reopening a native project requires no downloads and never silently falls back to a flat image. Existing preview/main-render workers handle scheduling; inference never runs on the UI thread.
-
-The isolated `tools/neural-probe` remains development evidence for the learned Super Zoom network now integrated as a crop filter and explicit whole-image PNG export. Enlarged editable documents still need evaluated geometry and mask-coordinate work. Other first-batch gaps remain tracked in the [status and integration requirements](docs/NEURAL_FILTERS_FIRST_SIX.md).
-
-JPEG restoration evaluates source-resolution encoded studio-range luminance in 192² tiles with a discarded 20-pixel halo (152² interiors), repeats source edges, applies the inferred Y delta while retaining alpha/chroma, and supports the existing filter masks and stack order. One source/restored pair is retained under a conservative 128 MiB budget for strength edits; partial cancelled results are excluded. `JpegModel::Dncnn3V1` pins the graph and pixel contract. Main render tickets fence obsolete `(session, generation, epoch)` targets, requeue cancelled tabs when revisited and cancel on application drop. [Validation and limitations](docs/JPEG_RESTORATION_VALIDATION.md).
-
-Colorize uses normalized D65 Lab luminance at `[1,1,256,256]` and predicts a/b at `[1,2,64,64]`. Only large convolution kernels have fp16 storage; constant casts restore float32 before computation. Source RGB is premultiplied over neutral gray before square inference resampling, preventing hidden RGB contamination. Half-pixel chroma reconstruction reuses original per-pixel Lab L and exact alpha, blends original/inferred chroma with Strength/Saturation, then explicitly clips RGB gamut. Zero strength is exact source identity; zero saturation bypasses inference. The immutable `ColorizeModel::Eccv16Fp16V1` contract and graph hash are retained in native v6. [Independent evidence and limits](docs/COLORIZE_VALIDATION.md).
-
-Face-guided Skin Smoothing adds fixed batch-one BlazeFace 128² and Face Mesh
-192² profiles. The shared inference adapter validates each output tensor's
-shape, flattens outputs in pinned graph order, and retains one plan/exact-input
-pair per profile under the existing bounded CPU executor/lock. In core,
-weighted anchor suppression, letterbox/rotated-crop mapping and canonical
-landmark contours create coverage with protected eye/lip/brow holes. Learned
-geometry guides an explicitly conventional separable bilateral smoother in
-at most eight 384² patches. Adding a feathered patch color delta retains
-source geometry, high-frequency detail and alpha. A separate 128 MiB bounded
-source/geometry/patch cache accelerates parameter edits without storing
-partial jobs. `SkinModel::FaceMeshV1` pins model and pixel contracts in v6;
-no source raster is replaced. [Exact geometry, references and limits](docs/SKIN_SMOOTHING_VALIDATION.md).
-
-Super Zoom's first production profile deliberately retains source-sized
-evaluated bounds: a 224²→672² learned Y model supplies cropped magnification
-at 1–3× rather than larger document dimensions. Six-pixel halos around 212²
-interiors support seam-safe bilinear field sampling. Tile-major traversal
-retains one network output; a separate 128 MiB source/baseline/learned-crop
-cache accelerates Enhancement changes. Premultiplied resampling determines
-color/alpha, and the learned matted-Y residual modifies straight RGB. Native
-`ZoomModel::Espcn3xCropV1` pins this limited contract. A separate whole-image
-export adapter maps destination pixel centers into the complete visible
-composite, with independently rounded dimensions and repeated border samples.
-It shares bounded inference and the 128 MiB cache (keyed by geometry/output mode)
-but never changes the serialized crop contract. PNG export runs on a COW document
-snapshot, replaces the edited crop instance for export only, and checks cancellation
-after encoding before atomic replacement. Its separate file result does not mark
-the project saved or remove recovery data. File-menu cancellation and app drop
-signal the job; tab switches cannot redirect its snapshot. Enlarged editable
-documents still require evaluated output geometry and corresponding paint/selection/mask maps.
-[Independent references and limits](docs/SUPER_ZOOM_VALIDATION.md).
-
-Depth Blur retains source-sized geometry and a typed immutable MiDaS profile.
-Premultiplied square area sampling over gray feeds its fixed 256² input; the graph
-embeds RGB normalization. The 2%/98% normalized inverse-depth field is bilinearly
-sampled at source pixel centers. Click focus uses the same source-local map as
-manual X/Y origins; manual depth disables the picker. A sharp depth band plus
-smoothstep distance chooses between six Gaussian scales, retaining only adjacent
-scale images. Interpolation uses premultiplied RGBA and restores original alpha.
-The 128 MiB source/depth cache is independent of UI parameters. It is not an
-occlusion-aware optical simulation. Native v6 stores model/parameters, never a
-baked source replacement. [Model, pixel and reference contract](docs/DEPTH_BLUR_VALIDATION.md).
-
-Statistical Color Transfer is a conventional global neighborhood operation:
-coverage-weighted Welford Lab moments depend on the entire evaluated source, so
-regional compositing must still prepare the whole layer. Its 128 MiB bounded
-source/moment cache excludes parameters/reference profiles from the key because
-neither changes source moments. The compact reference profile is the complete
-sufficient input to v1; native JSON retains float64 moments with exact roundtrip
-parsing. No new binary asset/framing or per-document model was added. Import
-jobs own cancellation flags; dropping a draft prevents its statistics/result
-from being applied later. Pixel transfer, filter masking and layer styles retain
-normal pipeline order, with source alpha unchanged. [Contract and evidence](docs/COLOR_TRANSFER_VALIDATION.md).
-
-Makeup Transfer reuses the existing Skin Smoothing face detector, rotated crop,
-468-point mesh and signed-distance helpers inside the processing module. No UI
-type enters the document or raster code. It measures alpha-weighted lip/upper-lid
-Lab offsets from an inner-face baseline; target offsets and geometry are cached
-under a separate 128 MiB source budget. Reference profiles store only bounded
-colour offsets and metadata; source-region masks update with source contents.
-
-Harmonization introduces typed layer-reference parameters. The document renderer
-resolves dependencies into transient colour-transfer parameters, streams reference
-statistics into a lazy prepared-layer cache, and rejects cycles without storing
-resolved pixels in the model. Renderer::layer supplies the same context-aware
-appearance to clipboard and local selection sampling. Paint baking retains
-nonvisible dependencies while isolating a rendered layer. Spatial Makeup Transfer
-stores an Arc-backed 512-square face atlas in existing native binary tile assets;
-metadata holds landmarks, pigment-plane coefficients and a canonical RGBA hash.
-
-Conventional Photo Restoration has an immutable DirectionalV1 parameter contract.
-A completed directional outlier map separates detection from clean-neighbour
-interpolation, followed by alpha-weighted edge-aware luminance/chroma cleanup and
-bounded histogram enhancement. It uses the existing cancellable prepared-layer
-worker/cache and shared mask/preview/history pipeline, with no new runtime or
-weights. The diagnostic damage overlay is an editable output mode.
-
-Smart Portrait ExpressiveMouthV2 reuses cached local face geometry. A bounded 192²
-compact-polynomial displacement field, a conservative Jacobian limit and inverse
-sampling change existing expressions with a stronger endpoint response. A second
-face-aligned inner-lip mapping separates lips or narrows a frown, reusing original
-lip/dental texture where available. Closed mouths receive local procedural cavity
-and dental-arch infill, not recovered anatomy or learned synthesis. Saved V1
-instances retain their pixel contract until an undoable expression edit upgrades them.
-Skin-only directional shading and alpha-weighted sampling run in linear RGB;
-source pixels/alpha and generic filter mask/history/native behavior remain intact.
-See docs/SMART_PORTRAIT_VALIDATION.md for the explicit limits.
-
-Landscape Mixer EdgeAwareV2 estimates source/donor sky on a bounded 768 px guide,
-using top-connected colour/texture classification, bottom-connected terrain,
-guided coverage refinement and colour-aware upsampling. One aspect-preserving
-horizon-aligned cover crop maps the donor without terrain-dependent cloud warps
-or repeated border rows. A bounded alpha-weighted push/pull colour extension
-fills donor foreground gaps without moving neighbouring sky coordinates.
-Ground-only luminance-ranked Lab
-palette transfer retains source geometry/luminance without additive halos.
-Both inputs receive seasonal grades. The preview worker returns an independently
-graded reference texture, guarded by the same ticket/session/generation as the
-composite; its floating alignment window never mutates source pixels. V2 binary
-references allow 2048 px; row-streamed import accumulation uses at most 80 KiB.
-Sky analyses have two 64 MiB-budget entries. See docs/LANDSCAPE_EDGES_VALIDATION.md.
-Landscape refinement reuses the Selection Brush in a private bounded worker,
-sampling the layer before the edited filter. A draft `FilterInstance.mask`
-receives protection/restoration coverage and shares existing preview cancellation,
-native assets and Apply/Cancel/history. Stroke snapshots are capped at eight/64 MiB.
-Method is a serialized compatibility tag hidden in the UI.
-See docs/LANDSCAPE_PROTECTION_VALIDATION.md.
-
-The immutable legacy HorizonBlendV1 uses continuous piecewise horizon
-alignment, linear-premultiplied reference sampling, a cached Gaussian guide for
-source terrain detail and bounded seasonal grades. Reference rasters are reduced
-to at most 512 × 512, detached into native binary map assets and counted in
-history allocations. Horizon placement updates the same cancellable draft as
-numeric controls. This is conventional compositing, without new models or scene
-segmentation. See docs/LANDSCAPE_MIXER_VALIDATION.md.
-
-Photo Restoration MultiscaleV2 retains v1 as an immutable legacy method. A
-premultiplied guide, width/orientation samples, bounded connected components and
-fine-scratch fallback build a damage map. Overdrive unions the 100% map before
-expansion and optional existing face-landmark protection. Sparse harmonic fill
-uses fixed alpha-weighted boundaries and bounded symmetric sweeps; it allocates
-nodes only for detected pixels (two-million-node cap). Worker cancellation reaches
-detection, geometry and filling. Native framing is unchanged; this is conventional
-interpolation with optional learned geometry protection, not learned reconstruction.
-
 ## Layer panel and style extension
 
 Document backing RGBA and visibility are independent of editable raster layers. The CPU compositor starts with the effective backing. Selected IDs and a range anchor belong to each session. The active layer alone expands beneath its thumbnail; raster rows scroll while Background stays docked. Merge builds a validated replacement off-thread and publishes one history snapshot. New typed style variants reuse the registry, transactional live editor, prepared-layer bounds and worker cache. See [layer architecture and validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md).
@@ -493,3 +356,9 @@ Ordinary linked-layer moves update placement uniforms, without filter evaluation
 `Tool::Move` lives in Tools. A present selection routes to the existing `SelectionGesture` transaction; otherwise it starts `LayerDrag`. A selection can be picked up anywhere inside the canvas. Source snapshots remain immutable, original contour Arcs translate with the requested delta and viewport-edge coverage samples the original mask with inverse translation. Both ordinary selection tools' interior drags and Move share the GPU path.
 
 Eligible raster selections add one immutable R8 coverage texture to the scene. The existing blend shader reconstructs cut/paste source pixels using the CPU reference's old/new coverage partition, including feather overlap and quantized alpha. Only displacement uniforms change during the drag. Scene staging can warm from the gesture's base even after a CPU preview has arrived. Release/escape/history continue through the device-independent transform transaction. Live masks/filters/effects and reference-dependent appearances retain CPU evaluation rather than changing source semantics. [Selection contract and tests](docs/UNIFIED_MOVE_VALIDATION.md).
+
+## Dependency reduction
+
+Neural Filters and AVIF support were intentionally removed on 2026-10-20 to reduce dependencies, binary size and build requirements. All twelve operations formerly under Neural Filters are removed, including conventional approximations. PNG, JPEG, BMP, GIF, TIFF, WebP, `.paint` and `.palette` remain supported. Older projects containing a retired filter fail with an explicit diagnostic, including disabled filters; open them in an older build and remove or rasterize those filters before saving a compatible copy. No filter is silently discarded.
+
+The workspace contains the application and palette-core. Conventional layer styles retain a small shared sRGB/Lab conversion module; no model loader, model payload, inference executor or AV1 codec remains. Release builds use Thin LTO and one code-generation unit. GPU presentation, CPU reference rendering, masks, live conventional filters and native asset storage remain shared across platforms.

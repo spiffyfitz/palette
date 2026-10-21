@@ -11,11 +11,6 @@ pub(super) struct PaintExport {
     pub backup_complete: bool,
 }
 
-pub(super) struct AvifExport {
-    pub path: PathBuf,
-    pub options: io::AvifOptions,
-}
-
 impl PaletteApp {
     pub(super) fn init_store(&mut self, root: PathBuf) {
         match Store::new(root) {
@@ -69,9 +64,7 @@ impl PaletteApp {
                 .set_title("Import image as a new layer")
                 .add_filter(
                     "Raster images",
-                    &[
-                        "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "avif",
-                    ],
+                    &["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp"],
                 )
                 .pick_file()
         });
@@ -296,38 +289,6 @@ impl PaletteApp {
 
     pub(super) fn file_windows(&mut self, ctx: &Context) {
         self.paint_export_window(ctx);
-        if let Some(mut export) = self.avif_export.take() {
-            let mut apply = false;
-            let mut cancel = false;
-            egui::Modal::new(egui::Id::unique("avif-options"))
-                .frame(egui::Frame::window(&ctx.global_style()).inner_margin(24))
-                .show(ctx, |ui| {
-                    ui.set_width(300.);
-                    ui.heading("Export AVIF");
-                    ui.label("RGB is lossy. Alpha uses maximum quality.");
-                    ui.add(egui::Slider::new(&mut export.options.quality, 1..=100).text("Quality"));
-                    ui.add(egui::Slider::new(&mut export.options.speed, 1..=10).text("Speed"));
-                    ui.label("Higher speed reduces encoding time.");
-                    ui.horizontal(|ui| {
-                        apply = ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new("Export").color(Color32::BLACK),
-                                )
-                                .fill(ACCENT)
-                                .min_size(vec2(90., 30.)),
-                            )
-                            .clicked();
-                        cancel = ui.button("Cancel").clicked();
-                    });
-                    cancel |= ui.input(|i| i.key_pressed(Key::Escape));
-                });
-            if apply {
-                self.start_save(export.path, true, Some(export.options), ctx);
-            } else if !cancel {
-                self.avif_export = Some(export);
-            }
-        }
         if self.recovery_prompt && self.error.is_none() {
             let mut restore = None;
             let mut discard = None;

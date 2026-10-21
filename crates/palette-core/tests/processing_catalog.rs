@@ -293,7 +293,6 @@ fn every_catalog_entry_roundtrips_sources_masks_settings_and_baked_paint_appeara
         // settings whose fields could accidentally be exchanged undetected.
         for parameter in descriptor.parameters {
             let value = match parameter.kind {
-                processing::ParameterType::Layer => Value::Layer(None),
                 processing::ParameterType::Number { min, max, step } => {
                     let n = min + (max - min) * 0.37;
                     Value::Number(if step >= 1. { n.round() } else { n })

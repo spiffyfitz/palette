@@ -79,8 +79,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 ## Phase 3
 
-- [x] Real still AVIF read/write, alpha/quality/speed options and Windows codec tests.
-- [ ] AVIF execution on macOS/Linux/Windows 10; matrix configured, not run locally.
+- [x] Neural Filters, bundled models/inference, AVIF codecs and vendor patch removed; explicit compatibility errors cover old projects.
+
 - [x] `.paint` fixture analysis, genuine bounded HEIF/unci/iovl layered import/export and source/composite round trips.
 - [x] Generated `.paint` opens and looks correct in Microsoft Paint (user confirmation).
 - [ ] Independently edit/toggle both layers in Paint, save there and reopen in Palette; broader variants/platforms.
@@ -166,78 +166,15 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 - [x] Five Blur Gallery filters with movable focus/path controls; original Flame/Tree/Picture Frame renderers; Video field/chroma operations and HSB/HSL conversion.
 - [x] Dated Adobe coverage audit separating the 133 conventional filters from exclusions and unavailable AI functionality.
-- [ ] Remaining Neural/AI filters and broader quality/platform validation (Mosaic Style Transfer is locally implemented). See docs/PHOTOSHOP_FILTER_AUDIT.md.
 
 - [ ] Substance-based Parametric Filters: version-specific effect inventory, original/licensed materials and independently validated implementations.
-
-- [x] Isolated Rust feasibility probe: checksum-pinned learned style transfer and 3× luminance super resolution execute successfully. This is a development tool, not an app feature.
-- [ ] First six Neural Filter counterparts: model selection/terms, numerical and image-quality references, alpha/geometry adapters, runtime scheduling, native/UI integration. See docs/NEURAL_FILTERS_FIRST_SIX.md.
-
-- [x] Bundled offline Mosaic Style Transfer: local Rust inference, immutable model profile, exact checksum, independent CPU reference, cancellable operators, source/alpha preservation, strength/cache, native roundtrip and compact live toolbar.
-- [ ] Generative Smart Portrait capabilities, remaining first-batch capability gaps and high-resolution/custom-reference style models. See docs/NEURAL_FILTERS_FIRST_SIX.md.
-
-- [x] Bundled local JPEG Artifacts Removal: full-resolution overlapping DnCNN-3 tiles, alpha/chroma preservation, cached strength edits, masks and native/UI transactions.
-- [x] Main render tickets cancel obsolete generations/tab targets and resubmit cancelled tabs when revisited; app drop cancels render/preview work.
-
-- [x] Bundled local Colorize: compact ECCV16 chrominance inference, Lab/source-alpha adapter, live strength/saturation controls, mask/native preservation, independent photo and numerical references.
-- [x] Local face-guided Skin Smoothing: bundled BlazeFace/Face Mesh geometry,
-  conventional smoothing with protected features, live Strength/Blur/Smoothness,
-  alpha/masks/native/undo preservation and independent model/photo references.
-- [x] Local Super Zoom cropped-output slice: real 3× inference with safe tiled
-  halos, 1–3× magnification, Enhancement, draggable source center, geometric
-  alpha, masks/native/undo and independent full-image seam references.
-- [x] Whole-image Super Zoom PNG export: 1–3× larger output, all visible layers,
-  local background inference, cancellation and atomic replacement; source project stays editable.
-- [ ] Enlarged editable Super Zoom documents and related painting/selection/mask coordinate mapping.
-- [ ] Full Photoshop filter parity: tracked separately from catalog counts in
-  docs/PHOTOSHOP_FILTER_AUDIT.md. Smart Portrait now has a local geometric counterpart;
-  generative features and the audit's other gates remain incomplete.
-- [x] Local Smart Portrait: learned facial geometry, bounded expression warps,
-  stronger endpoints, lip separation, source teeth/procedural dental arch,
-  frown closure, directional face shading, all/largest face targeting and live native/mask/history
-  preservation. Generative age/hair/gaze/pose is not supplied.
-  Labeled (Beta) in filter menus, toolbars and layer lists.
-- [ ] Smart Portrait synthesis and remaining limitations of the partial first-six counterparts; remaining learned later-group capabilities and Filter Gallery remain deferred.
-
-- [x] Local Depth Blur: bundled inverse-depth model, click/manual focus, focal
-  range/radius, depth-map view, live editable stack/masks/native/history and
-  independent model/photo references. Gaussian defocus is not optical or neural reblurring.
-
-- [x] Statistical Color Transfer in Neural Filters: original warm palette,
-  local reference import, alpha-weighted Lab profiles, live strength/luminance/
-  contrast/saturation, source/mask/history preservation and portable native profiles.
-  This is a partial statistical counterpart, not a completed learned Color Transfer filter.
-
-- [x] Face-guided Makeup Transfer in Neural Filters: original rose/plum default,
-  reference-portrait import, separate lips/eyes/strength/softness/luminance,
-  protected eye/mouth interiors, editable masks/history and portable native profiles.
-  Learned landmarks guide conventional colour matching, not texture synthesis.
-
-- [x] Spatial Makeup Transfer v2: reference atlas, gradients/liner/highlights,
-  cheeks, occlusion protection and binary asset/native preservation; legacy v1 retained.
-- [x] Live Harmonization: typed reference-layer picker, dependency rendering/cache,
-  cycle rejection and shared clipboard/selection/Paint appearance.
-- [x] Landscape Mixer v2: edge-aware sky matte around ridges/vegetation, source
-  terrain geometry with reference palette transfer, independent graded reference
-  preview/horizon dragging, five grades on both inputs and 2048 px references.
-  Reference Landscape uses toolbar-size title text without footer/resize/close;
-  uniform sky placement fixes terrain warping and top-row stretching.
-  Refine mix reuses the Selection Brush for live source protection/restoration,
-  tolerance, feather, overlay and stroke undo; corrections save as filter masks.
-  Method is hidden while legacy rendering remains readable.
-  V1 rendering remains available; learned scene synthesis and semantic masks are
-  not implemented.
-  Labeled (Beta) in filter menus, toolbars and layer lists.
-- [x] Photo Restoration: legacy thin-scratch preservation plus multiscale curved/wide
-  cracks, 0–200% Strength, 1–64 px radius, polarity, optional local facial-detail
-  protection, harmonic fill, damage overlay and editable native/mask/history
-  preservation. Learned face reconstruction remains absent.
 
 - [x] Extended controls across ten live effect families: effect/highlight/shadow blending; glow technique/source/range/noise/jitter; shadow knockout; custom relief/gloss/satin/shadow/glow contours; shared lighting; RGBA gradient stops/midpoints/interpolation/dither; transparent pattern imports/linkage; gradient/pattern strokes and chisel/stroke emboss. [Scope and evidence](docs/LAYER_STYLE_SETTINGS_VALIDATION.md).
 
 ## Phase 6
 
-- [x] NASM-free AVIF builds with both decoder bit depths and existing encoding/alpha support retained; audited manifest-only wrapper patch, unchanged codec source/versions, standard build helper and release CI. [Dependency audit](docs/DEPENDENCY_AUDIT.md).
+- [x] Thin LTO and a single release code-generation unit, retaining optimized pixel processing.
+
 - [x] Persistent GPU layer appearances and document composition: all 19 blend modes, masks, opacity and ten effect families, with warmed move gestures avoiding CPU jobs/image uploads. CPU fallback and real-GPU reference/native-window tests. [Evidence](docs/GPU_COMPOSITOR_VALIDATION.md).
 - [ ] Individual GPU filter/effect kernels, GPU tiling and dense 4K/8K performance validation.
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.
