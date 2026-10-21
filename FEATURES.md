@@ -12,6 +12,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 ## Phase 1
 
+- [x] Independent session-local sizes for all nine brushes, reference starting diameters and a live centered size preview during slider/numeric adjustment. [Validation](docs/BRUSH_SIZE_PAINT_LOAD.md).
+
 - [x] Buildable native eframe/wgpu Windows executable and actual launch.
 - [x] Dark menus/ribbon, Paint-style grouping, original geometric icons.
 - [x] Responsive ribbon: scrollable compact Shapes gallery, then Shapes/Image/Tools/Colors section flyouts in reference order; split Selection/Brushes targets, nested property menus and 720-point minimum client width. [Validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
@@ -38,6 +40,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 ## Early working editing slices
 
 - [x] Continuous round brush, pencil, soft eraser, picker and magnifier.
+- [x] Nine brush families with actual rendered menu samples: Brush, Calligraphy brush/pen, Airbrush, Oil, Crayon, Marker, Natural pencil and Watercolor. Live spray buildup, speed-sensitive calligraphy, grain rubbing, local pigment pickup and force-aware input. [Validation](docs/BRUSH_STYLES_VALIDATION.md).
+- [x] Crayon with larger wax patches, paper cracks and soft tonal transitions, plus fine Natural Pencil grain at fixed source-pixel scale, with cached paper relief and tone buildup. [Validation](docs/PAPER_GRAIN_REFINEMENT.md).
 - [x] Lines, rectangles and ellipses with preview and outline/fill.
 - [x] Command undo/redo for source pixels and layer/filter/property mutations.
 - [x] Normal, Multiply and Screen with reference alpha tests.
@@ -76,7 +80,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Selection-aware flips/quarter-turns and custom-angle rotation; whole-document fallback with layers/masks retained.
 - [x] Eight selected-pixel resize handles and rotation handle; live move/resize/rotation previews, Shift constraints, Escape and one-command undo.
 - [ ] Persistent editable vector shape objects.
-- [ ] Brush variants, pressure, spacing and mask painting.
+- [x] Automatic stroke spacing and normalized backend force for brush size/strength.
+- [ ] User-adjustable spacing, tablet hardware/tilt validation and mask painting.
 - [ ] Gesture-coalesced property editing and further dirty-region optimization.
 
 ## Phase 3

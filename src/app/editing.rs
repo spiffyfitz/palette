@@ -410,7 +410,7 @@ impl PaletteApp {
                     session.command(result.label, |current| *current = document);
                     self.message = result.label.into();
                     if self.current().id == result.id && result.select_tool == Some(self.tool) {
-                        self.tool = Tool::Select;
+                        self.choose_tool(Tool::Select);
                     }
                 }
                 Ok(None) => self.message = "No pixels changed".into(),
@@ -516,7 +516,7 @@ impl PaletteApp {
         editing::paste(&mut document, pixels)?;
         self.current_mut()
             .command("Paste image", |doc| *doc = document);
-        self.tool = Tool::Select;
+        self.choose_tool(Tool::Select);
         self.message = "Pasted as a new layer. Drag the selection to move it.".into();
         Ok(())
     }

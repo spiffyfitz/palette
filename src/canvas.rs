@@ -1,3 +1,4 @@
+mod brush_preview;
 mod construction;
 pub(crate) mod navigation;
 mod overlays;
@@ -10,7 +11,7 @@ use crate::{
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use palette_core::{
-    brush::PaintStroke,
+    brush::{Sample, Stroke as BrushStroke, Style},
     editing::{self, PixelRect},
 };
 
@@ -70,6 +71,22 @@ impl PaletteApp {
                 .clamp(0.05, 32.0);
         }
         let ctx = ui.ctx().clone();
+        if let Some(pressure) = ctx.input(|i| {
+            i.raw.events.iter().rev().find_map(|event| {
+                if let egui::Event::Touch {
+                    force: Some(force), ..
+                } = event
+                {
+                    Some(*force)
+                } else {
+                    None
+                }
+            })
+        }) {
+            self.pointer_pressure = pressure.clamp(0., 1.);
+        } else if ctx.input(|i| i.pointer.any_pressed()) {
+            self.pointer_pressure = 1.;
+        }
         let pointer = ctx.input(|i| i.pointer.interact_pos());
         let (scroll, ctrl, space, middle, delta, pressed, down, released) = ctx.input(|i| {
             (
@@ -316,19 +333,27 @@ impl PaletteApp {
                 }
                 tool if tool.paints() || tool.shape() => {
                     if tool.paints() {
+                        let style = if tool == Tool::Brush {
+                            self.brush_style
+                        } else {
+                            Style::Round
+                        };
                         let session = self.current_mut();
                         session.history.begin(tool.label(), &session.document);
                         if let Err(error) = editing::ensure_canvas_extent(&mut session.document) {
                             self.error = Some(error);
                             return;
                         }
-                        session.paint_stroke =
-                            Some(PaintStroke::new(&session.document.active().source));
+                        session.paint_stroke = Some(BrushStroke::new(
+                            &session.document.active().source,
+                            style,
+                            session.generation ^ session.id.rotate_left(19),
+                        ));
                     }
                     self.stroke = Some((point, point));
                     self.gesture_session = Some(self.current().id);
                     if tool.paints() {
-                        self.paint_segment(point, point);
+                        self.paint_sample(point, false, ctx.input(|i| i.time));
                     }
                 }
                 _ => {}
@@ -345,9 +370,13 @@ impl PaletteApp {
             {
                 point = palette_core::shapes::constrain(kind, start, point);
             }
-            if down && point != last {
+            let spray = self.tool == Tool::Brush && self.brush_style == Style::Airbrush;
+            if down && (point != last || spray) {
                 if self.tool.paints() {
-                    self.paint_segment(last, point);
+                    self.paint_sample(point, false, ctx.input(|i| i.time));
+                    if spray {
+                        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                    }
                 }
                 self.stroke = Some((start, point));
             }
@@ -357,6 +386,9 @@ impl PaletteApp {
                 overlays::shape(&painter, &path, style, origin, zoom);
             }
             if released || !down {
+                if self.tool.paints() {
+                    self.paint_sample(point, true, ctx.input(|i| i.time));
+                }
                 if let Some(kind) = self.tool.shape_kind() {
                     self.edit(
                         crate::app::editing::Edit::Shape(
@@ -491,6 +523,7 @@ impl PaletteApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(sliders), |ui| {
                 self.brush_sliders(ui)
             });
+            self.paint_brush_size_preview(ui);
         }
         if tray_visibility > 0.0 {
             let panel = Rect::from_min_max(
@@ -605,7 +638,7 @@ impl PaletteApp {
         }
     }
 
-    fn paint_segment(&mut self, from: [f32; 2], to: [f32; 2]) {
+    fn paint_sample(&mut self, to: [f32; 2], finish: bool, time: f64) {
         let mut brush = self.brush;
         if self.stroke_background {
             brush.color = self.background.to_srgba_unmultiplied();
@@ -617,18 +650,28 @@ impl PaletteApp {
             brush.opacity = 1.0;
         }
         let offset = self.current().document.active().offset;
-        let from = [from[0] - offset[0] as f32, from[1] - offset[1] as f32];
         let to = [to[0] - offset[0] as f32, to[1] - offset[1] as f32];
+        let sample = Sample {
+            position: to,
+            pressure: self.pointer_pressure,
+            time,
+        };
         let selection = self.current().document.selection.clone();
         let session = self.current_mut();
         if let Some(stroke) = &mut session.paint_stroke {
-            stroke.segment(
+            stroke.sample(
                 brush,
                 &mut session.document.active_mut().source,
-                from,
-                to,
+                sample,
                 selection.as_ref().map(|mask| (mask, offset)),
             );
+            if finish {
+                stroke.finish(
+                    brush,
+                    &mut session.document.active_mut().source,
+                    selection.as_ref().map(|mask| (mask, offset)),
+                );
+            }
             if let Some(dirty) = stroke.take_dirty_region() {
                 let left = i64::from(dirty.x) + i64::from(offset[0]);
                 let top = i64::from(dirty.y) + i64::from(offset[1]);
@@ -704,18 +747,26 @@ impl PaletteApp {
                                 }
                             };
                             let range = if index == 0 { 1.0..=256.0 } else { 0.0..=1.0 };
-                            ui.add(
-                                egui::Slider::new(value, range)
-                                    .vertical()
-                                    .handle_shape(egui::style::HandleShape::Circle)
-                                    .trailing_fill(true)
-                                    .show_value(false),
-                            )
-                            .on_hover_text(format!(
-                                "{label}: {:.0}{}",
-                                if index == 0 { *value } else { *value * 100.0 },
-                                if index == 0 { " px" } else { "%" }
-                            ));
+                            let slider = ui
+                                .add(
+                                    egui::Slider::new(value, range)
+                                        .vertical()
+                                        .handle_shape(egui::style::HandleShape::Circle)
+                                        .trailing_fill(true)
+                                        .show_value(false),
+                                )
+                                .on_hover_text(format!(
+                                    "{label}: {:.0}{}",
+                                    if index == 0 { *value } else { *value * 100.0 },
+                                    if index == 0 { " px" } else { "%" }
+                                ));
+                            if index == 0 {
+                                self.brush_size_slider_rect = slider.rect;
+                                if slider.dragged() || slider.changed() {
+                                    self.brush_size_preview_until =
+                                        Some(ui.input(|i| i.time) + 0.65);
+                                }
+                            }
                             ui.visuals_mut().widgets.inactive.fg_stroke =
                                 Stroke::new(1.0, Color32::from_gray(225));
                             ui.visuals_mut().widgets.hovered.fg_stroke =
@@ -735,6 +786,10 @@ impl PaletteApp {
                                 .changed()
                             {
                                 *value = if index == 0 { display } else { display / 100.0 };
+                                if index == 0 {
+                                    self.brush_size_preview_until =
+                                        Some(ui.input(|i| i.time) + 0.65);
+                                }
                             }
                         },
                     );

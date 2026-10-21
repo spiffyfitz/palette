@@ -34,7 +34,7 @@ pub struct Session {
     /// a drag into another document or discard a different tab's tool state.
     pub selection_drag: Option<SelectionDrag>,
     pub lasso_drag: Option<LassoDrag>,
-    pub paint_stroke: Option<palette_core::brush::PaintStroke>,
+    pub paint_stroke: Option<palette_core::brush::Stroke>,
     pub text_drag: Option<[f32; 2]>,
     pub layer_drag: Option<LayerDrag>,
     pub selection_transform: Option<SelectionGesture>,

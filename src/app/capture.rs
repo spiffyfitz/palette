@@ -1,6 +1,7 @@
 //! Reproducible native UI capture scenes. Scene selection is a debug-build
 //! command-line diagnostic and is never part of the editor's visible workflow.
 use super::*;
+mod brush_scenes;
 mod gpu_probe;
 mod layer_scenes;
 
@@ -25,6 +26,12 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("brush-styles") => self.prepare_brush_capture(),
+            Some("brush-size-preview") => {
+                self.choose_brush(palette_core::brush::Style::Oil);
+                self.brush.diameter = 96.;
+                self.brush_size_preview_until = Some(f64::INFINITY);
+            }
             Some("tabs-overflow") => {
                 self.current_mut().name = "Mountain study 01.png".into();
                 for number in 2..=16 {

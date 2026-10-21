@@ -5,6 +5,8 @@ use crate::{
     raster::{Coverage, Raster, TILE},
 };
 use std::collections::HashMap;
+mod styles;
+pub use styles::{Sample, Stroke, Style};
 
 /// Round brush/eraser footprint parameters, expressed in source-image units.
 #[derive(Clone, Copy, Debug)]
@@ -115,6 +117,24 @@ pub struct PaintStroke {
 }
 
 impl PaintStroke {
+    fn write(&mut self, raster: &mut Raster, x: u32, y: u32, pixel: [u8; 4]) {
+        if raster.get(x, y) == pixel {
+            return;
+        }
+        raster.set(x, y, pixel);
+        let bounds = self.dirty.get_or_insert(crate::editing::PixelRect {
+            x,
+            y,
+            width: 1,
+            height: 1,
+        });
+        let right = (bounds.x + bounds.width).max(x + 1);
+        let bottom = (bounds.y + bounds.height).max(y + 1);
+        bounds.x = bounds.x.min(x);
+        bounds.y = bounds.y.min(y);
+        bounds.width = right - bounds.x;
+        bounds.height = bottom - bounds.y;
+    }
     /// Share the pre-stroke tiles; allocate coverage only for touched tiles.
     pub fn new(source: &Raster) -> Self {
         Self {

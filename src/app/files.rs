@@ -217,7 +217,7 @@ impl PaletteApp {
                                 .collect();
                             tab.command("Import image as layer", |d| *d = doc);
                             if self.current().id == session {
-                                self.tool = Tool::Select;
+                                self.choose_tool(Tool::Select);
                             }
                             self.remember(&path);
                             self.message = if let Some(notice) = image.notice {

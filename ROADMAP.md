@@ -6,7 +6,7 @@ Current scope, 2026-10-20: a native Paint-style editor with nondestructive conve
 |---|---|---|
 | 0 — inspection/design | UI-independent document model, native Rust UI, reference/video research and specimen inspection | Broader Paint format variants |
 | 1 — runnable interface | Paint-style ribbon, tabs, layers, zoom, brush controls and ordinary raster I/O | Accessibility and cross-platform visual/behavior verification |
-| 2 — core painting | Live strokes, erasing, fill, shapes, text, clipboard, selections, transforms and undo | Brush variants/tablet input, text shaping and mask painting |
+| 2 — core painting | Live strokes with nine brush families, independent sizes/size preview, oil/watercolor paint depletion, erasing, fill, shapes, text, clipboard, selections, transforms and undo | Tablet hardware/tilt validation, adjustable spacing, text shaping and mask painting |
 | 3 — file compatibility | PNG/JPEG/BMP/GIF/TIFF/WebP, native v8 preservation and older-project migration, genuine layered .paint subset, recents/recovery/atomic saves | Broader Paint variants, Paint edit/save-back cycle, metadata-aware export and working color conversion |
 | 4 — advanced layers/selections | 19 blend modes, Wand/freeform/edge-aware selection brush, feathering, masks, multiple layer selection and undoable merge | Polygon selection, morphology and fuller mask editing/view/apply/link workflows |
 | 5 — filters/styles | Conventional filter registry, ten live style families, transactional canvas previews, masks and editable native persistence | Filter Gallery, presets, per-effect masks and broader quality validation |

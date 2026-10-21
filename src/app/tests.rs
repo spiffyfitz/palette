@@ -1,4 +1,5 @@
 use super::*;
+mod brushes;
 mod gpu;
 mod layer_movement;
 mod move_tool;

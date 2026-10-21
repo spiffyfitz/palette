@@ -313,21 +313,6 @@ pub fn chevron(ui: &mut Ui, size: Vec2, tooltip: &str) -> Response {
     response.on_hover_text(tooltip)
 }
 
-/// Decorative stroke samples are original geometry, not copied Paint resources.
-pub fn stroke_sample(ui: &Ui, rect: egui::Rect, thickness: f32, color: Color32) {
-    let points: Vec<_> = (0..32)
-        .map(|i| {
-            let t = i as f32 / 31.0;
-            egui::pos2(
-                rect.left() + t * rect.width(),
-                rect.center().y + (t * std::f32::consts::TAU).sin() * 4.0,
-            )
-        })
-        .collect();
-    ui.painter()
-        .add(egui::Shape::line(points, Stroke::new(thickness, color)));
-}
-
 /// Canvas bounds dialog is transactional, like Paint's Image Properties.
 pub struct CanvasProperties {
     pub session: u64,

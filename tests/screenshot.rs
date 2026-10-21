@@ -13,12 +13,24 @@ fn main_window_matches_reviewed_baseline() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed brush material baselines"]
+fn brush_materials_match_reviewed_baselines() {
+    // A focused check for material-only changes; the full UI suite also keeps
+    // these scenes so its broader coverage remains intact.
+    compare_scene(Some("brushes"), "ui-brushes-windows.png");
+    compare_scene(Some("brush-styles"), "ui-brush-styles-windows.png");
+    compare_scene_size(Some("brushes"), "ribbon-brushes-windows.png", (720, 520));
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and the reviewed UI scene baselines"]
 fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
     for scene in [
         "tabs-overflow",
         "file-menu",
         "brushes",
+        "brush-styles",
+        "brush-size-preview",
         "colors",
         "text",
         "properties",
@@ -231,6 +243,7 @@ fn responsive_ribbon_matches_reviewed_baselines() {
         ("tools", 720, Some("ribbon-tools")),
         ("shapes", 720, Some("ribbon-shapes")),
         ("colors", 720, Some("ribbon-colors")),
+        ("brushes", 720, Some("brushes")),
     ] {
         compare_scene_size(scene, &format!("ribbon-{name}-windows.png"), (width, 520));
     }

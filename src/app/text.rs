@@ -28,6 +28,7 @@ pub(super) enum AfterText {
     Save(bool, bool),
     Close(u64),
     Tool(Tool),
+    Brush(palette_core::brush::Style),
     Tab(u64),
     Edit(editing::Edit),
     Properties,
@@ -264,6 +265,7 @@ impl PaletteApp {
             AfterText::Save(save_as, export) => self.save(ctx, save_as, export),
             AfterText::Close(id) => self.request_close(id, ctx),
             AfterText::Tool(tool) => self.choose_tool(tool),
+            AfterText::Brush(style) => self.choose_brush(style),
             AfterText::Tab(id) => {
                 if let Some(index) = self.sessions.iter().position(|s| s.id == id) {
                     self.active = index;
@@ -279,6 +281,18 @@ impl PaletteApp {
             AfterText::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
     }
+    pub(crate) fn choose_brush(&mut self, style: palette_core::brush::Style) {
+        if !self.finish_inline_text() {
+            self.after_text = Some(AfterText::Brush(style));
+            return;
+        }
+        self.choose_tool(Tool::Brush);
+        self.brush_sizes[self.brush_style as usize] = self.brush.diameter;
+        self.brush_style = style;
+        self.brush.diameter = self.brush_sizes[style as usize];
+        self.brush_size_preview_until = None;
+    }
+
     pub(crate) fn choose_tool(&mut self, tool: crate::session::Tool) {
         self.cancel_processing();
         self.processing_toolbar = None;
@@ -287,6 +301,14 @@ impl PaletteApp {
             return;
         }
         if tool != self.tool {
+            if self.tool == Tool::Brush {
+                self.brush_sizes[self.brush_style as usize] = self.brush.diameter;
+                self.brush.diameter = self.other_tool_diameter;
+            } else if tool == Tool::Brush {
+                self.other_tool_diameter = self.brush.diameter;
+                self.brush.diameter = self.brush_sizes[self.brush_style as usize];
+            }
+            self.brush_size_preview_until = None;
             self.current_mut().end_gesture();
             self.stroke = None;
             if tool == Tool::SelectBrush

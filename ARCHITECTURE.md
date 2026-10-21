@@ -38,9 +38,20 @@ Brush/pencil/eraser samples report actual changed-pixel bounds. Once a compatibl
 
 Canvas origin is the viewport center minus half the scaled canvas plus pan. Image coordinates are `(pointer - origin) / zoom`. egui supplies logical display points after OS DPI conversion; applying DPI again would be wrong. The display origin is aligned to physical pixels. Integer zoom uses nearest texture sampling. Fractional zoom mapping is tested; filtered texture sampling and advanced trackpad behavior need later polish.
 
-Brush segments rasterize the union of a circular footprint along a line, avoiding gaps during fast motion. Hardness defines the core and linear edge falloff. `PaintStroke` retains a COW pre-stroke raster and sparse float coverage tiles; each pixel is evaluated from its original value at maximum stroke coverage, so event density and retracing within one stroke do not accumulate opacity. Outlined shapes share this accumulator. A new gesture can build opacity. Painting and erasing multiply by canvas-space selection coverage after accounting for layer offsets. Pressure/spacing controls remain future work.
+Brush segments rasterize the union of a circular footprint along a line, avoiding gaps during fast motion. Hardness defines the core and linear edge falloff. `PaintStroke` retains a COW pre-stroke raster and sparse float coverage tiles; each pixel is evaluated from its original value at maximum stroke coverage, so event density and retracing within one stroke do not accumulate opacity. Outlined shapes share this accumulator. A new gesture can build opacity. Painting and erasing multiply by canvas-space selection coverage after accounting for layer offsets. `brush::Stroke` wraps that accumulator for the nine material families. Round/marker/eraser paths retain the capsule renderer. Other tips use distance-spaced antialiased stamps, with clipped iteration ranges for off-canvas input. A second sparse byte RGB map exists only for mixing materials; coverage remains floating point. Paper styles cache a byte of fixed source-pixel relief per touched pixel. Warped cellular boundaries at a 15-pixel scale create Crayon fissures within mostly covered wax. Five local relief samples and a quadratic deposition response soften the light/dark shoulders without blurring the raster or selection; fine triangular-lattice gradient kernels and static micrograin produce Natural Pencil marks. The two paper materials retain separate fields so Crayon changes cannot alter the approved graphite output. Separate deposition curves retain mostly covered wax with visible fissures and mid-gray granular graphite without stretching grain with tip size; see docs/PAPER_GRAIN_REFINEMENT.md. Oil/Watercolor lay down fine physical-width bristle trails with spatial lag, instead of rotating a striped footprint with each input segment. Flow accumulates before user opacity and selection coverage are applied once against the immutable source. Timed airbrush ticks continue through stationary UI frames, with bounded catch-up after stalls. Source-color pickup ignores hidden transparent RGB. Backend force is interpolated along the path; spacing is automatic and tilt/configurable spacing remain future work.
 
 ## Core editing workflow
+
+Brush material defaults live in `Style::default_diameter`. The UI retains nine
+independent session-local sizes plus the existing non-brush tool width; tool and
+material transitions save/restore diameter without changing the document. A
+transient canvas overlay shows the chosen footprint at viewport center while the
+size control changes. It uses image diameter × zoom, with OS DPI handled by egui.
+Oil and watercolor track total stroke arclength, including clipped travel, to
+deplete a fresh per-gesture reservoir. Remaining load controls film deposition,
+tip narrowing and individual filament dropout. This is independent of pointer
+event rate and elapsed time. Oil retains richer physical bristle tracks;
+watercolor has a softer wash and lower opacity ceiling. [Details and validation](docs/BRUSH_SIZE_PAINT_LOAD.md).
 
 `editing` implements selection coverage/bounds/contours, active-layer copy, clear, paste, move and iterative scanline fill. Clipboard output bakes the active layer's evaluated appearance into flat RGBA; source filters/masks remain untouched. Paste creates a layer and expands canvas bounds if needed. Move clears selected source coverage and composites it at the new canvas location, preserving layer processing properties. The active source buffer can expand to the union of its old extent and the canvas; local masks are reanchored alongside it. Existing hidden pixels survive canvas cropping and bounds resizing.
 
@@ -112,7 +123,7 @@ On pointer release, only the result matching the exact desired operation becomes
 
 ## Next boundaries
 
-The next Phase 2 slices are real brush variants, typography parity and gesture-coalesced properties. Persistent editable shape objects remain separate from the completed raster selection handles. Advanced selections and mask-painting UI follow later. Phase 3 local file work is now implemented as described below; real `.paint` fixtures/validation and platform execution gates remain open.
+The next Phase 2 slices are typography parity, tablet hardware validation, configurable brush spacing and gesture-coalesced properties. The nine conventional brush families now render through the existing live dirty-region path. Persistent editable shape objects remain separate from the completed raster selection handles. Advanced selections and mask-painting UI follow later. Phase 3 local file work is now implemented as described below; real `.paint` fixtures/validation and platform execution gates remain open.
 
 ## Phase 3 file workflows
 

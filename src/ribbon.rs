@@ -7,6 +7,7 @@ use crate::{
 };
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, Ui, vec2};
 use palette_core::shapes::Kind;
+mod brushes;
 mod controls;
 pub(crate) mod layout;
 /// Paint reference order: three complete seven-column rows, then heart/lightning.
@@ -299,48 +300,7 @@ impl PaletteApp {
                 self.choose_tool(Tool::Brush);
             }
             self.capture_popup("brushes", &response);
-            controls::menu(ui, &response, |ui| {
-                ui.set_width(236.0);
-                for (index, name) in [
-                    "Brush",
-                    "Calligraphy brush",
-                    "Calligraphy pen",
-                    "Airbrush",
-                    "Oil brush",
-                    "Crayon",
-                    "Marker",
-                    "Natural pencil",
-                    "Watercolor brush",
-                ]
-                .iter()
-                .enumerate()
-                {
-                    let enabled = index == 0;
-                    let row = ui.add_enabled(
-                        enabled,
-                        egui::Button::new(*name)
-                            .min_size(vec2(236.0, 42.0))
-                            .selected(enabled && self.tool == Tool::Brush),
-                    );
-                    let sample = egui::Rect::from_center_size(
-                        row.rect.right_center() - vec2(46.0, 0.0),
-                        vec2(66.0, 16.0),
-                    );
-                    interface::stroke_sample(
-                        ui,
-                        sample,
-                        if index == 6 { 7.0 } else { 3.0 },
-                        Color32::from_gray(if enabled { 235 } else { 100 }),
-                    );
-                    if row.clicked() {
-                        self.choose_tool(Tool::Brush);
-                        ui.close();
-                    }
-                    if !enabled {
-                        row.on_disabled_hover_text("This brush engine is not implemented yet");
-                    }
-                }
-            });
+            controls::menu(ui, &response, |ui| self.brush_menu(ui));
             if self.tool == Tool::Fill {
                 ui.add(egui::DragValue::new(&mut self.fill_tolerance).range(0..=255))
                     .on_hover_text("Fill tolerance");
