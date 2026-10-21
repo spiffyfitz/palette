@@ -217,18 +217,44 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
     }
 }
 
+#[test]
+#[ignore = "requires an interactive Windows desktop and the reviewed responsive ribbon baselines"]
+fn responsive_ribbon_matches_reviewed_baselines() {
+    for (name, width, scene) in [
+        ("compact", 1230, None),
+        ("shapes-folded", 1100, None),
+        ("image-folded", 1000, None),
+        ("tools-folded", 940, None),
+        ("colors-folded", 780, None),
+        ("minimum", 720, None),
+        ("image", 720, Some("ribbon-image")),
+        ("tools", 720, Some("ribbon-tools")),
+        ("shapes", 720, Some("ribbon-shapes")),
+        ("colors", 720, Some("ribbon-colors")),
+    ] {
+        compare_scene_size(scene, &format!("ribbon-{name}-windows.png"), (width, 520));
+    }
+}
+
 fn compare_scene(scene: Option<&str>, fixture: &str) {
+    compare_scene_size(scene, fixture, (1386, 963));
+}
+
+fn compare_scene_size(scene: Option<&str>, fixture: &str, size: (u32, u32)) {
     if !cfg!(target_os = "windows") {
         return;
     }
     let baseline = image::open(Path::new("tests/fixtures").join(fixture))
         .expect("reviewed baseline")
         .to_rgb8();
-    let filename = format!("target/window-regression-{}.png", scene.unwrap_or("main"));
+    let filename = format!("target/window-regression-{fixture}");
     let path = Path::new(&filename);
     let _ = std::fs::remove_file(path);
     let mut command = Command::new(env!("CARGO_BIN_EXE_palette"));
     command.arg("--screenshot").arg(path);
+    command
+        .arg("--screenshot-size")
+        .arg(format!("{}x{}", size.0, size.1));
     if let Some(scene) = scene {
         command.arg("--screenshot-scene").arg(scene);
     }
@@ -246,14 +272,14 @@ fn compare_scene(scene: Option<&str>, fixture: &str) {
         std::thread::sleep(Duration::from_millis(100));
     }
     let actual = image::open(path).expect("captured screenshot").to_rgb8();
-    assert_eq!(actual.dimensions(), (1386, 963));
+    assert_eq!(actual.dimensions(), size);
     assert_eq!(actual.dimensions(), baseline.dimensions());
     let differences = actual
         .pixels()
         .zip(baseline.pixels())
         .filter(|(a, b)| a.0.iter().zip(b.0).any(|(x, y)| x.abs_diff(y) > 24))
         .count();
-    let fraction = differences as f64 / (1386.0 * 963.0);
+    let fraction = differences as f64 / (f64::from(size.0) * f64::from(size.1));
     assert!(
         fraction < 0.005,
         "{:.2}% of pixels differ; inspect {}",

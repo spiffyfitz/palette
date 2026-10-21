@@ -5,6 +5,10 @@ use eframe::egui::{
 
 #[derive(Clone, Copy)]
 pub enum Icon {
+    Tools,
+    Colors,
+    Image,
+    Shapes,
     New,
     Move,
     Open,
@@ -119,6 +123,45 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::Image => {
+            box_at(at(0.08, 0.14), at(0.9, 0.86));
+            p.circle_filled(at(0.3, 0.35), rect.width() * 0.07, color);
+            p.add(egui::Shape::line(
+                vec![
+                    at(0.12, 0.76),
+                    at(0.43, 0.48),
+                    at(0.61, 0.66),
+                    at(0.75, 0.52),
+                    at(0.88, 0.65),
+                ],
+                s,
+            ));
+        }
+        Icon::Shapes => {
+            p.circle_stroke(at(0.38, 0.36), rect.width() * 0.27, s);
+            p.rect_filled(
+                Rect::from_min_max(at(0.45, 0.42), at(0.92, 0.9)),
+                1,
+                Color32::from_rgb(39, 39, 47),
+            );
+            box_at(at(0.45, 0.42), at(0.92, 0.9));
+        }
+        Icon::Tools => {
+            draw(ui, rect.shrink(2.), Icon::Pencil, color);
+            line([0.15, 0.1], [0.9, 0.85]);
+            p.circle_stroke(at(0.15, 0.1), rect.width() * 0.12, s);
+        }
+        Icon::Colors => {
+            p.circle_stroke(at(0.5, 0.5), rect.width() * 0.43, s);
+            for (x, y, c) in [
+                (0.3, 0.3, Color32::from_rgb(240, 85, 85)),
+                (0.6, 0.25, Color32::from_rgb(245, 214, 73)),
+                (0.75, 0.5, Color32::from_rgb(85, 195, 135)),
+                (0.3, 0.65, Color32::from_rgb(90, 160, 235)),
+            ] {
+                p.circle_filled(at(x, y), rect.width() * 0.075, c);
+            }
+        }
         Icon::Filters => {
             for (y, x) in [(0.2, 0.35), (0.5, 0.7), (0.8, 0.45)] {
                 line([0.05, y], [0.95, y]);

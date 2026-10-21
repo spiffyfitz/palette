@@ -2,6 +2,7 @@ use super::*;
 mod gpu;
 mod layer_movement;
 mod move_tool;
+mod ribbon;
 mod tabs;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 

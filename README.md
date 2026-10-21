@@ -24,7 +24,7 @@ Menus, Save/Undo/Redo and open-document tabs share a compact top row. Overflowin
 
 New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properties > Default uses the same size. Use Fit or pan when the canvas is wider than the workspace.
 
-- Paint-style dark ribbon, split buttons, anchored flyouts, hover/press animation, compact document tabs, animated layers tray, three contextual brush controls and status bar.
+- Paint-style dark ribbon, split buttons, anchored flyouts, hover/press animation, compact document tabs, animated layers tray, three contextual brush controls and status bar. Narrow windows progressively fold Shapes, Image, Tools and Colors into functional section flyouts; Shapes first becomes a scrollable gallery.
 - Centered Edit Colors and Image Properties dialogs with OK/Cancel, custom color slots, exact RGB/hex input and reversible canvas bounds changes. View toggles for gridlines, status bar, ribbon and layers.
 - New/open documents; switch, drag to reorder and close tabs using an integrated hover-only button; independent zoom, layers and history; modified-document close prompts matching the supplied Paint dialog, including keyboard focus and Save/Don’t save/Cancel.
 - Pencil, continuous round brush, soft eraser, color picker and magnifier. All 23 reference shape-gallery tools are functional, including free Polygon and a two-bend cubic Curve. Shapes have independent foreground outline/background fill, opacity, width, drag previews and Shift constraints. Finished shapes are selected automatically; right mouse swaps drawing colors.
@@ -93,7 +93,7 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 780x520`. 204 reviewed Windows states at 1386 x 963 guard the window, menus, dialogs, text and layers. See [video behavior and validation](docs/UI_BEHAVIOR_REFERENCE.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 720x520`. The screenshot suite covers 197 full-size Windows states plus ten responsive-ribbon states at smaller widths. See [video behavior](docs/UI_BEHAVIOR_REFERENCE.md) and [responsive ribbon validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
 
 See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE5_VALIDATION.md).
 

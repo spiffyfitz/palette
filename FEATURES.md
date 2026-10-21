@@ -14,6 +14,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 - [x] Buildable native eframe/wgpu Windows executable and actual launch.
 - [x] Dark menus/ribbon, Paint-style grouping, original geometric icons.
+- [x] Responsive ribbon: scrollable compact Shapes gallery, then Shapes/Image/Tools/Colors section flyouts in reference order; split Selection/Brushes targets, nested property menus and 720-point minimum client width. [Validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
 - [x] Slim document tabs: create, activate, reorder, integrated hover-only close, dirty state, shortcuts.
 - [x] Shared menu/action/tab row with bounded horizontal overflow, wheel/trackpad scrolling, active-tab reveal and drag-edge scrolling; native title-bar controls remain OS-owned.
 - [x] Independent documents, layers, zoom and undo history.

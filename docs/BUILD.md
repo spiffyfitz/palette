@@ -104,6 +104,8 @@ Expanded-catalog validation completed on Windows: fmt, strict workspace Clippy, 
 
 ## Lean release builds
 
+Responsive ribbon validation: debug captures accept `--screenshot-size 720x520`, the native minimum client size. `cargo test --test screenshot -- --ignored --test-threads=1` runs 197 full-size scenes plus ten compact ribbon stages/flyouts. Native captures must run serially. See [responsive ribbon validation](RESPONSIVE_RIBBON_VALIDATION.md).
+
 Neural Filters and AVIF are removed from the workspace and lockfile. No model files, vendor codec patch, Python tooling, model downloads, NASM or inference runtime are required. PNG/JPEG/BMP/GIF/TIFF/WebP and the independent safe-Rust Paint subset remain.
 
 Release uses Thin LTO and one code-generation unit; this can increase linking time while reducing linked code. `target/release/deps` and `build` are Cargo caches, not distribution assets. Old removed-feature build artifacts may remain until an explicit Cargo clean; no automatic cleanup deletes development caches. Ship the executable with required third-party/font notices. Keep the optional PDB for diagnostics.

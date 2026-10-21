@@ -16,7 +16,7 @@ fn main() -> eframe::Result {
             && let Some(size) = args.get(index + 1)
             && let Some((width, height)) = size.split_once('x')
             && let (Ok(width), Ok(height)) = (width.parse::<u32>(), height.parse::<u32>())
-            && (780..=3840).contains(&width)
+            && (ribbon::layout::MIN_WINDOW_WIDTH as u32..=3840).contains(&width)
             && (520..=2160).contains(&height)
         {
             window_size = [width as f32, height as f32];
@@ -29,7 +29,7 @@ fn main() -> eframe::Result {
             // area on Windows, macOS and Linux, including left-side controls.
             .with_decorations(true)
             .with_inner_size(window_size)
-            .with_min_inner_size([780.0, 520.0])
+            .with_min_inner_size([ribbon::layout::MIN_WINDOW_WIDTH, 520.0])
             .with_title("Untitled — Palette"),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()

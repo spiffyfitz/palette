@@ -2,6 +2,8 @@
 
 Current follow-up: selected-pixel move/resize/rotation handles and live previews are implemented; see [selection handle validation](SELECTION_HANDLES_VALIDATION.md). Earlier pending items and test counts below describe the historical milestone.
 
+2026-10-21 follow-up: [responsive ribbon](RESPONSIVE_RIBBON_VALIDATION.md) records the two additional root-directory videos, collapse ordering, split/whole button behavior, nested flyouts and compact-window validation.
+
 # Paint video: interface behavior and validation
 
 ## Reference inspected
