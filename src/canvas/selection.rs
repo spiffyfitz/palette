@@ -215,8 +215,8 @@ impl PaletteApp {
                 self.current_mut().lasso_drag = Some(drag);
             }
         }
-        if matches!(self.tool, Tool::Select | Tool::Lasso)
-            && !self.is_capturing()
+        if matches!(self.tool, Tool::Select | Tool::Lasso | Tool::Move)
+            && (!self.is_capturing() || self.capture_scene_is("gpu-selection-move"))
             && let Some(gesture) = &self.current().selection_transform
             && !gesture.released
         {
@@ -308,6 +308,24 @@ impl PaletteApp {
                 ],
                 phase,
             );
+        } else if let Some(g) = &self.current().selection_transform
+            && let SelectionTransform::Move(delta) = g.desired
+        {
+            let moving = painter.with_clip_rect(painter.clip_rect().intersect(canvas));
+            let offset = vec2(delta[0] as f32, delta[1] as f32);
+            for (contours, alpha) in [(&g.contours, 255), (&g.feather, 102)] {
+                for contour in contours.iter() {
+                    let points: Vec<_> = contour
+                        .iter()
+                        .map(|[x, y]| canvas.min + (vec2(*x, *y) + offset) * zoom)
+                        .collect();
+                    visible |= overlays::ants_alpha(&moving, &points, phase, alpha);
+                }
+            }
+            if let Some(mask) = g.base.selection_base.as_ref().or(g.base.selection.as_ref()) {
+                visible |=
+                    overlays::viewport_ants_offset(&moving, mask, canvas, zoom, phase, delta);
+            }
         } else {
             for contour in self.current_mut().feather_contours() {
                 let points: Vec<_> = contour
@@ -348,7 +366,13 @@ impl PaletteApp {
             && !self.current().document.active().locked
             && let Some(rect) = self.current_mut().selection_bounds()
         {
-            let bounds = screen_bounds(rect, canvas, zoom);
+            let mut bounds = screen_bounds(rect, canvas, zoom);
+            if let Some(g) = &self.current().selection_transform
+                && let SelectionTransform::Move(delta) = g.desired
+            {
+                bounds = screen_bounds(g.bounds, canvas, zoom)
+                    .translate(vec2(delta[0] as f32, delta[1] as f32) * zoom);
+            }
             let stroke = Stroke::new(1., Color32::from_gray(75));
             painter.line_segment(
                 [

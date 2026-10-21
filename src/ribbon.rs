@@ -92,16 +92,17 @@ fn group(ui: &mut Ui, width: f32, title: &str, contents: impl FnOnce(&mut Ui)) {
 }
 impl PaletteApp {
     fn tool_button(&mut self, ui: &mut Ui, tool: Tool, icon: Icon, size: egui::Vec2) {
-        if icons::button(ui, icon, tool.label(), self.tool == tool, true, size).clicked() {
+        let response = icons::button(ui, icon, tool.label(), self.tool == tool, true, size);
+        if tool == Tool::Move {
+            self.move_tool_rect = response.rect;
+        }
+        if response.clicked() {
             self.choose_tool(tool);
         }
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let tool = if matches!(
-                self.tool,
-                Tool::MoveLayer | Tool::Wand | Tool::Lasso | Tool::SelectBrush
-            ) {
+            let tool = if matches!(self.tool, Tool::Wand | Tool::Lasso | Tool::SelectBrush) {
                 self.tool
             } else {
                 Tool::Select
@@ -109,9 +110,7 @@ impl PaletteApp {
             self.tool_button(
                 ui,
                 tool,
-                if tool == Tool::MoveLayer {
-                    Icon::Move
-                } else if tool == Tool::Wand {
+                if tool == Tool::Wand {
                     Icon::Wand
                 } else if tool == Tool::Lasso {
                     Icon::Lasso
@@ -137,12 +136,6 @@ impl PaletteApp {
                     .clicked()
                     {
                         self.choose_tool(Tool::Select);
-                        ui.close();
-                    }
-                    if interface::menu_item(ui, "Move active layer", "", Some(Icon::Move), true)
-                        .clicked()
-                    {
-                        self.choose_tool(Tool::MoveLayer);
                         ui.close();
                     }
                     if interface::menu_item(ui, "Freeform selection", "", Some(Icon::Lasso), true)
@@ -630,14 +623,15 @@ impl PaletteApp {
                     });
                     group(ui, 124.0, "Tools", |ui| {
                         ui.horizontal(|ui| {
-                            self.tool_button(ui, Tool::Pencil, Icon::Pencil, vec2(32.0, 30.0));
-                            self.tool_button(ui, Tool::Fill, Icon::Fill, vec2(32.0, 30.0));
-                            self.tool_button(ui, Tool::Text, Icon::Text, vec2(32.0, 30.0));
+                            self.tool_button(ui, Tool::Move, Icon::Move, vec2(24.0, 30.0));
+                            self.tool_button(ui, Tool::Pencil, Icon::Pencil, vec2(24.0, 30.0));
+                            self.tool_button(ui, Tool::Fill, Icon::Fill, vec2(24.0, 30.0));
+                            self.tool_button(ui, Tool::Text, Icon::Text, vec2(24.0, 30.0));
                         });
                         ui.horizontal(|ui| {
-                            self.tool_button(ui, Tool::Eraser, Icon::Eraser, vec2(32.0, 30.0));
-                            self.tool_button(ui, Tool::Picker, Icon::Picker, vec2(32.0, 30.0));
-                            self.tool_button(ui, Tool::Magnifier, Icon::Zoom, vec2(32.0, 30.0));
+                            self.tool_button(ui, Tool::Eraser, Icon::Eraser, vec2(24.0, 30.0));
+                            self.tool_button(ui, Tool::Picker, Icon::Picker, vec2(24.0, 30.0));
+                            self.tool_button(ui, Tool::Magnifier, Icon::Zoom, vec2(24.0, 30.0));
                         });
                     });
                     group(ui, 58.0, "Brushes", |ui| self.brushes_control(ui));

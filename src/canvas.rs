@@ -156,10 +156,12 @@ impl PaletteApp {
         }
         if let Some(texture) = self
             .processing_preview()
-            .or(self.current().texture.as_ref())
+            .map(|t| t.id())
+            .or_else(|| self.gpu_texture())
+            .or_else(|| self.current().texture.as_ref().map(|t| t.id()))
         {
             painter.image(
-                texture.id(),
+                texture,
                 canvas,
                 Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
                 Color32::WHITE,
@@ -220,7 +222,7 @@ impl PaletteApp {
                 || (!self.tool.paints()
                     && !self.tool.shape()
                     && self.tool != Tool::Fill
-                    && self.tool != Tool::MoveLayer));
+                    && self.tool != Tool::Move));
         let selection_handled = self.selection_handle_press(
             &ctx,
             &painter,
@@ -241,8 +243,13 @@ impl PaletteApp {
             self.stroke_background = ctx.input(|i| i.pointer.secondary_pressed());
             let point = image_point(pointer.expect("hovered pointer"), canvas, zoom);
             match self.tool {
-                Tool::MoveLayer => {
-                    if !self.current().document.active().locked {
+                Tool::Move => {
+                    if self.current().document.selection.is_some() {
+                        self.current_mut().begin_selection_transform(
+                            crate::session::SelectionHandle::Move,
+                            point,
+                        );
+                    } else if !self.current().document.active().locked {
                         let original = self.current().document.active().offset;
                         self.current_mut().invalidate();
                         self.current_mut().layer_drag = Some(crate::session::LayerDrag {
@@ -305,9 +312,7 @@ impl PaletteApp {
                     self.current_mut().fit = false;
                 }
                 Tool::Picker => {
-                    if let Some(rendered) = &self.current().rendered {
-                        self.brush.color = rendered.get(point[0] as u32, point[1] as u32);
-                    }
+                    self.brush.color = self.sample_color(point[0] as u32, point[1] as u32);
                 }
                 tool if tool.paints() || tool.shape() => {
                     if tool.paints() {
@@ -438,7 +443,7 @@ impl PaletteApp {
             && self.current().selection_brush_draft.is_none()
             && !selection_handled
             && self.current().selection_transform.is_none()
-            && !(matches!(self.tool, Tool::Select | Tool::Lasso)
+            && !(matches!(self.tool, Tool::Select | Tool::Lasso | Tool::Move)
                 && self.current().document.selection.is_some())
         {
             let resize = ui
@@ -515,8 +520,8 @@ impl PaletteApp {
                 });
             });
         }
-        response.on_hover_text(if self.tool == Tool::MoveLayer {
-            "Drag the active layer · Shift constrains axis · Arrows nudge · Escape cancels"
+        response.on_hover_text(if self.tool == Tool::Move {
+            "Move selected pixels, or the active layer when there is no selection · Shift constrains axis · Arrows nudge · Escape cancels"
         } else if matches!(self.tool, Tool::Select | Tool::Lasso) {
             "Drag selected pixels or handles · Shift adds · Alt subtracts · Shift+Alt intersects · Choose Replace for transforms · Escape cancels"
         } else if self.tool==Tool::Wand {
@@ -537,7 +542,7 @@ impl PaletteApp {
         down: bool,
         released: bool,
     ) {
-        if self.tool != Tool::MoveLayer {
+        if self.tool != Tool::Move {
             return;
         }
         ctx.set_cursor_icon(if self.current().document.active().locked {
@@ -573,6 +578,9 @@ impl PaletteApp {
             if released || !down {
                 self.current_mut().end_gesture();
             }
+        }
+        if self.current().document.selection.is_some() {
+            return;
         }
         let layer = self.current().document.active();
         let zoom = self.current().zoom;

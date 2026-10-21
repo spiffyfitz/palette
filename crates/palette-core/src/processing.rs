@@ -53,7 +53,10 @@ use crate::document::{
 };
 pub use extended::{high_pass_cancel, mosaic_cancel, motion_blur_cancel};
 pub use gaussian::{gaussian_blur, gaussian_blur_cancel};
-pub use layer::{PreparedLayer, has_neighborhood, prepare_layer, prepare_layer_cancel};
+pub use layer::{
+    Appearance, PreparedLayer, has_neighborhood, input_byte_len, prepare_layer,
+    prepare_layer_cancel, same_appearance,
+};
 pub use neighborhood::{box_blur_cancel, median_cancel};
 pub use palette_neural::face::{ID as SKIN_ID, LICENSE as SKIN_LICENSE, NOTICE as SKIN_NOTICE};
 pub use palette_neural::{

@@ -1,4 +1,7 @@
 use super::*;
+mod gpu;
+mod layer_movement;
+mod move_tool;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 
 fn test_app(ctx: &Context) -> PaletteApp {
@@ -243,12 +246,13 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     let send = |epoch, generation| {
         let pixels = composite::render(&snapshot);
         tx.send(RenderResult {
+            gpu: None,
             thumbnails: vec![],
             selection: None,
             id: app.sessions[0].id,
             epoch,
             generation,
-            image: texture_image(&pixels, 16384),
+            image: FrameImage::Full(texture_image(&pixels, 16384)),
             pixels,
         })
         .unwrap();
@@ -266,12 +270,13 @@ fn paint_accepts_progress_then_patches_missing_samples_but_rejects_old_epochs() 
     // Even a result stamped with a newer generation cannot cross an edit epoch.
     let pixels = composite::render(&snapshot);
     tx.send(RenderResult {
+        gpu: None,
         thumbnails: vec![],
         selection: None,
         id: app.current().id,
         epoch,
         generation: app.current().generation,
-        image: texture_image(&pixels, 16384),
+        image: FrameImage::Full(texture_image(&pixels, 16384)),
         pixels,
     })
     .unwrap();
@@ -742,7 +747,7 @@ fn whole_layer_drag_is_live_cancelable_and_one_undo_with_nudges_and_lock() {
         .source
         .set(200, 200, [255, 0, 0, 255]);
     let source = app.current().document.active().source.clone();
-    app.choose_tool(Tool::MoveLayer);
+    app.choose_tool(Tool::Move);
     frame(&mut app, &ctx, vec![]);
     let a = image_position(&app, [200., 200.]);
     let b = a + vec2(30., 15.);
@@ -864,7 +869,7 @@ fn new_shape_preview_cancels_and_commits_on_its_own_layer_at_fractional_zoom() {
 fn close_during_a_layer_move_records_it_before_the_unsaved_prompt() {
     let ctx = Context::default();
     let mut app = test_app(&ctx);
-    app.choose_tool(Tool::MoveLayer);
+    app.choose_tool(Tool::Move);
     frame(&mut app, &ctx, vec![]);
     let a = image_position(&app, [300., 300.]);
     let b = a + vec2(30., 15.);
@@ -1321,11 +1326,12 @@ fn resize_handles_map_fractional_zoom_and_high_dpi_then_cancel_stale_previews() 
         let actual_receiver = std::mem::replace(&mut app.render_rx, rx);
         let pixels = composite::render(&stale_document);
         tx.send(RenderResult {
+            gpu: None,
             thumbnails: vec![],
             id: app.current().id,
             generation: app.current().generation + 100,
             epoch: stale_epoch,
-            image: texture_image(&pixels, 16384),
+            image: FrameImage::Full(texture_image(&pixels, 16384)),
             pixels,
             selection: Some((stale_operation, Ok(stale_document))),
         })

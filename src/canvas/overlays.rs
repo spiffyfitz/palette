@@ -151,6 +151,17 @@ pub(super) fn viewport_ants(
     zoom: f32,
     phase: f32,
 ) -> bool {
+    viewport_ants_offset(painter, mask, canvas, zoom, phase, [0; 2])
+}
+/// Translate the original coverage lookup instead of rebuilding a moved mask.
+pub(super) fn viewport_ants_offset(
+    painter: &egui::Painter,
+    mask: &palette_core::raster::Coverage,
+    canvas: Rect,
+    zoom: f32,
+    phase: f32,
+    offset: [i32; 2],
+) -> bool {
     let visible = canvas.intersect(painter.clip_rect());
     if !visible.is_positive() {
         return false;
@@ -179,7 +190,13 @@ pub(super) fn viewport_ants(
                 let y = ((p.y - canvas.top()) / zoom)
                     .floor()
                     .clamp(0., mask.height as f32 - 1.) as u32;
-                mask.at(x, y) >= 0.5
+                let x = i64::from(x) - i64::from(offset[0]);
+                let y = i64::from(y) - i64::from(offset[1]);
+                x >= 0
+                    && y >= 0
+                    && x < i64::from(mask.width)
+                    && y < i64::from(mask.height)
+                    && mask.at(x as u32, y as u32) >= 0.5
             };
             if selected && first.is_none() {
                 first = Some(index);

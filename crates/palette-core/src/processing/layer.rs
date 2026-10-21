@@ -77,11 +77,112 @@ impl Style {
 /// Immutable evaluated appearance, including spatial style extents.
 pub struct PreparedLayer {
     reference: std::sync::OnceLock<Option<crate::document::ColorReference>>,
+    visible: std::sync::OnceLock<Option<[i64; 4]>>,
     pub(super) original: Layer,
     pixels: Option<Raster>,
     styles: Vec<Style>,
 }
+/// Device-independent RGBA planes for a cached renderer. The first plane is the
+/// isolated appearance. Complex exterior blending also retains inner-styled
+/// content (second plane) and ordered exterior RGBA planes after it.
+pub struct Appearance {
+    /// Source-space upper-left pixel, including exterior styles.
+    pub origin: [i32; 2],
+    /// Tightly packed plane width.
+    pub width: u32,
+    /// Tightly packed plane height.
+    pub height: u32,
+    /// Straight-alpha sRGB RGBA8; all planes have identical dimensions.
+    pub images: Vec<Vec<u8>>,
+    /// Blend modes for exterior planes, starting at image index two.
+    pub modes: Vec<BlendMode>,
+}
+impl Appearance {
+    /// Retained packed pixel bytes, excluding small descriptors.
+    pub fn byte_len(&self) -> usize {
+        self.images.iter().map(Vec::len).sum()
+    }
+}
 impl PreparedLayer {
+    /// Resolved source inputs, without retaining derived CPU style/blur outputs.
+    pub fn cache_key(&self) -> &Layer {
+        &self.original
+    }
+    /// Compare already-resolved source appearances across independent caches.
+    pub fn same_as(&self, other: &Self) -> bool {
+        self.matches(&other.original)
+    }
+
+    /// Evaluate upload planes once; translation and layer blending do not belong
+    /// in this cache. Limits are checked before allocating any packed buffers.
+    pub fn appearance(
+        &self,
+        max_side: u32,
+        max_bytes: usize,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Appearance, String> {
+        let b = self.visible_bounds(cancel)?.unwrap_or([0, 0, 1, 1]);
+        let (width, height) = ((b[2] - b[0]) as u32, (b[3] - b[1]) as u32);
+        let complex = self
+            .styles
+            .iter()
+            .any(|s| !s.inner && s.blend != BlendMode::Normal);
+        let exterior: Vec<_> = self.styles.iter().filter(|s| !s.inner).collect();
+        let count = if complex { 2 + exterior.len() } else { 1 };
+        let bytes = u64::from(width) * u64::from(height) * 4;
+        if width > max_side
+            || height > max_side
+            || bytes.saturating_mul(count as u64) > max_bytes as u64
+        {
+            return Err("Layer appearance exceeds GPU texture/cache limits".into());
+        }
+        let mut images: Vec<_> = (0..count)
+            .map(|_| Vec::with_capacity(bytes as usize))
+            .collect();
+        for y in b[1]..b[3] {
+            if cancel() {
+                return Err("Processing cancelled".into());
+            }
+            for x in b[0]..b[2] {
+                images[0].extend_from_slice(&self.pixel(x, y));
+                if complex {
+                    let mut front = self.content(x, y);
+                    for s in self.styles.iter().filter(|s| s.inner) {
+                        let (color, a) = s.sample(x, y);
+                        front = s.tint(front, color, a);
+                    }
+                    images[1].extend_from_slice(&front);
+                    for (i, s) in exterior.iter().enumerate() {
+                        let (color, a) = s.sample(x, y);
+                        let a = a
+                            * s.opacity
+                            * if s.outer {
+                                1. - f32::from(front[3]) / 255.
+                            } else {
+                                1.
+                            };
+                        images[2 + i].extend_from_slice(&[
+                            color[0],
+                            color[1],
+                            color[2],
+                            a.round() as u8,
+                        ]);
+                    }
+                }
+            }
+        }
+        Ok(Appearance {
+            origin: [b[0] as i32, b[1] as i32],
+            width,
+            height,
+            images,
+            modes: if complex {
+                exterior.iter().map(|s| s.blend).collect()
+            } else {
+                vec![]
+            },
+        })
+    }
     /// Streaming statistics include evaluated masks/styles inside source bounds.
     pub(crate) fn reference_profile(
         &self,
@@ -220,27 +321,7 @@ impl PreparedLayer {
     /// Conservative cache estimate, including retained source and coverage planes.
     /// Shared masks/tiles are deliberately counted repeatedly.
     pub fn byte_len(&self) -> usize {
-        self.original
-            .filters
-            .iter()
-            .map(|f| f.filter.asset_bytes())
-            .sum::<usize>()
-            + self
-                .original
-                .effects
-                .iter()
-                .filter_map(|e| e.effect.options().and_then(|o| o.pattern.as_ref()))
-                .map(|p| p.pixels.byte_len())
-                .sum::<usize>()
-            + self.original.source.byte_len()
-            + self.original.mask.as_ref().map_or(0, |m| m.values.len())
-            + self
-                .original
-                .filters
-                .iter()
-                .filter_map(|f| f.mask.as_ref())
-                .map(|m| m.values.len())
-                .sum::<usize>()
+        input_byte_len(&self.original)
             + self.pixels.as_ref().map_or(0, Raster::byte_len)
             + self
                 .styles
@@ -248,10 +329,89 @@ impl PreparedLayer {
                 .map(|e| e.pixels.byte_len())
                 .sum::<usize>()
     }
-    /// Structural/source equality invalidates the cache after any layer edit.
+    /// Appearance equality excludes placement and presentation-only properties.
+    /// World-anchored materials have their resolved phase in the effect options.
     pub fn matches(&self, layer: &Layer) -> bool {
-        self.original == *layer
+        same_appearance(&self.original, layer)
     }
+    /// Conservative nontransparent source-space bounds, including outer styles.
+    /// Scan coverage once per prepared appearance, rather than treating a small
+    /// drawing on a canvas-sized transparent raster as a full-canvas dirty area.
+    pub fn visible_bounds(&self, cancel: &dyn Fn() -> bool) -> Result<Option<[i64; 4]>, String> {
+        if cancel() {
+            return Err("Processing cancelled".into());
+        }
+        if let Some(bounds) = self.visible.get() {
+            return Ok(*bounds);
+        }
+        let mut bounds: Option<[i64; 4]> = None;
+        let mut include = |b: [i64; 4]| {
+            bounds = Some(bounds.map_or(b, |a| {
+                [
+                    a[0].min(b[0]),
+                    a[1].min(b[1]),
+                    a[2].max(b[2]),
+                    a[3].max(b[3]),
+                ]
+            }));
+        };
+        for y in 0..self.original.source.height() {
+            if cancel() {
+                return Err("Processing cancelled".into());
+            }
+            for x in 0..self.original.source.width() {
+                if self.content(x.into(), y.into())[3] != 0 {
+                    include([x.into(), y.into(), i64::from(x) + 1, i64::from(y) + 1]);
+                }
+            }
+        }
+        for s in self.styles.iter().filter(|s| !s.inner && s.opacity > 0.) {
+            for y in 0..s.pixels.height() {
+                if cancel() {
+                    return Err("Processing cancelled".into());
+                }
+                for x in 0..s.pixels.width() {
+                    let a = s.pixels.get(x, y)[3];
+                    if (if s.inverse { 255 - a } else { a }) != 0 {
+                        include([
+                            (s.origin[0] + x as f32).floor() as i64,
+                            (s.origin[1] + y as f32).floor() as i64,
+                            (s.origin[0] + x as f32 + 1.).ceil() as i64,
+                            (s.origin[1] + y as f32 + 1.).ceil() as i64,
+                        ]);
+                    }
+                }
+            }
+        }
+        let _ = self.visible.set(bounds);
+        Ok(bounds)
+    }
+}
+/// Compare source-space appearance without position, opacity or UI metadata.
+/// Callers resolving document-dependent styles must compare resolved options.
+pub fn same_appearance(a: &Layer, b: &Layer) -> bool {
+    a.id == b.id
+        && a.source == b.source
+        && a.mask == b.mask
+        && a.filters == b.filters
+        && a.effects == b.effects
+}
+/// Conservative retained source-input bytes; shared buffers count repeatedly.
+/// Derived images are excluded so independent caches can budget their keys.
+pub fn input_byte_len(layer: &Layer) -> usize {
+    layer.source.byte_len()
+        + layer.mask.as_ref().map_or(0, |m| m.values.len())
+        + layer
+            .filters
+            .iter()
+            .map(|f| f.filter.asset_bytes() + f.mask.as_ref().map_or(0, |m| m.values.len()))
+            .sum::<usize>()
+        + layer
+            .effects
+            .iter()
+            .filter_map(|e| e.effect.options().and_then(|o| o.pattern.as_ref()))
+            .map(|p| p.pixels.byte_len())
+            .sum::<usize>()
 }
 /// Whether evaluating this layer requires neighborhood/padded image stages.
 pub fn has_neighborhood(layer: &Layer) -> bool {
@@ -428,6 +588,7 @@ pub fn prepare_layer_cancel(
     if !has_neighborhood(layer) {
         return Ok(PreparedLayer {
             reference: std::sync::OnceLock::new(),
+            visible: std::sync::OnceLock::new(),
             original: layer.clone(),
             pixels: None,
             styles: vec![],
@@ -857,6 +1018,7 @@ pub fn prepare_layer_cancel(
     }
     Ok(PreparedLayer {
         reference: std::sync::OnceLock::new(),
+        visible: std::sync::OnceLock::new(),
         original: layer.clone(),
         pixels: Some(pixels),
         styles,

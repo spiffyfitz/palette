@@ -8,6 +8,7 @@ mod files;
 mod layers;
 mod panels;
 pub(crate) mod processing;
+mod rendering;
 mod selection_brush;
 mod selection_toolbar;
 mod text;
@@ -38,6 +39,7 @@ use std::{
 };
 
 const PANEL: Color32 = Color32::from_rgb(39, 39, 47);
+use rendering::FrameImage;
 pub const WORKSPACE: Color32 = Color32::from_rgb(30, 30, 39);
 pub const ACCENT: Color32 = Color32::from_rgb(53, 215, 225);
 
@@ -70,13 +72,16 @@ pub struct RenderRequest {
     document: Document,
     max_texture_side: usize,
     selection: Option<palette_core::transform::SelectionTransform>,
+    moving_layer: Option<u64>,
+    gpu: Option<crate::gpu::scene::Limits>,
 }
 struct RenderResult {
     id: u64,
     generation: u64,
     epoch: u64,
     pixels: Raster,
-    image: ColorImage,
+    image: FrameImage,
+    gpu: Option<Result<crate::gpu::scene::Scene, String>>,
     thumbnails: Vec<(u64, ColorImage)>,
     selection: Option<(
         palette_core::transform::SelectionTransform,
@@ -148,17 +153,22 @@ pub struct PaletteApp {
     render_rx: mpsc::Receiver<RenderResult>,
     render_ticket: Arc<AtomicU64>,
     render_target: Option<(u64, u64, u64)>,
+    pub(crate) gpu: Option<crate::gpu::Canvas>,
+    gpu_pending: Option<(u64, u64, u64)>,
+    render_submissions: u64,
     file_tx: mpsc::Sender<FileResult>,
     file_rx: mpsc::Receiver<FileResult>,
-    thumbnails: HashMap<(u64, u64), (u64, TextureHandle)>,
+    thumbnails: HashMap<(u64, u64), (palette_core::document::Layer, TextureHandle)>,
     pub canvas_rect: egui::Rect,
     pub selection_toolbar_rect: egui::Rect,
+    pub(crate) move_tool_rect: egui::Rect,
     pub canvas_scrollbars: [Option<egui::Rect>; 2],
     pub image_rect: egui::Rect,
     pub resize_start: Option<([u32; 2], egui::Pos2)>,
     pub resize_preview: Option<[u32; 2]>,
     screenshot: Option<PathBuf>,
     screenshot_requested: bool,
+    gpu_report: Option<PathBuf>,
     capture: capture::CaptureState,
     clipboard: Option<arboard::Clipboard>,
     edit_tx: mpsc::Sender<editing::EditResult>,
@@ -195,6 +205,15 @@ impl PaletteApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let ctx = &cc.egui_ctx;
         let mut app = Self::with_context(ctx);
+        if let Some(state) = &cc.wgpu_render_state {
+            match crate::gpu::Canvas::new(state.clone()) {
+                Ok(gpu) => app.gpu = Some(gpu),
+                Err(error) => {
+                    app.message =
+                        format!("GPU compositor unavailable; CPU renderer active: {error}")
+                }
+            }
+        }
         let mut args = std::env::args_os().skip(1);
         while let Some(arg) = args.next() {
             if arg == "--screenshot" {
@@ -202,6 +221,8 @@ impl PaletteApp {
                 ctx.set_pixels_per_point(1.0);
             } else if cfg!(debug_assertions) && arg == "--screenshot-scene" {
                 app.capture.scene = args.next().map(|arg| arg.to_string_lossy().into_owned());
+            } else if cfg!(debug_assertions) && arg == "--gpu-report" {
+                app.gpu_report = args.next().map(PathBuf::from);
             } else {
                 let path = PathBuf::from(arg);
                 if path.is_file() {
@@ -244,50 +265,7 @@ impl PaletteApp {
         let repaint = ctx.clone();
         let render_ticket = Arc::new(AtomicU64::new(0));
         let worker_ticket = render_ticket.clone();
-        std::thread::spawn(move || {
-            let mut renderer = composite::Renderer::default();
-            while let Ok(request) = requests.recv() {
-                let cancelled = || worker_ticket.load(Ordering::Relaxed) != request.ticket;
-                if cancelled() {
-                    continue;
-                }
-                let mut document = request.document;
-                let selection = request.selection.map(|operation| {
-                    let result = operation
-                        .apply(&mut document)
-                        .and_then(|_| document.validate())
-                        .map(|_| document.clone());
-                    (operation, result)
-                });
-                let frame = renderer.render_frame_cancel(&document, &cancelled);
-                if cancelled() {
-                    continue;
-                }
-                let frame = frame.expect("validated render request");
-                let pixels = frame.pixels;
-                let thumbnails = frame
-                    .thumbnails
-                    .into_iter()
-                    .map(|(id, pixels)| (id, texture_image(&pixels, 48)))
-                    .collect();
-                let image = texture_image(&pixels, request.max_texture_side);
-                if results
-                    .send(RenderResult {
-                        id: request.id,
-                        generation: request.generation,
-                        epoch: request.epoch,
-                        pixels,
-                        image,
-                        thumbnails,
-                        selection,
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-                repaint.request_repaint();
-            }
-        });
+        std::thread::spawn(move || rendering::worker(requests, results, worker_ticket, repaint));
         let (file_tx, file_rx) = mpsc::channel();
         let (edit_tx, edit_rx) = mpsc::channel();
         let (text_tx, text_rx) = text::worker();
@@ -331,17 +309,22 @@ impl PaletteApp {
             render_rx,
             render_ticket,
             render_target: None,
+            gpu: None,
+            gpu_pending: None,
+            render_submissions: 0,
             file_tx,
             file_rx,
             thumbnails: HashMap::new(),
             canvas_rect: egui::Rect::NOTHING,
             selection_toolbar_rect: egui::Rect::NOTHING,
+            move_tool_rect: egui::Rect::NOTHING,
             canvas_scrollbars: [None, None],
             image_rect: egui::Rect::NOTHING,
             resize_start: None,
             resize_preview: None,
             screenshot: None,
             screenshot_requested: false,
+            gpu_report: None,
             capture: Default::default(),
             clipboard: None,
             text_editor: None,
@@ -562,6 +545,47 @@ impl PaletteApp {
 
     fn poll_workers(&mut self, ctx: &Context) {
         while let Ok(result) = self.render_rx.try_recv() {
+            if matches!(result.image, FrameImage::GpuOnly)
+                && self.gpu_pending == Some((result.id, result.epoch, result.generation))
+            {
+                self.gpu_pending = None;
+            }
+            if matches!(result.image, FrameImage::GpuOnly) {
+                // The presentation graph belongs to the active tab. Late scene
+                // messages may retain reusable CPU staging, but cannot replace it.
+                if result.id != self.current().id {
+                    continue;
+                }
+                if let Some(session) = self
+                    .sessions
+                    .iter()
+                    .find(|s| s.id == result.id && s.render_epoch == result.epoch)
+                    && let (Some(gpu), Some(scene)) = (&mut self.gpu, result.gpu)
+                {
+                    match scene {
+                        Ok(scene) => {
+                            let doc = session
+                                .selection_transform
+                                .as_ref()
+                                .filter(|g| {
+                                    matches!(
+                                        g.desired,
+                                        palette_core::transform::SelectionTransform::Move(_)
+                                    )
+                                })
+                                .map_or(&session.document, |g| &g.base);
+                            if crate::gpu::scene::compatible(&scene.document, doc) {
+                                gpu.accept(result.id, Ok(scene), doc);
+                            }
+                        }
+                        Err(e) if result.generation == session.generation => {
+                            gpu.accept(result.id, Err(e), &session.document)
+                        }
+                        _ => {}
+                    }
+                }
+                continue;
+            }
             if let Some(session) = self.sessions.iter_mut().find(|s| {
                 s.id == result.id
                     && s.render_epoch == result.epoch
@@ -605,24 +629,18 @@ impl PaletteApp {
                         }
                     }
                 }
-                let color = result.image;
-                if let Some(texture) = &mut session.texture {
-                    texture.set(color, TextureOptions::NEAREST);
-                } else {
-                    session.texture = Some(ctx.load_texture(
-                        format!("canvas-{}", session.id),
-                        color,
-                        TextureOptions::NEAREST,
-                    ));
-                }
+                rendering::present(session, ctx, result.image, &result.pixels);
                 session.rendered = Some(result.pixels);
                 session.rendered_generation = Some(generation);
                 session.rendered_epoch = Some(epoch);
                 for (id, image) in result.thumbnails {
+                    let Some(layer) = session.document.layers.iter().find(|l| l.id == id) else {
+                        continue;
+                    };
                     self.thumbnails.insert(
                         (result.id, id),
                         (
-                            generation,
+                            layer.clone(),
                             ctx.load_texture(
                                 format!("thumb-{}-{id}", result.id),
                                 image,
@@ -746,11 +764,28 @@ impl PaletteApp {
     }
 
     fn request_render(&mut self, ctx: &Context) {
+        // Move already-prepared layers directly on the GPU. No CPU frame job or
+        // pixel upload is issued during an eligible drag. On release, refresh the
+        // CPU snapshot once for sampling, recovery and existing editing consumers.
         let s = self.current();
         let target = (s.id, s.generation, s.render_epoch);
         if self.render_target != Some(target) {
+            // Complete progressive drag frames instead of repeatedly cancelling
+            // the first expensive frame. General edit/tab/cancel epochs fence off
+            // old results; generations still prevent displaying frames backwards.
+            let progressive = s.layer_drag.is_some()
+                || s.selection_transform.as_ref().is_some_and(|g| !g.released);
+            let cancel = !progressive
+                || self
+                    .render_target
+                    .is_none_or(|old| old.0 != target.0 || old.2 != target.2);
             self.render_target = Some(target);
-            self.render_ticket.fetch_add(1, Ordering::Relaxed);
+            if cancel {
+                self.render_ticket.fetch_add(1, Ordering::Relaxed);
+                // A cancelled cold preparation must be eligible on return even
+                // when its earlier CPU frame has already reached the display.
+                self.gpu_pending = None;
+            }
             // A tab's cancelled request must be eligible again when revisited.
             // Complete cached frames remain usable across tab switches.
             for session in &mut self.sessions {
@@ -761,8 +796,47 @@ impl PaletteApp {
                 }
             }
         }
+        // Route cancellation before the fast path, including cached tab switches.
+        if let Some(delta) = self.gpu_selection_move() {
+            let s = &self.sessions[self.active];
+            let g = s.selection_transform.as_ref().unwrap();
+            self.gpu
+                .as_mut()
+                .unwrap()
+                .compose_selection(s.id, s.generation, &g.base, delta);
+            if !g.released {
+                return;
+            }
+        }
+        let s = self.current();
+        let gpu_ready = self
+            .gpu
+            .as_ref()
+            .is_some_and(|g| g.texture(s.id, &s.document).is_some());
+        if gpu_ready && self.gpu_selection_move().is_none() {
+            let s = &self.sessions[self.active];
+            self.gpu
+                .as_mut()
+                .unwrap()
+                .compose(s.id, s.generation, &s.document);
+            if s.layer_drag.is_some() {
+                return;
+            }
+        }
         let session = self.current();
-        if session.requested == Some(session.generation) {
+        let gpu_needed = self.gpu.as_ref().is_some_and(|g| {
+            g.needs_scene(
+                session.id,
+                session
+                    .selection_transform
+                    .as_ref()
+                    .map_or(&session.document, |gesture| &gesture.base),
+            )
+        });
+        let stamp = (session.id, session.render_epoch, session.generation);
+        if session.requested == Some(session.generation)
+            && (!gpu_needed || self.gpu_pending == Some(stamp))
+        {
             return;
         }
         let request = RenderRequest {
@@ -775,14 +849,100 @@ impl PaletteApp {
                 .as_ref()
                 .map_or_else(|| session.document.clone(), |g| g.base.clone()),
             selection: session.selection_transform.as_ref().map(|g| g.desired),
+            moving_layer: session
+                .layer_drag
+                .as_ref()
+                .map(|_| session.document.active_layer),
             max_texture_side: ctx.input(|i| i.max_texture_side),
+            gpu: gpu_needed.then(|| self.gpu.as_ref().unwrap().limits()),
         };
         if self.render_tx.try_send(request).is_ok() {
+            self.render_submissions += 1;
+            if gpu_needed {
+                self.gpu_pending = Some(stamp);
+            }
             let session = self.current_mut();
             session.requested = Some(session.generation);
         } else {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+    }
+
+    pub(crate) fn gpu_texture(&self) -> Option<egui::TextureId> {
+        let s = self.current();
+        if self.gpu_selection_move().is_some() {
+            return self
+                .gpu
+                .as_ref()
+                .and_then(|g| g.texture(s.id, &s.selection_transform.as_ref().unwrap().base));
+        }
+        self.gpu.as_ref().and_then(|g| g.texture(s.id, &s.document))
+    }
+    /// Eligibility is appearance-dependent; filtered selections retain the CPU
+    /// transaction rather than substituting a visually different flattened proxy.
+    pub(crate) fn gpu_selection_move(&self) -> Option<[i32; 2]> {
+        let s = self.current();
+        let gesture = s.selection_transform.as_ref()?;
+        let palette_core::transform::SelectionTransform::Move(delta) = gesture.desired else {
+            return None;
+        };
+        self.gpu
+            .as_ref()?
+            .can_move_selection(s.id, &gesture.base)
+            .then_some(delta)
+    }
+    pub(crate) fn display_is_current(&self) -> bool {
+        let s = self.current();
+        s.rendered_generation == Some(s.generation)
+            || self
+                .gpu
+                .as_ref()
+                .is_some_and(|g| g.current(s.id, s.generation) && self.gpu_texture().is_some())
+    }
+    pub(crate) fn sample_color(&self, x: u32, y: u32) -> [u8; 4] {
+        let s = self.current();
+        if let Some(delta) = self.gpu_selection_move() {
+            // Picking is an explicit edit action, never part of pointer-move
+            // presentation. Avoid sampling the untouched pre-drag CPU snapshot.
+            let mut preview = s.selection_transform.as_ref().unwrap().base.clone();
+            if palette_core::transform::SelectionTransform::Move(delta)
+                .apply(&mut preview)
+                .is_ok()
+            {
+                return composite::render_region(
+                    &preview,
+                    palette_core::editing::PixelRect {
+                        x,
+                        y,
+                        width: 1,
+                        height: 1,
+                    },
+                )
+                .map_or([0; 4], |r| r.get(0, 0));
+            }
+        }
+        if let Some(p) = self
+            .gpu
+            .as_ref()
+            .and_then(|g| g.sample(s.id, &s.document, x, y))
+        {
+            return p;
+        }
+        if s.rendered_generation == Some(s.generation)
+            && let Some(r) = &s.rendered
+        {
+            return r.get(x, y);
+        }
+        composite::render_region(
+            &s.document,
+            palette_core::editing::PixelRect {
+                x,
+                y,
+                width: 1,
+                height: 1,
+            },
+        )
+        .map_or([0; 4], |r| r.get(0, 0))
     }
 
     /// Painting updates only changed canvas pixels and the matching GPU subimage.
@@ -956,6 +1116,9 @@ impl PaletteApp {
 }
 
 impl eframe::App for PaletteApp {
+    fn raw_input_hook(&mut self, ctx: &Context, input: &mut egui::RawInput) {
+        self.capture_gpu_input(ctx, input);
+    }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);
     }
@@ -1086,6 +1249,7 @@ impl PaletteApp {
             && let Some(path) = self.screenshot.clone()
         {
             self.screenshot_requested = true;
+            self.write_gpu_report();
             self.allow_quit = true;
             let repaint = ctx.clone();
             ctx.request_screenshot(move |image| {

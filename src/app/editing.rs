@@ -170,12 +170,16 @@ impl PaletteApp {
             if !self.current_mut().cancel_selection_transform()
                 && !self.current_mut().cancel_layer_move()
                 && !cancelled_shape
-                && self.tool != Tool::MoveLayer
+                && self.tool != Tool::Move
             {
                 self.deselect();
             }
         }
-        if !command && arrows != [0, 0] && self.tool == Tool::MoveLayer {
+        if !command
+            && arrows != [0, 0]
+            && self.tool == Tool::Move
+            && self.current().document.selection.is_none()
+        {
             self.current_mut().end_gesture();
             let delta = arrows.map(|v| v * if shift { 10 } else { 1 });
             let mut document = self.current().document.clone();

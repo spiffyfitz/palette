@@ -513,7 +513,7 @@ pub enum Tool {
     Lasso,
     Polygon,
     Curve,
-    MoveLayer,
+    Move,
     Shape(palette_core::shapes::Kind),
     Fill,
     Pencil,
@@ -530,7 +530,7 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
-            Self::MoveLayer => "Move layer",
+            Self::Move => "Move",
             Self::Shape(kind) => kind.label(),
             Self::Polygon => "Polygon",
             Self::Curve => "Curve",
@@ -590,6 +590,10 @@ pub struct SelectionGesture {
     pub desired: palette_core::transform::SelectionTransform,
     pub applied: Option<palette_core::transform::SelectionTransform>,
     pub released: bool,
+    /// Reuse original contour topology while translating, without scanning a
+    /// coverage mask or rebuilding it for every pointer position.
+    pub contours: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
+    pub feather: std::sync::Arc<Vec<Vec<[f32; 2]>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -608,6 +612,9 @@ impl Session {
             return;
         };
         self.end_gesture();
+        self.cache_selection();
+        let contours = self.selection_cache.as_ref().unwrap().contours.clone();
+        let feather = self.selection_cache.as_ref().unwrap().feather.clone();
         self.invalidate();
         self.selection_transform = Some(SelectionGesture {
             base: self.document.clone(),
@@ -617,6 +624,8 @@ impl Session {
             desired: palette_core::transform::SelectionTransform::Move([0, 0]),
             applied: None,
             released: false,
+            contours,
+            feather,
         });
     }
 

@@ -6,7 +6,7 @@ Phase 0 found an empty Git repository, two screenshot attachments and no `Untitl
 
 Current stable releases were checked with Cargo and primary documentation: [eframe 0.37](https://docs.rs/eframe/0.37.0/eframe/), [image 0.25.10](https://docs.rs/image/0.25.10/image/) and [rfd 0.17.2](https://docs.rs/rfd/0.17.2/rfd/). Cargo.lock pins the complete resolution. The toolchain here is Rust 1.99.1; the declared minimum is now 1.98, required by avif-decode 3, and has not been independently tested.
 
-egui permits one shared native interface across the three target operating systems. Original vector geometry keeps icon shapes consistent at different DPI settings. Native title bars retain OS window management; title-bar appearance is intentionally OS-owned. wgpu renders the UI and composite texture. Image compositing remains on the CPU initially so the correctness oracle exists before shader optimization.
+egui permits one shared native interface across the three target operating systems. Original vector geometry keeps icon shapes consistent at different DPI settings. Native title bars retain OS window management; title-bar appearance is intentionally OS-owned. wgpu renders the UI and now composites cached layer appearances for document presentation. The independent CPU compositor remains the correctness oracle, export path and fallback; filter/effect preparation still runs on the CPU.
 
 ## Model and ownership
 
@@ -477,3 +477,19 @@ Document backing RGBA and visibility are independent of editable raster layers. 
 ## Extended styles and native v8
 
 `Effect::Configured` decorates legacy typed effects without reinterpreting them. Common options and bounded material/curve vectors use the registry and existing transactional toolbar. Imported patterns share the binary tile asset store and history allocation accounting. Shared document lighting and resolved material phase participate in prepared-layer cache identity. Exterior style blending receives the real backdrop and resolves effective group RGBA before layer opacity/mode. See [settings validation](docs/LAYER_STYLE_SETTINGS_VALIDATION.md).
+
+## Layer movement frames
+
+Prepared appearance excludes placement and UI metadata; document-anchored material phase remains part of the key. Cached alpha support bounds feed a worker-owned, bounded `MovementCache`, which recomposes old/new visible regions with the reference CPU blend pipeline and retains complete COW pixels. `app/rendering.rs` uploads region images only against their exact base generation/epoch, with complete-frame fallback. Move generations progress without cancelling every pointer sample; edit/tab/end/cancel epochs still fence jobs. Reference-dependent changes and cache limits use full frames. See [movement measurements and validation](docs/LAYER_MOVEMENT_PERFORMANCE.md).
+
+## GPU document presentation
+
+`src/gpu` uses eframe's existing wgpu device. A cancellable worker packages core `Appearance` planes after publishing the CPU fallback. Persistent texture arrays hold evaluated layer appearances; a compute pass per visible layer blends into alternating straight-alpha RGBA8 targets, followed by a premultiplied display conversion for egui. Non-Normal exterior effects retain separate planes and blend against the actual backdrop before group opacity. All 19 layer blend modes match the CPU reference within the documented channel tolerance.
+
+Ordinary linked-layer moves update placement uniforms, without filter evaluation, image uploads or CPU render requests while the pointer is held. Edit/tab/epoch cancellation runs before this fast path; stale scene-only results cannot replace a different active tab. Appearance input keys include referenced layers and resolved document-anchored material phases. Budgets bound GPU resources, retained source keys and CPU staging independently. CPU region rendering handles unsupported or position-dependent cases. The core model, history, export and native v8 format remain device-independent. [Detailed contract and evidence](docs/GPU_COMPOSITOR_VALIDATION.md).
+
+## Unified Move and floating selection presentation
+
+`Tool::Move` lives in Tools. A present selection routes to the existing `SelectionGesture` transaction; otherwise it starts `LayerDrag`. A selection can be picked up anywhere inside the canvas. Source snapshots remain immutable, original contour Arcs translate with the requested delta and viewport-edge coverage samples the original mask with inverse translation. Both ordinary selection tools' interior drags and Move share the GPU path.
+
+Eligible raster selections add one immutable R8 coverage texture to the scene. The existing blend shader reconstructs cut/paste source pixels using the CPU reference's old/new coverage partition, including feather overlap and quantized alpha. Only displacement uniforms change during the drag. Scene staging can warm from the gesture's base even after a CPU preview has arrived. Release/escape/history continue through the device-independent transform transaction. Live masks/filters/effects and reference-dependent appearances retain CPU evaluation rather than changing source semantics. [Selection contract and tests](docs/UNIFIED_MOVE_VALIDATION.md).

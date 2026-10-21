@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app;
 mod canvas;
+mod gpu;
 mod icons;
 mod interface;
 mod persistence;

@@ -5,7 +5,8 @@ Direct versions were resolved using Cargo; the lockfile is authoritative. `depen
 | Dependency | Purpose | Declared license |
 |---|---|---|
 | eframe/egui 0.37 | Native interface, winit integration, accessibility | MIT OR Apache-2.0 |
-| wgpu 30 (through eframe) | Native graphics presentation | MIT OR Apache-2.0 |
+| wgpu 30 (through eframe) | Native graphics presentation and cached-layer compute compositor | MIT OR Apache-2.0 |
+| pollster 1.0.1 | Resolve GPU pipeline validation during initialization | MIT OR Apache-2.0 |
 | image 0.25.10 | PNG/JPEG/BMP/GIF/TIFF/WebP codecs | MIT OR Apache-2.0 |
 | rfd 0.17.2 | Native open/save dialogs | MIT |
 | arboard 3.7.0 | System image clipboard, with Wayland data-control support | MIT OR Apache-2.0 |

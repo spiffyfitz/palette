@@ -1,6 +1,7 @@
 //! Reproducible native UI capture scenes. Scene selection is a debug-build
 //! command-line diagnostic and is never part of the editor's visible workflow.
 use super::*;
+mod gpu_probe;
 mod layer_scenes;
 
 /// Original procedural comparison scene; no third-party or user photos are fixtures.
@@ -52,6 +53,7 @@ fn landscape_capture(warm: bool) -> Raster {
 pub(super) struct CaptureState {
     pub scene: Option<String>,
     pub settled_since: Option<std::time::Instant>,
+    gpu_probe: gpu_probe::Probe,
 }
 impl PaletteApp {
     pub(crate) fn is_capturing(&self) -> bool {
@@ -1175,7 +1177,7 @@ impl PaletteApp {
                     }
                     doc.active_mut().offset = [-20, 10];
                 });
-                self.choose_tool(Tool::MoveLayer);
+                self.choose_tool(Tool::Move);
             }
             Some("selection") => {
                 self.tool = Tool::Select;
@@ -1341,8 +1343,15 @@ impl PaletteApp {
         if self.screenshot.is_none() {
             return false;
         }
+        if matches!(
+            self.capture.scene.as_deref(),
+            Some("gpu-layer-move" | "gpu-selection-move")
+        ) && self.capture.gpu_probe.step < 6
+        {
+            return false;
+        }
         if self.current().texture.is_none()
-            || self.current().rendered_generation != Some(self.current().generation)
+            || !self.display_is_current()
             || self.processing_worker.busy
             || self.processing_dialog.as_ref().is_some_and(|d| {
                 d.ready != Some(d.ticket) || d.protection.as_ref().is_some_and(|p| p.pending())

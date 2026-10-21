@@ -534,9 +534,7 @@ impl PaletteApp {
                     self.current_mut().pan = Vec2::ZERO;
                 }
                 let session = self.current();
-                if session.requested == Some(session.generation)
-                    && session.rendered_generation != Some(session.generation)
-                {
+                if session.requested == Some(session.generation) && !self.display_is_current() {
                     ui.add(egui::Spinner::new().size(12.));
                     ui.add(egui::Label::new("Rendering…").truncate());
                 } else {

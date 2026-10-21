@@ -1,8 +1,10 @@
 //! Deterministic reference CPU compositor. Working RGB is sRGB (not linear light).
 mod blend;
+mod movement;
 use crate::document::{BlendMode, Document, Effect, Layer};
 use crate::editing::PixelRect;
 use crate::raster::Raster;
+pub use movement::{MovementCache, MovementFrame};
 
 /// W3C source-over blending with straight input/output alpha. Transparent RGB
 /// never contributes; RGB is premultiplied only for the arithmetic below.
@@ -98,6 +100,28 @@ pub struct RenderFrame {
     pub thumbnails: Vec<(u64, Raster)>,
 }
 impl Renderer {
+    fn thumbnail(
+        &self,
+        prepared: &crate::processing::PreparedLayer,
+        opacity: f32,
+    ) -> Result<Raster, String> {
+        let bounds = prepared.bounds();
+        let mut thumbnail = Raster::new(48, 36, [0; 4])?;
+        for y in 0..36 {
+            for x in 0..48 {
+                let lx = bounds[0] + (i64::from(x) * (bounds[2] - bounds[0]) / 48);
+                let ly = bounds[1] + (i64::from(y) * (bounds[3] - bounds[1]) / 36);
+                let p = prepared.pixel(lx, ly);
+                let gray = if (x / 6 + y / 6) % 2 == 0 { 185 } else { 225 };
+                thumbnail.set(
+                    x,
+                    y,
+                    over([gray, gray, gray, 255], p, opacity, BlendMode::Normal),
+                );
+            }
+        }
+        Ok(thumbnail)
+    }
     /// Prepare one layer with all live reference-layer dependencies resolved.
     pub fn layer(
         &mut self,
@@ -172,9 +196,18 @@ impl Renderer {
         path.push(layer.id);
         let mut resolved = layer.clone();
         for instance in &mut resolved.effects {
+            let anchored = crate::processing::style_options::document_anchored(&instance.effect);
             if let Effect::Configured { effect, options } = &mut instance.effect {
-                options.resolved_origin = layer.offset.map(|v| v as f32);
-                options.resolved_size = [document.width as f32, document.height as f32];
+                options.resolved_origin = if anchored {
+                    layer.offset.map(|v| v as f32)
+                } else {
+                    [0.; 2]
+                };
+                options.resolved_size = if anchored {
+                    [document.width as f32, document.height as f32]
+                } else {
+                    [0.; 2]
+                };
                 if options.use_global_light {
                     match &mut **effect {
                         Effect::DropShadow { angle, .. } | Effect::InnerShadow { angle, .. } => {
@@ -307,21 +340,7 @@ impl Renderer {
                 |p| p.bounds(),
             );
             if let (Some(images), Some(prepared)) = (&mut thumbnails, &prepared) {
-                let mut thumbnail = Raster::new(48, 36, [0; 4])?;
-                for y in 0..36 {
-                    for x in 0..48 {
-                        let lx = bounds[0] + (i64::from(x) * (bounds[2] - bounds[0]) / 48);
-                        let ly = bounds[1] + (i64::from(y) * (bounds[3] - bounds[1]) / 36);
-                        let p = prepared.pixel(lx, ly);
-                        let gray = if (x / 6 + y / 6) % 2 == 0 { 185 } else { 225 };
-                        thumbnail.set(
-                            x,
-                            y,
-                            over([gray, gray, gray, 255], p, layer.opacity, BlendMode::Normal),
-                        );
-                    }
-                }
-                images.push((layer.id, thumbnail));
+                images.push((layer.id, self.thumbnail(prepared, layer.opacity)?));
             }
             for dy in (top + bounds[1]).max(i64::from(region.y))
                 ..(top + bounds[3]).min(i64::from(region.y) + i64::from(region.height))

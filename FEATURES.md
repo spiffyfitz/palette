@@ -43,6 +43,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Core grayscale selections, layer masks and filter masks; serialization/compositing tests.
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
 - [x] Rectangular selection interface with clear, inversion and selected pixel movement.
+- [x] Unified **Move** in Tools: selected pixels take priority, otherwise move the active layer; Shift axis locking, nudge, Escape and one-step undo. GPU raster-selection translation preserves feathered overlap without per-move uploads; live-processing selections retain exact CPU previews. [Scope and validation](docs/UNIFIED_MOVE_VALIDATION.md).
 - [x] Magic Wand, selection combination/feathering and basic live layer-mask property controls.
 - [ ] Polygon selection, mask painting and remaining advanced style editing interfaces.
 
@@ -122,6 +123,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 154 implemented operations (144 filters and ten styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
+- [x] Position-independent appearance caching and progressive styled-layer moves, tight dirty bounds, exact regional blending, partial GPU uploads and thumbnail reuse. [Measurements and limits](docs/LAYER_MOVEMENT_PERFORMANCE.md).
 - [x] Windows native dialog captures and representative CPU timings; exact limits in docs/PHASE5_VALIDATION.md.
 - [x] Ten live layer styles, including Bevel/Emboss (contour and procedural texture), Satin, Gradient Overlay and Pattern Overlay. See [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md) for scope.
 - [x] Ctrl/Command/Shift layer multiselection and undoable selected-layer merge, with explicit OK/Cancel before baking live processing.
@@ -141,7 +143,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Registry-generated filter inventory: 144 of 144 catalog entries implemented (136 conventional plus eight limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
-- [ ] General dirty regions, per-stage/tile caches and GPU compositor.
+- [ ] General dirty regions and per-stage/tile caches beyond the implemented movement fallback and GPU compositor.
 
 - [x] Color Balance, Photo Filter, Channel Mixer, two-stop Gradient Map, nine-range Selective Color and local Shadows/Highlights; removable live adjustment stacks.
 - [x] Fixed Blur/Blur More, alpha-safe local tone guides, saved gradient colors and idle percentage-preview regression.
@@ -235,4 +237,6 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 ## Phase 6
 
+- [x] Persistent GPU layer appearances and document composition: all 19 blend modes, masks, opacity and ten effect families, with warmed move gestures avoiding CPU jobs/image uploads. CPU fallback and real-GPU reference/native-window tests. [Evidence](docs/GPU_COMPOSITOR_VALIDATION.md).
+- [ ] Individual GPU filter/effect kernels, GPU tiling and dense 4K/8K performance validation.
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.
