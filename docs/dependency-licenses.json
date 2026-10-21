@@ -1646,7 +1646,7 @@
   {
     "name": "palette-core",
     "version": "0.1.0",
-    "license": "MIT",
+    "license": "MIT AND Apache-2.0",
     "repository": null
   },
   {

@@ -237,6 +237,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 ## Phase 6
 
+- [x] NASM-free AVIF builds with both decoder bit depths and existing encoding/alpha support retained; audited manifest-only wrapper patch, unchanged codec source/versions, standard build helper and release CI. [Dependency audit](docs/DEPENDENCY_AUDIT.md).
 - [x] Persistent GPU layer appearances and document composition: all 19 blend modes, masks, opacity and ten effect families, with warmed move gestures avoiding CPU jobs/image uploads. CPU fallback and real-GPU reference/native-window tests. [Evidence](docs/GPU_COMPOSITOR_VALIDATION.md).
 - [ ] Individual GPU filter/effect kernels, GPU tiling and dense 4K/8K performance validation.
 - [ ] Packaging, signing, accessibility and all-platform visual/behavior validation.

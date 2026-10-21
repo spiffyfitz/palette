@@ -1,5 +1,8 @@
 # Phase 3: file compatibility and document management
 
+Historical build evidence below used NASM. Current builds disable codec assembly
+and require no NASM; see the [dependency audit](DEPENDENCY_AUDIT.md).
+
 > Follow-up: the user confirmed the generated `.paint` opens and looks correct in Microsoft Paint. This is manual opening/appearance evidence; native layer edits and saving back were not reported. Development has advanced to [Phase 4](PHASE4_VALIDATION.md). Earlier connection failures below describe the agent’s previous run.
 
 

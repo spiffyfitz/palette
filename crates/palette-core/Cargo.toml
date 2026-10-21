@@ -15,7 +15,8 @@ flate2 = "1"
 sha2 = "0.10.9"
 tempfile = "3"
 fontdue = "0.9.4"
-avif-decode = { version = "3.0.0", default-features = false }
+# Keep aligned with the workspace's documented manifest-only codec patch.
+avif-decode = { version = "=3.0.0", default-features = false }
 avif-parse = "2.1.0"
 ravif = { version = "0.13.0", default-features = false, features = ["threading"] }
 

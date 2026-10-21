@@ -8,7 +8,14 @@ license = "MIT"
 
 [workspace]
 members = ["crates/palette-core", "crates/palette-neural"]
+exclude = ["vendor/avif-decode"]
 resolver = "3"
+
+# Upstream 3.0.0 hard-enables rav1d/asm on x86. This manifest-only patch
+# selects its existing Rust fallback; source and license remain upstream.
+# Remove when upstream exposes the equivalent option. See vendor/avif-decode/PATCH.md.
+[patch.crates-io]
+avif-decode = { path = "vendor/avif-decode" }
 
 [dependencies]
 palette-core = { path = "crates/palette-core" }

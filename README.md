@@ -12,7 +12,7 @@ cargo run --locked
 cargo run --locked -- path/to/image.png
 ```
 
-Windows needs the MSVC C++ build tools, Windows SDK and NASM on PATH. macOS needs Xcode Command Line Tools; Intel builds also need NASM. On Linux, install a C/C++ toolchain, NASM, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. See [build and packaging notes](docs/BUILD.md).
+Windows needs the MSVC C++ build tools and Windows SDK. macOS needs Xcode Command Line Tools. On Linux, install a C/C++ toolchain, pkg-config, X11/Wayland development packages, a working Vulkan driver, an XDG desktop portal backend and Zenity. NASM is not required: AVIF decoding uses rav1d's Rust fallback and encoding uses assembly-free rav1e. See [build notes](docs/BUILD.md) and the [dependency audit and compatibility patch](docs/DEPENDENCY_AUDIT.md).
 
 ## Working now
 
