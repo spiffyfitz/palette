@@ -23,6 +23,27 @@ fn brush_materials_match_reviewed_baselines() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed selection baselines"]
+fn polygon_selection_matches_reviewed_baselines() {
+    for scene in [
+        "selection",
+        "selection-options",
+        "wand-settings",
+        "polygon-selection-preview",
+        "polygon-selection-result",
+        "freeform-preview",
+        "rectangle-toolbar",
+    ] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+    compare_scene_size(
+        Some("polygon-selection-preview"),
+        "ui-polygon-selection-compact-windows.png",
+        (720, 520),
+    );
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and the reviewed UI scene baselines"]
 fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
     for scene in [
@@ -40,6 +61,11 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "catalog",
         "rotate-custom",
         "selected-shape",
+        "floating-shape-original",
+        "floating-shape-moving",
+        "floating-shape-moved",
+        "floating-shape-rotated",
+        "floating-shape-committed",
         "polygon-preview",
         "curve-preview",
         "selection-resize-preview",
@@ -56,6 +82,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "wand-toolbar",
         "freeform-toolbar",
         "freeform-preview",
+        "polygon-selection-preview",
+        "polygon-selection-result",
         "feather-outline",
         "inverted-selection",
         "canvas-scrollbars",
@@ -226,6 +254,50 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "style-gradient-stroke",
     ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+}
+
+#[test]
+#[ignore = "requires an interactive Windows desktop and reviewed floating-shape baselines"]
+fn floating_shapes_match_reviewed_baselines() {
+    for scene in [
+        "selected-shape",
+        "floating-shape-original",
+        "floating-shape-moving",
+        "floating-shape-moved",
+        "floating-shape-rotated",
+        "floating-shape-committed",
+        "selection-resize-preview",
+        "selection-rotate-preview",
+    ] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+    if cfg!(target_os = "windows") {
+        // Active worker previews and the completed GPU presentation must show
+        // the same shape/background, not merely match independently made goldens.
+        let moving = image::open("target/window-regression-ui-floating-shape-moving-windows.png")
+            .unwrap()
+            .to_rgb8();
+        let moved = image::open("target/window-regression-ui-floating-shape-moved-windows.png")
+            .unwrap()
+            .to_rgb8();
+        let differences = (240..838)
+            .flat_map(|y| (258..1056).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                moving
+                    .get_pixel(x, y)
+                    .0
+                    .iter()
+                    .zip(moved.get_pixel(x, y).0)
+                    .any(|(a, b)| a.abs_diff(b) > 3)
+            })
+            .count();
+        // Allow minor handle/ant rasterization differences, while rejecting a
+        // stale shape, translated photo rectangle or transparent cutout.
+        assert!(
+            differences < 1400,
+            "active shape preview differs from its committed position at {differences} canvas pixels"
+        );
     }
 }
 

@@ -34,6 +34,7 @@ pub struct Session {
     /// a drag into another document or discard a different tab's tool state.
     pub selection_drag: Option<SelectionDrag>,
     pub lasso_drag: Option<LassoDrag>,
+    pub polygon_selection: Option<PolygonSelection>,
     pub paint_stroke: Option<palette_core::brush::Stroke>,
     pub text_drag: Option<[f32; 2]>,
     pub layer_drag: Option<LayerDrag>,
@@ -79,6 +80,7 @@ impl Session {
             fit: false,
             selection_drag: None,
             lasso_drag: None,
+            polygon_selection: None,
             paint_stroke: None,
             text_drag: None,
             layer_drag: None,
@@ -146,10 +148,23 @@ impl Session {
     pub fn command(&mut self, label: &str, change: impl FnOnce(&mut Document)) {
         self.end_gesture();
         self.history.begin(label, &self.document);
+        self.document.floating_shape = None;
         change(&mut self.document);
         self.sync_layer_selection();
         self.history.finish(&self.document);
         self.invalidate();
+    }
+    /// An explicit outside click accepts the preview and drops its box. History
+    /// retains the isolated state so undo can resume adjustment safely.
+    pub fn commit_floating_shape(&mut self) -> bool {
+        if self.document.floating_shape.is_none() {
+            return false;
+        }
+        self.command("Commit shape", |doc| {
+            doc.selection = None;
+            doc.selection_base = None;
+        });
+        true
     }
     pub fn end_gesture(&mut self) {
         self.finish_brush_selection();
@@ -168,6 +183,7 @@ impl Session {
         self.paint_stroke = None;
         self.selection_drag = None;
         self.lasso_drag = None;
+        self.polygon_selection = None;
         self.text_drag = None;
         self.history.finish(&self.document);
     }
@@ -483,6 +499,16 @@ pub struct LassoDrag {
     pub points: Vec<[f32; 2]>,
     pub mode: palette_core::selection::Combine,
 }
+
+/// Uncommitted click-by-click selection. Vertices remain in image coordinates
+/// through pan/zoom, and combining uses the mode captured at the first click.
+pub struct PolygonSelection {
+    pub points: Vec<[f32; 2]>,
+    pub hover: [f32; 2],
+    pub mode: palette_core::selection::Combine,
+    /// Only a primary press on the canvas can place a vertex on release.
+    pub click_armed: bool,
+}
 impl LassoDrag {
     pub fn sample(&mut self, point: [f32; 2], zoom: f32) {
         if self
@@ -511,6 +537,7 @@ pub enum Tool {
     SelectBrush,
     Wand,
     Lasso,
+    PolygonSelect,
     Polygon,
     Curve,
     Move,
@@ -538,6 +565,7 @@ impl Tool {
             Self::SelectBrush => "Selection brush",
             Self::Wand => "Magic Wand",
             Self::Lasso => "Freeform selection",
+            Self::PolygonSelect => "Polygonal selection",
             Self::Fill => "Fill bucket",
             Self::Pencil => "Pencil",
             Self::Brush => "Brush",

@@ -118,13 +118,18 @@ impl PaletteApp {
     }
     fn selection_control(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let tool = if matches!(self.tool, Tool::Wand | Tool::Lasso | Tool::SelectBrush) {
+            let tool = if matches!(
+                self.tool,
+                Tool::Wand | Tool::Lasso | Tool::PolygonSelect | Tool::SelectBrush
+            ) {
                 self.tool
             } else {
                 Tool::Select
             };
             let icon = if tool == Tool::Wand {
                 Icon::Wand
+            } else if tool == Tool::PolygonSelect {
+                Icon::Polygon
             } else if tool == Tool::Lasso {
                 Icon::Lasso
             } else if tool == Tool::SelectBrush {
@@ -148,6 +153,12 @@ impl PaletteApp {
                     .clicked()
                 {
                     self.choose_tool(Tool::Lasso);
+                    ui.close();
+                }
+                if interface::menu_item(ui, "Polygonal selection", "", Some(Icon::Polygon), true)
+                    .clicked()
+                {
+                    self.choose_tool(Tool::PolygonSelect);
                     ui.close();
                 }
                 if interface::menu_item(ui, "Magic Wand", "", Some(Icon::Wand), true).clicked() {

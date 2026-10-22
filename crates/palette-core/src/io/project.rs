@@ -228,8 +228,16 @@ pub(super) fn write(file: &mut File, doc: &Document) -> Result<(), FileError> {
         background_visible: doc.background_visible,
         next_id: doc.next_id,
         layers,
-        selection: doc.selection.as_ref().map(|m| assets.mask(m)),
-        selection_base: doc.selection_base.as_ref().map(|m| assets.mask(m)),
+        selection: doc
+            .selection
+            .as_ref()
+            .filter(|_| doc.floating_shape.is_none())
+            .map(|m| assets.mask(m)),
+        selection_base: doc
+            .selection_base
+            .as_ref()
+            .filter(|_| doc.floating_shape.is_none())
+            .map(|m| assets.mask(m)),
         icc,
         exif,
         asset_lengths: assets.data.iter().map(|a| a.len()).collect(),
@@ -557,6 +565,7 @@ pub(super) fn read(mut file: File) -> Result<Document, FileError> {
         next_id: m.next_id,
         selection: m.selection.map(mask),
         selection_base: m.selection_base.map(mask),
+        floating_shape: None,
         metadata: DocumentMetadata {
             icc_profile: assets[m.icc].clone(),
             exif: assets[m.exif].clone(),

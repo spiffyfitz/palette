@@ -118,11 +118,12 @@ impl PaletteApp {
         pointer: Option<Pos2>,
         pressed: bool,
     ) -> bool {
-        if !matches!(self.tool, Tool::Select | Tool::Lasso)
+        if !matches!(self.tool, Tool::Select | Tool::Lasso | Tool::PolygonSelect)
             || !self.close_pending_none()
             || self.current().document.active().locked
             || self.current().selection_drag.is_some()
             || self.current().lasso_drag.is_some()
+            || self.current().polygon_selection.is_some()
             || self.current().feather_preview.is_some()
             || self.current().selection_transform.is_some()
             || ctx.input(|i| i.modifiers.alt)
@@ -215,8 +216,12 @@ impl PaletteApp {
                 self.current_mut().lasso_drag = Some(drag);
             }
         }
-        if matches!(self.tool, Tool::Select | Tool::Lasso | Tool::Move)
-            && (!self.is_capturing() || self.capture_scene_is("gpu-selection-move"))
+        if matches!(
+            self.tool,
+            Tool::Select | Tool::Lasso | Tool::PolygonSelect | Tool::Move
+        ) && (!self.is_capturing()
+            || self.capture_scene_is("gpu-selection-move")
+            || self.capture_scene_is("gpu-floating-shape-move"))
             && let Some(gesture) = &self.current().selection_transform
             && !gesture.released
         {
@@ -357,11 +362,12 @@ impl PaletteApp {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(50));
         }
-        if matches!(self.tool, Tool::Select | Tool::Lasso)
+        if matches!(self.tool, Tool::Select | Tool::Lasso | Tool::PolygonSelect)
             && self.close_pending_none()
             && self.current().selection_mode == palette_core::selection::Combine::Replace
             && self.current().selection_drag.is_none()
             && self.current().lasso_drag.is_none()
+            && self.current().polygon_selection.is_none()
             && self.current().feather_preview.is_none()
             && !self.current().document.active().locked
             && let Some(rect) = self.current_mut().selection_bounds()
@@ -408,7 +414,7 @@ impl PaletteApp {
                 );
                 painter.rect_stroke(bounds, 0, Stroke::new(1., ACCENT), StrokeKind::Outside);
             }
-        } else if matches!(self.tool, Tool::Select | Tool::Lasso) {
+        } else if matches!(self.tool, Tool::Select | Tool::Lasso | Tool::PolygonSelect) {
             if self.cursor.is_some() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }

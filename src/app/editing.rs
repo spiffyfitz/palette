@@ -19,6 +19,7 @@ pub(super) struct EditResult {
 pub enum Edit {
     Rectangle(editing::PixelRect, palette_core::selection::Combine),
     Freeform(Vec<[f32; 2]>, palette_core::selection::Combine),
+    PolygonSelection(Vec<[f32; 2]>, palette_core::selection::Combine),
     Wand(
         [u32; 2],
         palette_core::selection::Wand,
@@ -82,7 +83,7 @@ impl PaletteApp {
         {
             return;
         }
-        if self.current().construction.is_some() {
+        if self.current().construction.is_some() || self.current().polygon_selection.is_some() {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
@@ -166,6 +167,12 @@ impl PaletteApp {
             if self.current_mut().lasso_drag.take().is_some() {
                 return;
             }
+            if self.current().document.floating_shape.is_some()
+                && self.current().selection_transform.is_none()
+            {
+                self.edit(Edit::Clear, ctx);
+                return;
+            }
             let cancelled_shape = self.stroke.take().is_some() && self.tool.shape();
             if !self.current_mut().cancel_selection_transform()
                 && !self.current_mut().cancel_layer_move()
@@ -212,6 +219,14 @@ impl PaletteApp {
         let session = self.current();
         let (id, generation) = (session.id, session.generation);
         let mut document = session.document.clone();
+        if !matches!(
+            operation,
+            Edit::Move(_) | Edit::Transform(_) | Edit::Rotate(_) | Edit::Clear
+        ) {
+            // Ordinary edits finish adjustment; transforms retain the isolated
+            // shape and its immutable original instead of cutting the display.
+            document.floating_shape = None;
+        }
         // Feather each incoming region before set algebra, rather than blurring
         // the previous selection repeatedly when adding/subtracting regions.
         let selection_feather = session.selection_feather;
@@ -220,6 +235,7 @@ impl PaletteApp {
         let label = match operation {
             Edit::Rectangle(..) => "Rectangular selection",
             Edit::Freeform(..) => "Freeform selection",
+            Edit::PolygonSelection(..) => "Polygonal selection",
             Edit::Wand(..) => "Magic Wand selection",
             Edit::Feather { mask: true, .. } => "Feather layer mask",
             Edit::Feather { mask: false, .. } => "Feather selection",
@@ -270,7 +286,7 @@ impl PaletteApp {
                             selection_feather,
                         )?
                     }
-                    Edit::Freeform(points, mode) => {
+                    Edit::Freeform(points, mode) | Edit::PolygonSelection(points, mode) => {
                         let mask = palette_core::selection::freeform(
                             document.width,
                             document.height,
@@ -343,13 +359,13 @@ impl PaletteApp {
                         opacity,
                         tolerance,
                     } => editing::flood_fill(&mut document, point, color, opacity, tolerance)?,
-                    Edit::Shape(kind, from, to, style) => palette_core::shapes::paint_selected(
+                    Edit::Shape(kind, from, to, style) => palette_core::floating::create(
                         &mut document,
                         &palette_core::shapes::path(kind, from, to),
                         style,
                     )?,
                     Edit::Path(path, style) => {
-                        palette_core::shapes::paint_selected(&mut document, &path, style)?
+                        palette_core::floating::create(&mut document, &path, style)?
                     }
                     Edit::Rotate(degrees) => transform::rotate(&mut document, degrees)?,
                     Edit::Clear => editing::clear(&mut document),
@@ -410,6 +426,8 @@ impl PaletteApp {
                     session.command(result.label, |current| *current = document);
                     self.message = result.label.into();
                     if self.current().id == result.id && result.select_tool == Some(self.tool) {
+                        self.current_mut().selection_mode =
+                            palette_core::selection::Combine::Replace;
                         self.choose_tool(Tool::Select);
                     }
                 }

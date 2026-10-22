@@ -485,6 +485,7 @@ pub fn limitations(doc: &Document) -> Vec<&'static str> {
 pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
     doc.validate().map_err(FileError::Invalid)?;
     let mut out = doc.clone();
+    out.floating_shape = None;
     // The verified Paint subset stores an effective backing RGBA, without a
     // separate retained hidden color. The original is preserved as .palette.
     out.background = doc.backing_color();
@@ -497,6 +498,7 @@ pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
             })
     }) {
         let mut prefix = doc.clone();
+        prefix.floating_shape = None;
         for l in prefix.layers.iter_mut().skip(last + 1) {
             l.visible = false;
         }
@@ -515,6 +517,7 @@ pub fn compatible_copy(doc: &Document) -> Result<Document, FileError> {
             // Spatial styles may extend past source bounds. Bake the complete
             // canvas-space appearance into this independent compatible layer.
             let mut single = doc.clone();
+            single.floating_shape = None;
             single.background = [0; 4];
             single.selection = None;
             single.selection_base = None;

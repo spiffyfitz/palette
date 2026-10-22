@@ -77,7 +77,7 @@ impl PaletteApp {
         if self.processing_toolbar.is_some()
             || !matches!(
                 self.tool,
-                Tool::Select | Tool::Lasso | Tool::Wand | Tool::SelectBrush
+                Tool::Select | Tool::Lasso | Tool::PolygonSelect | Tool::Wand | Tool::SelectBrush
             )
         {
             return;
@@ -88,10 +88,12 @@ impl PaletteApp {
         let mut feather_active = false;
         let compact = self.canvas_rect.width() < 620.;
         let enabled = self.close_pending_none()
+            && self.current().document.floating_shape.is_none()
             && !self.edit_pending
             && self.current().selection_drag.is_none()
             && self.current().selection_transform.is_none()
-            && self.current().lasso_drag.is_none();
+            && self.current().lasso_drag.is_none()
+            && self.current().polygon_selection.is_none();
         let enabled = enabled && self.current().selection_brush_draft.is_none();
         let toolbar = egui::Area::new(egui::Id::unique("selection-toolbar"))
             .anchor(

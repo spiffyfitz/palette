@@ -49,9 +49,9 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Core grayscale selections, layer masks and filter masks; serialization/compositing tests.
 - [x] Core nondestructive Color Overlay style; native round-trip preservation.
 - [x] Rectangular selection interface with clear, inversion and selected pixel movement.
-- [x] Unified **Move** in Tools: selected pixels take priority, otherwise move the active layer; Shift axis locking, nudge, Escape and one-step undo. GPU raster-selection translation preserves feathered overlap without per-move uploads; live-processing selections retain exact CPU previews. [Scope and validation](docs/UNIFIED_MOVE_VALIDATION.md).
+- [x] Unified **Move** in Tools: selected pixels take priority, otherwise move the active layer; Shift axis locking, nudge, Escape and one-step undo. GPU raster-selection translation preserves feathered overlap without per-move uploads; pending shapes share this path with separate unchanged-background/pigment textures; live-processing selections retain exact CPU previews. [Scope and validation](docs/UNIFIED_MOVE_VALIDATION.md).
 - [x] Magic Wand, selection combination/feathering and basic live layer-mask property controls.
-- [ ] Polygon selection, mask painting and remaining advanced style editing interfaces.
+- [ ] Complete mask painting/view/apply/link workflows.
 
 ## Phase 2
 
@@ -76,7 +76,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Whole-layer move tool: live drag, axis constraint, nudging, cancel and one-command undo.
 - [x] Free polygon construction with live next segment, close/double-click/Enter, Backspace and cancellation.
 - [x] Two-bend cubic Curve tool with shared preview/commit geometry and early Enter commitment.
-- [x] Finished shapes become selected and immediately usable by selection move/flip/rotate.
+- [x] Finished shapes remain isolated raster objects during move/resize/rotate/flip, preserving the underlying pixels until an outside click accepts them. Escape/Delete remove only the pending shape; undo/redo retains adjustment state. [Validation](docs/FLOATING_SHAPES_VALIDATION.md).
 - [x] Selection-aware flips/quarter-turns and custom-angle rotation; whole-document fallback with layers/masks retained.
 - [x] Eight selected-pixel resize handles and rotation handle; live move/resize/rotation previews, Shift constraints, Escape and one-command undo.
 - [ ] Persistent editable vector shape objects.
@@ -106,11 +106,11 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Reveal-all or selection-derived layer masks, grayscale thumbnail, enable/disable, invert and delete.
 - [x] Original selection ants plus separate 40%-opacity feather-extent ants; inverted selection continues around visible canvas edges.
 - [x] Horizontal/vertical canvas scrollbars outside image hit testing and clear of the layers tray; bounded pan, keyboard controls and Fit handling.
-- [ ] Merge selected/visible layers and confirmed flattening.
+- [ ] Merge visible layers and confirmed flattening (selected-layer merge is implemented).
 - [x] Freeform/lasso selection with live closed ants, antialiased coverage, combine modes and undo.
 - [x] Canvas selection toolbar matching text-bar height; dynamic width, precise feather input and Wand tolerance.
 - [x] Edge-aware brush selection with configurable tolerance, feather, strength/hardness/size, continuous live coverage preview, sampling options and plain coverage mode.
-- [ ] Polygon selection.
+- [x] Polygonal selection: click vertices, live rubber-band ants, Enter/double-click/start-point closure, Backspace/Escape, feather/combine toolbar, undo and native coverage preservation. [Validation](docs/POLYGON_SELECTION_VALIDATION.md).
 - [x] Live selection feather previews in the toolbar and dialog; release/Apply commits one undo step, Escape/Cancel discards.
 - [ ] Selection expand/contract.
 - [ ] Brush/eraser mask editing, direct mask view, link/unlink and explicit permanent application.
@@ -127,7 +127,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Brightness/Contrast, linear-light Exposure, Hue/Saturation, Vibrance, Black & White, Threshold, Posterize, Box Blur and Median, plus existing Invert/Brightness/Gaussian.
 - [x] Researched conventional Filter hierarchy with 13 branches, disabled unfinished filters, disabled first Filter Gallery entry, and no correction/plugin sections.
 - [x] Registry-driven Filter availability, scrollable Add lists and common numeric/color/boolean/choice controls; validated integer settings.
-- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 154 implemented operations (144 filters and ten styles).
+- [x] Independent neighborhood/adjustment references, source/alpha/style-placement tests and native/Paint round trips across all 142 implemented operations (132 filters and ten styles).
 - [x] Native preservation, history and compatible Paint export baking with the existing native-backup guard.
 - [x] Bounded evaluated-layer LRU, background thumbnails, tiled scratch and region/full-composite correctness tests.
 - [x] Position-independent appearance caching and progressive styled-layer moves, tight dirty bounds, exact regional blending, partial GPU uploads and thumbnail reuse. [Measurements and limits](docs/LAYER_MOVEMENT_PERFORMANCE.md).
@@ -136,7 +136,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Ctrl/Command/Shift layer multiselection and undoable selected-layer merge, with explicit OK/Cancel before baking live processing.
 - [x] Active-layer list ordered blending mode, effects, filters; individual toggle/edit/reorder/duplicate/remove.
 - [x] Docked canvas Background swatch, separate transparent raster content, undoable color/visibility, native preservation.
-- [ ] Filter Gallery; advanced Photoshop style controls and custom imported patterns/contours.
+- [ ] Filter Gallery, reusable presets and per-effect masks/blending (imported patterns and contour editors are implemented).
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.
 - [x] Levels, five-point Curves, Motion Blur, High Pass, Mosaic and seeded monochrome/color Uniform/Gaussian Add Noise.
 - [x] Despeckle, Dust & Scratches, Reduce Noise with separate luminance/chroma controls, Pinch, Spherize, Ripple, Sharpen and Sharpen More.
@@ -147,7 +147,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Polar Coordinates in both directions, three ZigZag styles, seeded two-color Fibers and Glowing Edges with width/brightness/smoothness.
 - [x] Cutout (bounded color palette), Film Grain, Accented Edges, Ink Outlines, two-color Photocopy/Halftone Pattern, Patchwork and seeded Craquelure; live controls, source-alpha preservation and native/Paint round trips.
 - [x] All seven Pixelate entries, Stained Glass, Mosaic Tiles and four Diffuse modes; bounded tiled cell colors, seeded marks, real screen angles, live controls and source/alpha preservation.
-- [x] Registry-generated filter inventory: 144 of 144 catalog entries implemented (136 conventional plus eight limited local model-based counterparts; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
+- [x] Registry-generated filter inventory: 132 of 132 current catalog entries implemented (retired Neural Filters excluded; catalog coverage does not establish Photoshop parity); Filter Gallery and layer styles counted separately.
 - [x] Current conventional catalog, including Color Lookup, Displace, Shear and Custom convolution with actual import/editor workflows. Additional filters can extend the registry.
 - [x] Dirty brush regions and partial texture uploads for existing point-local processing.
 - [ ] General dirty regions and per-stage/tile caches beyond the implemented movement fallback and GPU compositor.

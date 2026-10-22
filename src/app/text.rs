@@ -301,6 +301,11 @@ impl PaletteApp {
             return;
         }
         if tool != self.tool {
+            if !matches!(tool, Tool::Select | Tool::Move) {
+                // Another editing tool accepts the shape but retains the
+                // selection as its clipping region, as ordinary Paint tools do.
+                self.current_mut().document.floating_shape = None;
+            }
             if self.tool == Tool::Brush {
                 self.brush_sizes[self.brush_style as usize] = self.brush.diameter;
                 self.brush.diameter = self.other_tool_diameter;

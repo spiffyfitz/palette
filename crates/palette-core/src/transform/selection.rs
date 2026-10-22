@@ -19,6 +19,9 @@ impl SelectionTransform {
     /// Local masks and live processing stay on the layer; other layers are intact.
     /// Validation/allocation failure leaves the input document unchanged.
     pub fn apply(self, doc: &mut Document) -> Result<bool, String> {
+        if doc.floating_shape.is_some() {
+            return crate::floating::transform(doc, |isolated| self.apply(isolated));
+        }
         if doc.active().locked {
             return Ok(false);
         }
@@ -247,6 +250,9 @@ fn replace_selection(
 /// other layers and layer processing properties remain unchanged. Rotated bounds
 /// retain a stable integer-grid center, avoiding half-pixel drift across turns.
 pub fn selected_orthogonal(doc: &mut Document, op: Orthogonal) -> Result<bool, String> {
+    if doc.floating_shape.is_some() {
+        return crate::floating::transform(doc, |isolated| selected_orthogonal(isolated, op));
+    }
     if doc.active().locked {
         return Ok(false);
     }
@@ -386,6 +392,9 @@ fn coverage_from(plane: Raster, enabled: bool) -> Coverage {
 /// Quarter turns retain exact pixel permutations. General angles use alpha-safe
 /// bilinear sampling; all allocations and offsets are validated before commit.
 pub fn rotate(doc: &mut Document, degrees: f64) -> Result<bool, String> {
+    if doc.floating_shape.is_some() {
+        return crate::floating::transform(doc, |isolated| rotate(isolated, degrees));
+    }
     let trig = rotation(degrees)?;
     let normalized = degrees.rem_euclid(360.);
     if normalized.abs() < 1e-9 {

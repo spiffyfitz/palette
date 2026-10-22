@@ -3,6 +3,7 @@ pub mod brush;
 pub mod composite;
 pub mod document;
 pub mod editing;
+pub mod floating;
 pub mod history;
 pub mod io;
 pub mod layers;

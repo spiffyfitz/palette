@@ -2,6 +2,7 @@ mod brush_preview;
 mod construction;
 pub(crate) mod navigation;
 mod overlays;
+mod polygon_selection;
 mod selection;
 mod selection_brush;
 use crate::{
@@ -240,6 +241,9 @@ impl PaletteApp {
                     && !self.tool.shape()
                     && self.tool != Tool::Fill
                     && self.tool != Tool::Move));
+        if !matches!(self.tool, Tool::Select | Tool::Move) {
+            self.current_mut().document.floating_shape = None;
+        }
         let selection_handled = self.selection_handle_press(
             &ctx,
             &painter,
@@ -247,8 +251,26 @@ impl PaletteApp {
             pointer.filter(|_| !over_toolbar),
             hovered && pressed && !space && !middle && drawing_allowed,
         );
+        let inside_shape = self.cursor.is_some_and(|[x, y]| {
+            self.current()
+                .document
+                .selection
+                .as_ref()
+                .is_some_and(|m| m.at(x, y) > 0.)
+        });
+        let shape_committed = hovered
+            && !selection_handled
+            && !inside_shape
+            && drawing_allowed
+            && ctx.input(|i| i.pointer.primary_pressed())
+            && !space
+            && !middle
+            && self.current_mut().commit_floating_shape();
         if hovered
             && !selection_handled
+            && !shape_committed
+            && (self.current().document.floating_shape.is_none()
+                || (self.tool == Tool::Move && ctx.input(|i| i.pointer.primary_pressed())))
             && self.current().selection_transform.is_none()
             && self.current().feather_preview.is_none()
             && pressed
@@ -275,7 +297,7 @@ impl PaletteApp {
                         });
                     }
                 }
-                Tool::Polygon | Tool::Curve => {}
+                Tool::Polygon | Tool::Curve | Tool::PolygonSelect => {}
                 Tool::Text => {
                     self.current_mut().text_drag = Some(point);
                 }
@@ -423,6 +445,18 @@ impl PaletteApp {
                 response.double_clicked(),
             ],
         );
+        self.polygon_selection_interaction(
+            &painter,
+            canvas,
+            pointer.filter(|_| !over_toolbar && !space && !middle),
+            hovered && !selection_handled && drawing_allowed && !space && !middle,
+            ctx.input(|i| {
+                i.pointer
+                    .button_double_clicked(egui::PointerButton::Primary)
+                    || i.pointer
+                        .button_triple_clicked(egui::PointerButton::Primary)
+            }),
+        );
         self.layer_move_interaction(&ctx, &painter, canvas, pointer, down, released);
         self.brush_selection_interaction(
             &painter,
@@ -474,9 +508,12 @@ impl PaletteApp {
             && self.current().feather_preview.is_none()
             && self.current().selection_brush_draft.is_none()
             && !selection_handled
+            && self.current().polygon_selection.is_none()
             && self.current().selection_transform.is_none()
-            && !(matches!(self.tool, Tool::Select | Tool::Lasso | Tool::Move)
-                && self.current().document.selection.is_some())
+            && !(matches!(
+                self.tool,
+                Tool::Select | Tool::Lasso | Tool::PolygonSelect | Tool::Move
+            ) && self.current().document.selection.is_some())
         {
             let resize = ui
                 .interact(handle, ui.scope_id().with("resize-canvas"), Sense::drag())
@@ -555,6 +592,8 @@ impl PaletteApp {
         }
         response.on_hover_text(if self.tool == Tool::Move {
             "Move selected pixels, or the active layer when there is no selection · Shift constrains axis · Arrows nudge · Escape cancels"
+        } else if self.tool == Tool::PolygonSelect {
+            "Click vertices · Enter/double-click or click the start to finish · Backspace removes a vertex · Escape cancels · Shift/Alt on the first click combines selections"
         } else if matches!(self.tool, Tool::Select | Tool::Lasso) {
             "Drag selected pixels or handles · Shift adds · Alt subtracts · Shift+Alt intersects · Choose Replace for transforms · Escape cancels"
         } else if self.tool==Tool::Wand {

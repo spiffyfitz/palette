@@ -93,6 +93,42 @@ The core `editing::outline` returns directed, coalesced edges with selected cove
 
 `canvas::overlays` paints a white one-point outline with black four-point dashes. A shared display-time phase travels around each contour at twelve logical points per second, independent of image zoom; visible outlines request repaint every 50 ms. The contour distance is retained when clipping to the workspace, so pan/zoom does not generate thousands of offscreen dash primitives or reset phase at clip boundaries. Creation rectangles and moving-selection outlines use the same painter. Diagnostic screenshots freeze the dash phase for repeatable baselines; normal editing animates continuously.
 
+`canvas::polygon_selection` keeps a bounded, per-session click-by-click draft in image coordinates. Its mode is captured on the first click; panning, popups and toolbar presses cannot place vertices. Eight-logical-point start closure is independent of DPI/zoom. Enter, start closure or a double-click sends the accepted vertices through the existing antialiased freeform rasterizer and selection worker, feathering before combine algebra. Hover is only a rubber-band preview. Escape/tool/tab/save cancellation leaves the original document and history untouched; a completed polygon is one ordinary coverage-selection command, with the existing transform handles and native persistence. No vector object or new project format is introduced.
+
+## Temporary shape adjustment
+
+`floating` keeps a newly drawn shape separate from the pixels beneath its box.
+`Document::floating_shape` holds boxed, copy-on-write original/source-shape rasters
+and a stable layer ID. The active layer source is a presentation composite of
+these inputs, so the existing filters, effects, masks, opacity and blending run
+in their original order. No temporary layer is inserted into the layer list.
+Selected transforms operate on the isolated transparent shape, then recompose
+from the unchanged original, rather than cutting a rectangle out of the preview.
+Incoming selection coverage is applied at creation; the adjustment box includes
+transparent shape interiors. RGBA8 alpha quantization can change initial channels
+by up to two levels relative to immediate painting. Hidden RGB in the original is
+retained exactly where the shape is transparent.
+
+History retains both floating inputs, with shared backing allocations counted
+in the bounded undo budget. Eligible shapes share the selection-move gesture and
+GPU compositor: worker-packed original/shape planes are uploaded once alongside
+coverage. The shader translates only the shape, recombines it over the stationary
+original, then applies layer opacity/blending once. Full-source offsets remain
+separate from cropped appearance offsets. Input keys and memory/texture limits
+cover both planes. Pointer movement updates uniforms without CPU render jobs or
+pixel uploads; release performs the final reference transform and undo entry.
+Masks, enabled filters/effects, arbitrary resize/rotation and unsupported adapters
+retain CPU previews for correct processing. Clicking outside accepts
+the shape and clears its box; Escape/Delete cancels just the shape. Another tool
+can accept it while retaining the selection as its painting clip. Selection
+coverage controls are disabled during shape adjustment. Undo can restore the
+complete isolated state, including after commitment.
+
+Native v8 stores the visible composite and omits the temporary box/state when
+saving a pending shape; the in-memory document is unchanged. PNG/Paint exports
+also use the composite. This adds no format version or persistent vector object.
+See [validation](docs/FLOATING_SHAPES_VALIDATION.md).
+
 ## Shapes and whole-layer movement
 
 `palette-core::shapes` supplies GUI-independent contours for twenty-one implemented tools. The app uses the same contour for drag preview and background raster commitment. The reference gallery contains 23 entries in 7/7/7/2 rows; Curve and free Polygon use per-session construction transactions. Preview outlines remove consecutive duplicate points and close a bounded open/beveled stroke, avoiding the unbounded miter normals of nearly flat closed paths. Exactly flat contours become open line segments. Concave preview meshes use ear clipping. Fills use even/odd scanline intersections, four vertical samples and analytic horizontal span coverage; outlines use one maximum-coverage PaintStroke over the filled result. Outline and fill have independent straight-alpha colors and shared opacity; the secondary button swaps foreground/background. Hardness is disabled for solid shapes. Layer offsets and grayscale canvas selections are accounted for before source pixels change. A cancelled preview has no model/history mutation, and stale worker results cannot overwrite newer edits.

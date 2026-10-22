@@ -1,8 +1,10 @@
 use super::*;
 mod brushes;
+mod floating_shapes;
 mod gpu;
 mod layer_movement;
 mod move_tool;
+mod polygon_selection;
 mod ribbon;
 mod tabs;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
@@ -2463,7 +2465,13 @@ fn compact_selection_toolbars_fit_above_canvas_with_layer_properties_and_high_dp
         app.interface.layer_properties = properties;
         for dpi in [1., 1.5, 2.] {
             ctx.set_pixels_per_point(dpi);
-            for tool in [Tool::Select, Tool::Wand, Tool::Lasso, Tool::SelectBrush] {
+            for tool in [
+                Tool::Select,
+                Tool::Wand,
+                Tool::Lasso,
+                Tool::PolygonSelect,
+                Tool::SelectBrush,
+            ] {
                 app.choose_tool(tool);
                 for _ in 0..4 {
                     let mut output = ctx.run_ui(

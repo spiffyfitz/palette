@@ -1656,6 +1656,11 @@ pub struct Document {
     /// coverage. Shared immutable data participates in history and native saving.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_base: Option<Coverage>,
+    /// Temporary shape adjustment, retained in undo snapshots. `Layer::source`
+    /// holds its composited display, while the original and shape pixels stay
+    /// separate until commitment. Native files store the committed raster copy.
+    #[serde(skip)]
+    pub floating_shape: Option<Box<crate::floating::Shape>>,
     pub(crate) next_id: u64,
     /// Opaque source metadata retained by native projects. Pixels currently use
     /// the editor's RGBA8/sRGB working interpretation; profiles are not applied.
@@ -1725,6 +1730,10 @@ impl Document {
                 }
             }
         }
+        if let Some(shape) = &self.floating_shape {
+            shape.base.allocations(&mut output);
+            shape.pixels.allocations(&mut output);
+        }
         output
     }
     /// Create a white default background of the requested bounded dimensions.
@@ -1760,6 +1769,7 @@ impl Document {
             active_layer: 1,
             selection: None,
             selection_base: None,
+            floating_shape: None,
             next_id: 2,
             metadata: DocumentMetadata::default(),
         }
@@ -1797,6 +1807,7 @@ impl Document {
     }
     /// Add and activate a transparent, full-canvas layer at the top of the stack.
     pub fn add_layer(&mut self) {
+        self.floating_shape = None;
         let id = self.allocate_id();
         self.layers.push(Layer {
             id,
@@ -1815,6 +1826,7 @@ impl Document {
     }
     /// Duplicate the active layer and allocate fresh layer/filter/effect IDs.
     pub fn duplicate_layer(&mut self) {
+        self.floating_shape = None;
         let mut copy = self.active().clone();
         copy.id = self.allocate_id();
         for filter in &mut copy.filters {
@@ -1837,6 +1849,7 @@ impl Document {
         if self.layers.len() <= 1 {
             return;
         }
+        self.floating_shape = None;
         let index = self
             .layers
             .iter()
@@ -1863,6 +1876,10 @@ impl Document {
             .sum::<usize>()
             + self.selection.as_ref().map_or(0, |m| m.values.len())
             + self.selection_base.as_ref().map_or(0, |m| m.values.len())
+            + self
+                .floating_shape
+                .as_ref()
+                .map_or(0, |s| s.base.byte_len() + s.pixels.byte_len())
             + self.metadata.icc_profile.len()
             + self.metadata.exif.len()
     }
@@ -1957,6 +1974,19 @@ impl Document {
         }
         if !self.layers.iter().any(|l| l.id == self.active_layer) {
             return Err("Active layer is missing".into());
+        }
+        if let Some(shape) = &self.floating_shape {
+            shape.base.validate()?;
+            shape.pixels.validate()?;
+            let source = &self.active().source;
+            if shape.layer != self.active_layer
+                || shape.base.width() != source.width()
+                || shape.base.height() != source.height()
+                || shape.pixels.width() != source.width()
+                || shape.pixels.height() != source.height()
+            {
+                return Err("Floating shape must match the active source geometry".into());
+            }
         }
         if self.selection_base.is_some() && self.selection.is_none() {
             return Err("Original selection requires editing coverage".into());

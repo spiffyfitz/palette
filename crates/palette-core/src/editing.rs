@@ -251,6 +251,9 @@ pub fn mix(before: [u8; 4], after: [u8; 4], amount: f32) -> [u8; 4] {
 
 /// Delete selected source coverage, preserving layer properties and other layers.
 pub fn clear(document: &mut Document) -> bool {
+    if document.floating_shape.is_some() {
+        return crate::floating::discard(document);
+    }
     if document.active().locked {
         return false;
     }
@@ -282,6 +285,12 @@ pub fn clear(document: &mut Document) -> bool {
 /// Copy the active layer's evaluated appearance, including its selection coverage.
 /// Filters/masks stay live on the source; the system clipboard receives flat RGBA.
 pub fn copy(document: &Document) -> Result<Raster, String> {
+    if let Some(shape) = &document.floating_shape {
+        let mut isolated = document.clone();
+        isolated.active_mut().source = shape.pixels.clone();
+        isolated.floating_shape = None;
+        return copy(&isolated);
+    }
     let rect = match &document.selection {
         Some(mask) => bounds(mask).ok_or("The selection is empty")?,
         None => PixelRect {

@@ -657,6 +657,31 @@ impl PaletteApp {
                     });
                 }
             }
+            Some("polygon-selection-preview" | "polygon-selection-result") => {
+                self.tool = Tool::PolygonSelect;
+                self.current_mut().zoom = 0.75;
+                self.current_mut().selection_feather = 3.;
+                let points = vec![[300., 220.], [560., 210.], [600., 380.], [380., 450.]];
+                if self.capture.scene.as_deref() == Some("polygon-selection-preview") {
+                    self.current_mut().polygon_selection = Some(crate::session::PolygonSelection {
+                        points,
+                        hover: [260., 360.],
+                        mode: palette_core::selection::Combine::Replace,
+                        click_armed: false,
+                    });
+                } else {
+                    let doc = &mut self.current_mut().document;
+                    let region = palette_core::selection::freeform(doc.width, doc.height, &points)
+                        .expect("capture polygon");
+                    palette_core::selection::apply_region(
+                        doc,
+                        &region,
+                        palette_core::selection::Combine::Replace,
+                        3.,
+                    )
+                    .expect("capture selection");
+                }
+            }
             Some("selection-options" | "wand-settings") => self.tool = Tool::Wand,
             Some("mask-layer") | Some("feather-selection") => {
                 self.current_mut().document = Document::new(819, 594).expect("capture canvas");
@@ -871,10 +896,82 @@ impl PaletteApp {
                 });
                 self.tool = Tool::Select;
             }
+            Some(
+                "floating-shape-original"
+                | "floating-shape-moving"
+                | "floating-shape-moved"
+                | "floating-shape-rotated"
+                | "floating-shape-committed",
+            ) => {
+                let scene = self.capture.scene.as_deref().unwrap().to_owned();
+                let mut pixels = Raster::new(640, 480, [0; 4]).expect("capture dimensions");
+                for y in 0..480 {
+                    for x in 0..640 {
+                        let color = if x % 80 < 2 || y % 80 < 2 {
+                            [45, 60, 80, 255]
+                        } else {
+                            [
+                                (40 + x * 180 / 640) as u8,
+                                (45 + y * 170 / 480) as u8,
+                                120,
+                                255,
+                            ]
+                        };
+                        pixels.set(x, y, color);
+                    }
+                }
+                let mut doc = Document::from_raster(pixels);
+                palette_core::floating::create(
+                    &mut doc,
+                    &palette_core::shapes::path(
+                        palette_core::shapes::Kind::Star,
+                        [160., 100.],
+                        [360., 300.],
+                    ),
+                    palette_core::shapes::Style {
+                        outline: Some([0, 0, 0, 255]),
+                        fill: None,
+                        width: 8.,
+                        opacity: 0.8,
+                    },
+                )
+                .expect("capture isolated shape");
+                if matches!(
+                    scene.as_str(),
+                    "floating-shape-moved" | "floating-shape-rotated" | "floating-shape-committed"
+                ) {
+                    palette_core::transform::SelectionTransform::Move([100, 50])
+                        .apply(&mut doc)
+                        .expect("move shape");
+                }
+                if matches!(
+                    scene.as_str(),
+                    "floating-shape-rotated" | "floating-shape-committed"
+                ) {
+                    palette_core::transform::rotate(&mut doc, 32.).expect("rotate shape");
+                }
+                if scene == "floating-shape-committed" {
+                    palette_core::floating::commit(&mut doc);
+                }
+                self.current_mut().document = doc;
+                self.current_mut().zoom = 1.25;
+                self.current_mut().invalidate();
+                self.tool = Tool::Select;
+                if scene == "floating-shape-moving" {
+                    self.current_mut()
+                        .begin_selection_transform(crate::session::SelectionHandle::Move, [0., 0.]);
+                    self.current_mut()
+                        .selection_transform
+                        .as_mut()
+                        .unwrap()
+                        .desired = palette_core::transform::SelectionTransform::Move([100, 50]);
+                }
+            }
             Some("rotate-custom")
             | Some("selected-shape")
             | Some("selection-resize-preview")
             | Some("selection-rotate-preview") => {
+                let floating = self.capture.scene.as_deref() == Some("selected-shape");
                 self.current_mut()
                     .command("Capture selected triangle", |doc| {
                         doc.add_layer();
@@ -883,7 +980,12 @@ impl PaletteApp {
                             [300., 180.],
                             [800., 600.],
                         );
-                        palette_core::shapes::paint_selected(
+                        let paint = if floating {
+                            palette_core::floating::create
+                        } else {
+                            palette_core::shapes::paint_selected
+                        };
+                        paint(
                             doc,
                             &path,
                             palette_core::shapes::Style {
@@ -978,7 +1080,7 @@ impl PaletteApp {
         }
         if matches!(
             self.capture.scene.as_deref(),
-            Some("gpu-layer-move" | "gpu-selection-move")
+            Some("gpu-layer-move" | "gpu-selection-move" | "gpu-floating-shape-move")
         ) && self.capture.gpu_probe.step < 6
         {
             return false;
@@ -1008,7 +1110,9 @@ impl PaletteApp {
                 .current()
                 .selection_transform
                 .as_ref()
-                .is_some_and(|g| g.applied != Some(g.desired))
+                .is_some_and(|g| {
+                    g.applied != Some(g.desired) && self.gpu_selection_move().is_none()
+                })
         {
             self.capture.settled_since = None;
             return false;
