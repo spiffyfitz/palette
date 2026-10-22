@@ -302,6 +302,23 @@ fn floating_shapes_match_reviewed_baselines() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed layer reorder baselines"]
+fn layer_stack_reordering_matches_reviewed_baselines() {
+    for scene in [
+        "reorder-filters",
+        "reorder-effects",
+        "reorder-layers",
+        "layer-style-stack",
+        "layer-multi-select",
+        "canvas-background",
+        "canvas-background-hidden",
+        "merge-layers-dialog",
+    ] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and the reviewed responsive ribbon baselines"]
 fn responsive_ribbon_matches_reviewed_baselines() {
     for (name, width, scene) in [

@@ -5602,4 +5602,5 @@ fn cancelled_main_render_targets_are_requeued_when_tabs_are_revisited_and_drop_c
 }
 
 mod layer_panel;
+mod reordering;
 mod style_settings;

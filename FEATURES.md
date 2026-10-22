@@ -135,6 +135,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Ten live layer styles, including Bevel/Emboss (contour and procedural texture), Satin, Gradient Overlay and Pattern Overlay. See [layer validation](docs/LAYER_EFFECTS_PANEL_VALIDATION.md) for scope.
 - [x] Ctrl/Command/Shift layer multiselection and undoable selected-layer merge, with explicit OK/Cancel before baking live processing.
 - [x] Active-layer list ordered blending mode, effects, filters; individual toggle/edit/reorder/duplicate/remove.
+- [x] Drag filters/effects and layers to reorder: insertion line, translucent name/thumbnail preview, animated neighbors, one-step undo and layer viewport edge scrolling. [Validation](docs/STACK_REORDER_VALIDATION.md).
 - [x] Docked canvas Background swatch, separate transparent raster content, undoable color/visibility, native preservation.
 - [ ] Filter Gallery, reusable presets and per-effect masks/blending (imported patterns and contour editors are implemented).
 - [x] Conventional-filter implementation inventory and explicit scope/algorithm limits in docs/PROCESSING_CATALOG_VALIDATION.md.

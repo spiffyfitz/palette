@@ -4,12 +4,14 @@ use super::*;
 mod brush_scenes;
 mod gpu_probe;
 mod layer_scenes;
+mod reorder_scenes;
 
 #[derive(Default)]
 pub(super) struct CaptureState {
     pub scene: Option<String>,
     pub settled_since: Option<std::time::Instant>,
     gpu_probe: gpu_probe::Probe,
+    reorder_probe: reorder_scenes::Probe,
 }
 impl PaletteApp {
     pub(crate) fn is_capturing(&self) -> bool {
@@ -21,7 +23,7 @@ impl PaletteApp {
             return;
         }
         if let Some(scene) = self.capture.scene.clone()
-            && self.prepare_layer_capture(&scene)
+            && (self.prepare_reorder_capture(&scene) || self.prepare_layer_capture(&scene))
         {
             return;
         }
@@ -1082,6 +1084,15 @@ impl PaletteApp {
             self.capture.scene.as_deref(),
             Some("gpu-layer-move" | "gpu-selection-move" | "gpu-floating-shape-move")
         ) && self.capture.gpu_probe.step < 6
+        {
+            return false;
+        }
+        if self
+            .capture
+            .scene
+            .as_deref()
+            .is_some_and(|s| matches!(s, "reorder-filters" | "reorder-effects" | "reorder-layers"))
+            && self.capture.reorder_probe.step < 4
         {
             return false;
         }

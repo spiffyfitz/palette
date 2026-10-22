@@ -1103,6 +1103,7 @@ impl PaletteApp {
 impl eframe::App for PaletteApp {
     fn raw_input_hook(&mut self, ctx: &Context, input: &mut egui::RawInput) {
         self.capture_gpu_input(ctx, input);
+        self.capture_reorder_input(ctx, input);
     }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);

@@ -413,3 +413,23 @@ Eligible raster selections add one immutable R8 coverage texture to the scene. T
 Neural Filters and AVIF support were intentionally removed on 2026-10-20 to reduce dependencies, binary size and build requirements. All twelve operations formerly under Neural Filters are removed, including conventional approximations. PNG, JPEG, BMP, GIF, TIFF, WebP, `.paint` and `.palette` remain supported. Older projects containing a retired filter fail with an explicit diagnostic, including disabled filters; open them in an older build and remove or rasterize those filters before saving a compatible copy. No filter is silently discarded.
 
 The workspace contains the application and palette-core. Conventional layer styles retain a small shared sRGB/Lab conversion module; no model loader, model payload, inference executor or AV1 codec remains. Release builds use Thin LTO and one code-generation unit. GPU presentation, CPU reference rendering, masks, live conventional filters and native asset storage remain shared across platforms.
+
+
+## Layer-panel drag reordering
+
+`app/layers/reordering.rs` shares presentation for raster cards and live filter/
+effect rows. Stable list scopes include the session, layer and stack type; item
+IDs remain stable across order changes. Original-order slots and measured row
+heights determine insertion independently of animated hit targets, preventing
+hover oscillation. A paint-only tooltip layer draws a translucent name/thumbnail
+preview, while the destination gap has an accent insertion line and neighbors
+animate for 160 ms. Expanded properties move with their active layer.
+
+Only an accepted release changes the document. Filters/effects use a remove/insert
+transaction, preserving intermediate order, IDs, masks, settings and source
+pixels; layer insertion converts displayed top-to-bottom positions to model
+bottom-to-top indices. Existing invalidation, processing cancellation and history
+handle the final render and single undo entry. Escape, outside/no-op drops and
+foreign scopes do not mutate the document. Long layer lists scroll at the owning
+viewport edge; their Background control remains outside the scroll area.
+No dependency, renderer algorithm or native-project format change is needed.

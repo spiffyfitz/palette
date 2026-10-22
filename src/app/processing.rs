@@ -186,6 +186,7 @@ pub(super) enum MaskAction {
 pub(super) enum Action {
     Toggle(u64, bool),
     Move(u64, i32),
+    MoveTo(u64, usize),
     Duplicate(u64),
     Delete(u64),
     Mask(u64, MaskAction),
@@ -484,6 +485,7 @@ impl PaletteApp {
                 let id = match action {
                     Action::Toggle(id, _)
                     | Action::Move(id, _)
+                    | Action::MoveTo(id, _)
                     | Action::Duplicate(id)
                     | Action::Delete(id)
                     | Action::Mask(id, _) => id,
@@ -502,6 +504,11 @@ impl PaletteApp {
                             as usize;
                         doc.active_mut().effects.swap(index, to);
                     }
+                    Action::MoveTo(_, to) => {
+                        let to = to.min(doc.active().effects.len() - 1);
+                        let node = doc.active_mut().effects.remove(index);
+                        doc.active_mut().effects.insert(to, node);
+                    }
                     Action::Duplicate(_) => {
                         let mut node = doc.active().effects[index].clone();
                         node.id = doc.allocate_id();
@@ -516,6 +523,7 @@ impl PaletteApp {
                 let id = match action {
                     Action::Toggle(id, _)
                     | Action::Move(id, _)
+                    | Action::MoveTo(id, _)
                     | Action::Duplicate(id)
                     | Action::Delete(id)
                     | Action::Mask(id, _) => id,
@@ -533,6 +541,11 @@ impl PaletteApp {
                             .clamp(0, doc.active().filters.len() as i32 - 1)
                             as usize;
                         doc.active_mut().filters.swap(index, to);
+                    }
+                    Action::MoveTo(_, to) => {
+                        let to = to.min(doc.active().filters.len() - 1);
+                        let node = doc.active_mut().filters.remove(index);
+                        doc.active_mut().filters.insert(to, node);
                     }
                     Action::Duplicate(_) => {
                         let mut node = doc.active().filters[index].clone();
