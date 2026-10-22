@@ -618,6 +618,18 @@
     "repository": "https://github.com/googlefonts/fontations"
   },
   {
+    "name": "fontconfig-parser",
+    "version": "0.5.8",
+    "license": "MIT",
+    "repository": "https://github.com/Riey/fontconfig-parser"
+  },
+  {
+    "name": "fontdb",
+    "version": "0.24.0",
+    "license": "MIT",
+    "repository": "https://github.com/RazrFalcon/fontdb"
+  },
+  {
     "name": "fontdue",
     "version": "0.9.4",
     "license": "MIT OR Apache-2.0 OR Zlib",
@@ -1500,6 +1512,12 @@
     "repository": "https://github.com/PolyMeilex/rfd"
   },
   {
+    "name": "roxmltree",
+    "version": "0.20.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/RazrFalcon/roxmltree"
+  },
+  {
     "name": "rustc_version",
     "version": "0.4.1",
     "license": "MIT OR Apache-2.0",
@@ -1750,6 +1768,12 @@
     "version": "0.11.3",
     "license": "MIT",
     "repository": "https://github.com/image-rs/image-tiff"
+  },
+  {
+    "name": "tinyvec",
+    "version": "1.13.3",
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "repository": "https://github.com/Lokathor/tinyvec"
   },
   {
     "name": "tokio",

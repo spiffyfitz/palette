@@ -15,11 +15,13 @@ Direct versions were resolved using Cargo; the lockfile is authoritative. `depen
 | flate2 | Zlib project compression | MIT OR Apache-2.0 |
 | tempfile | Same-directory atomic file replacement | MIT OR Apache-2.0 |
 | fontdue 0.9.4 | GUI-independent text layout and grayscale rasterization | MIT OR Apache-2.0 OR Zlib |
+| fontdb 0.24.0 | Background system-font and collection-face discovery | MIT |
+| windows-sys 0.61.2 (Windows only) | Read-only installed-font registry enumeration; reuses resolved Win32 bindings | MIT OR Apache-2.0 |
 | epaint_default_fonts 0.37 | Reuse bundled Ubuntu Light/Hack font bytes | (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0 |
 
 Native platform requirements are in BUILD.md. Neural Filters, all bundled models, Tract, direct sha2/anyhow inference dependencies, AVIF codecs and the vendored AVIF wrapper patch have been removed. NASM and model inference toolchains are not required. The remaining graph uses native GUI/GPU/clipboard integration, Rust image codecs, font rasterization and Rust zlib compression. No libheif or third-party filter plugins are bundled. See [the dependency audit](DEPENDENCY_AUDIT.md).
 
-Text uses the existing egui font bundle, with no platform font service or new native-library requirement. Fontdue's [layout](https://docs.rs/fontdue/0.9.4/fontdue/layout/) and [rasterization API](https://docs.rs/fontdue/0.9.4/fontdue/struct.Font.html) were checked before implementation. Font-specific notices are retained in [Ubuntu license](font-licenses/Ubuntu-UFL.txt) and [Hack notices](font-licenses/Hack-Regular.txt); the fonts remain under their own licenses. The default-font bundle also contains other egui UI fonts whose complete distribution notices still need to accompany packaged releases.
+Text uses the existing egui font bundle and reads installed outline fonts at runtime; system fonts are not redistributed. [fontdb](https://docs.rs/fontdb/0.24.0/fontdb/) enables only `fs` and `fontconfig`, without memory mapping or a native fontconfig library. Its Linux fontconfig support parses configuration with the Rust fontconfig-parser/roxmltree crates. The four new resolved packages are fontdb, tinyvec, fontconfig-parser and roxmltree; the existing slotmap/log/Win32 versions are reused. No additional native library, build tool or NASM requirement is introduced. Fontdue's [layout](https://docs.rs/fontdue/0.9.4/fontdue/layout/) and [rasterization API](https://docs.rs/fontdue/0.9.4/fontdue/struct.Font.html) were checked before implementation. Font-specific notices are retained in [Ubuntu license](font-licenses/Ubuntu-UFL.txt) and [Hack notices](font-licenses/Hack-Regular.txt); the fonts remain under their own licenses. The default-font bundle also contains other egui UI fonts whose complete distribution notices still need to accompany packaged releases.
 
 Regenerate the inventory with PowerShell:
 

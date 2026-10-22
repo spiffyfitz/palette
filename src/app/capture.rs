@@ -5,6 +5,7 @@ mod brush_scenes;
 mod gpu_probe;
 mod layer_scenes;
 mod reorder_scenes;
+mod text_scenes;
 
 #[derive(Default)]
 pub(super) struct CaptureState {
@@ -12,6 +13,7 @@ pub(super) struct CaptureState {
     pub settled_since: Option<std::time::Instant>,
     gpu_probe: gpu_probe::Probe,
     reorder_probe: reorder_scenes::Probe,
+    text_probe: u8,
 }
 impl PaletteApp {
     pub(crate) fn is_capturing(&self) -> bool {
@@ -763,7 +765,7 @@ impl PaletteApp {
             }
             Some("colors") => self.edit_color(crate::interface::ColorTarget::Foreground),
             Some("properties") => self.show_canvas_properties(),
-            Some("text") => {
+            Some("text" | "text-fonts" | "text-overflow" | "text-rotated") => {
                 self.tool = Tool::Text;
                 self.start_text(palette_core::editing::PixelRect {
                     x: 100,
@@ -773,6 +775,19 @@ impl PaletteApp {
                 });
                 self.text_editor.as_mut().expect("capture draft").spec.text =
                     "Text is inline!".into();
+                if self.capture.scene.as_deref() != Some("text") {
+                    let editor = self.text_editor.as_mut().unwrap();
+                    editor.origin = [310, 220];
+                    editor.spec.width = 260;
+                    editor.spec.height = 125;
+                    editor.spec.text =
+                        "First line\nSecond line\nThird line\nFourth line\nFifth line".into();
+                    editor.angle = if self.capture.scene.as_deref() == Some("text-rotated") {
+                        25.
+                    } else {
+                        0.
+                    };
+                }
             }
             Some("layers") => {
                 self.current_mut().command("Capture layers", |doc| {
@@ -1080,6 +1095,9 @@ impl PaletteApp {
         if self.screenshot.is_none() {
             return false;
         }
+        if self.capture.scene.as_deref() == Some("text-fonts") && self.capture.text_probe < 4 {
+            return false;
+        }
         if matches!(
             self.capture.scene.as_deref(),
             Some("gpu-layer-move" | "gpu-selection-move" | "gpu-floating-shape-move")
@@ -1117,6 +1135,10 @@ impl PaletteApp {
                 .is_some_and(|p| p.frame.as_ref().is_none_or(|f| f.radius != p.radius))
             || self.busy
             || self.edit_pending
+            || self
+                .text_editor
+                .as_ref()
+                .is_some_and(|editor| !editor.ready())
             || self
                 .current()
                 .selection_transform

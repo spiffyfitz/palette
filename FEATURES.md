@@ -64,10 +64,12 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] History counts unique retained tile/mask buffers and caps command count.
 - [x] Background edit jobs reject stale results and validate geometry allocation limits.
 - [x] Live brush/pencil/eraser region compositing and partial texture uploads; progressive render fallback.
-- [x] Inline text with floating formatting strip, eight resize handles and move edge, two fonts, layout/color controls and bounded rasterization.
+- [x] Inline text with floating formatting strip, eight resize handles, move border, rotation handle, installed-font previews, layout/color controls and bounded rasterization.
+- [x] System outline-font discovery (including collection faces and installed styles); virtual font list, selected-row highlight and bounded asynchronous font loading.
+- [x] Internal vertical scrollbar for overflowing text; draft content survives scrolling and resizing; rotation-aware caret, text selection, scrollbar and box handles. [Validation](docs/TEXT_TOOL_VALIDATION.md).
 - [x] Text Done/outside-click commitment, Cancel/Escape, queued document/tool actions and one-command raster-layer insertion.
 - [ ] Exact interactive/committed text metrics, selection-preview parity and global shortcuts during typing.
-- [ ] System font discovery, additional faces, complex shaping and persistent editable text objects.
+- [ ] Complex shaping, bidirectional text, variable-font axis controls and persistent editable text objects.
 - [x] Reference 23-icon shape gallery in four rows; 23 functional tools with shared contours, antialiased fills and independent outline/fill.
 - [x] Distinct right triangle, four/six-point stars, left/up arrows, callouts, heart and lightning.
 - [x] Finite, bounded outline previews when shape width/height approaches zero.

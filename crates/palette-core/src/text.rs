@@ -36,6 +36,8 @@ pub struct TextSpec {
     pub alignment: Alignment,
     pub width: u32,
     pub height: u32,
+    /// Visible vertical viewport offset in image pixels; draft text remains intact.
+    pub scroll_y: f32,
     pub color: [u8; 4],
     pub opacity: f32,
     pub background: Option<[u8; 4]>,
@@ -63,6 +65,23 @@ impl TextEngine {
         })
     }
 
+    /// Parse one selected collection face. System discovery stays outside core;
+    /// the same face index/bytes are used by the GUI preview and raster worker.
+    pub fn from_face(bytes: &[u8], collection_index: u32) -> Result<Self, String> {
+        Ok(Self {
+            fonts: vec![
+                Font::from_bytes(
+                    bytes,
+                    FontSettings {
+                        collection_index,
+                        ..Default::default()
+                    },
+                )
+                .map_err(str::to_owned)?,
+            ],
+        })
+    }
+
     /// Rasterize basic left-to-right Unicode with wrapping and explicit breaks.
     /// Complex shaping/bidirectional layout is a separate future capability.
     /// Bounds and content limits apply before glyph allocation or layout.
@@ -74,6 +93,8 @@ impl TextEngine {
             || !(1.0..=3.0).contains(&spec.line_height)
             || !spec.opacity.is_finite()
             || !(0.0..=1.0).contains(&spec.opacity)
+            || !spec.scroll_y.is_finite()
+            || !(0.0..=MAX_TEXT_CHARACTERS as f32 * 256.0 * 3.0).contains(&spec.scroll_y)
             || spec.width == 0
             || spec.height == 0
             || spec.width > MAX_TEXT_DIMENSION
@@ -103,7 +124,7 @@ impl TextEngine {
         let mut glyph_cache = HashMap::new();
         for glyph in layout.glyphs() {
             let left = glyph.x.floor() as i64;
-            let top = glyph.y.floor() as i64;
+            let top = (glyph.y - spec.scroll_y).floor() as i64;
             let x0 = left.max(0);
             let y0 = top.max(0);
             let x1 = (left + glyph.width as i64).min(i64::from(spec.width));

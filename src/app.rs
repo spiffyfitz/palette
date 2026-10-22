@@ -202,6 +202,7 @@ pub struct PaletteApp {
     processing_dialog: Option<processing::Dialog>,
     processing_worker: processing::Worker,
     text_editor: Option<text::TextEditor>,
+    text_fonts: text::fonts::Picker,
     text_tx: mpsc::SyncSender<text::TextRequest>,
     text_rx: mpsc::Receiver<text::TextResult>,
     next_text_job: u64,
@@ -343,6 +344,7 @@ impl PaletteApp {
             capture: Default::default(),
             clipboard: None,
             text_editor: None,
+            text_fonts: Default::default(),
             text_tx,
             text_rx,
             next_text_job: 1,
@@ -1104,6 +1106,8 @@ impl eframe::App for PaletteApp {
     fn raw_input_hook(&mut self, ctx: &Context, input: &mut egui::RawInput) {
         self.capture_gpu_input(ctx, input);
         self.capture_reorder_input(ctx, input);
+        self.capture_text_input(ctx, input);
+        self.map_text_input(ctx, input);
     }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);

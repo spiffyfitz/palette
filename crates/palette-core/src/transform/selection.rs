@@ -386,6 +386,48 @@ fn coverage_from(plane: Raster, enabled: bool) -> Coverage {
         ),
     }
 }
+/// Rotate an isolated raster about its canvas-space center without clipping it
+/// to a document. The integer output origin encloses the exact rotated bounds;
+/// premultiplied sampling prevents hidden RGB from contaminating text edges.
+pub fn rotate_raster(
+    source: &Raster,
+    origin: [i32; 2],
+    degrees: f64,
+) -> Result<(Raster, [i32; 2]), String> {
+    let mut trig = rotation(degrees)?;
+    let normalized = degrees.rem_euclid(360.);
+    if normalized.abs() < 1e-9 {
+        return Ok((source.clone(), origin));
+    }
+    let quarter = (normalized / 90.).round();
+    if (normalized - quarter * 90.).abs() < 1e-9 {
+        trig = match quarter as i32 % 4 {
+            1 => (0., 1.),
+            2 => (-1., 0.),
+            3 => (0., -1.),
+            _ => (1., 0.),
+        };
+    }
+    let center = [
+        f64::from(origin[0]) + f64::from(source.width()) * 0.5,
+        f64::from(origin[1]) + f64::from(source.height()) * 0.5,
+    ];
+    let (anchor, size) = rotated_bounds(
+        [source.width(), source.height()],
+        origin,
+        center,
+        center,
+        trig.0,
+        trig.1,
+    )?;
+    let mut bytes = 0;
+    reserve_plane(&mut bytes, size[0], size[1], 4)?;
+    Ok((
+        rotated_plane(source, origin, anchor, size, center, center, trig)?,
+        anchor,
+    ))
+}
+
 /// Rotate clockwise by an arbitrary angle. A selection scopes the operation to
 /// active-layer source pixels, with clipping at the existing canvas. Without a
 /// selection, rotate all layers/masks and expand canvas bounds without flattening.

@@ -5,7 +5,7 @@ use crate::{
     editing::bounds,
     raster::{Coverage, Raster},
 };
-pub use selection::{SelectionTransform, rotate, selected_orthogonal};
+pub use selection::{SelectionTransform, rotate, rotate_raster, selected_orthogonal};
 use std::sync::Arc;
 
 // Whole-image operations materialize every output plane. Validate aggregate

@@ -2,6 +2,9 @@
 //! reject obsolete parameter results. Commitment inserts the Fontdue raster;
 //! egui supplies the interactive caret and text selection while editing.
 use super::*;
+mod box_ui;
+pub(super) mod fonts;
+mod geometry;
 use palette_core::text::{
     self, Alignment, MAX_TEXT_CHARACTERS, MAX_TEXT_DIMENSION, TextEngine, TextSpec,
 };
@@ -11,10 +14,12 @@ pub(super) struct TextRequest {
     spec: TextSpec,
     origin: [i32; 2],
     document: Document,
+    angle: f64,
 }
 
 pub(super) struct TextResult {
     job: u64,
+    origin: [i32; 2],
     result: Result<(Raster, ColorImage), String>,
 }
 
@@ -46,14 +51,22 @@ struct TextBoxDrag {
     origin: [i32; 2],
     size: [u32; 2],
     moving: bool,
+    rotating: bool,
+    angle: f64,
 }
 pub(super) struct TextEditor {
     session: u64,
     generation: u64,
     pub(super) spec: TextSpec,
     pub(super) origin: [i32; 2],
-    requested: Option<(TextSpec, [i32; 2])>,
-    previewed: Option<(TextSpec, [i32; 2])>,
+    requested: Option<(TextSpec, [i32; 2], f64)>,
+    previewed: Option<(TextSpec, [i32; 2], f64)>,
+    pub(super) angle: f64,
+    pixels_origin: [i32; 2],
+    screen_pointer: Option<egui::Pos2>,
+    input_mapped: bool,
+    body_dragging: bool,
+    pub(super) overflow: bool,
     job: u64,
     pixels: Option<Raster>,
     texture: Option<TextureHandle>,
@@ -68,7 +81,9 @@ impl TextEditor {
     pub(super) fn ready(&self) -> bool {
         self.previewed
             .as_ref()
-            .is_some_and(|(spec, origin)| *spec == self.spec && *origin == self.origin)
+            .is_some_and(|(spec, origin, angle)| {
+                *spec == self.spec && *origin == self.origin && *angle == self.angle
+            })
             && self.error.is_none()
     }
 }
@@ -77,17 +92,28 @@ pub(super) fn worker() -> (mpsc::SyncSender<TextRequest>, mpsc::Receiver<TextRes
     let (tx, requests) = mpsc::sync_channel::<TextRequest>(1);
     let (results, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let engine = TextEngine::new(&[
-            epaint_default_fonts::UBUNTU_LIGHT,
-            epaint_default_fonts::HACK_REGULAR,
-        ]);
+        let mut engines = std::collections::VecDeque::new();
         while let Ok(request) = requests.recv() {
+            let mut origin = request.origin;
             let result = (|| {
-                let mut pixels = engine
-                    .as_ref()
-                    .map_err(Clone::clone)?
-                    .render(&request.spec)?;
-                text::constrain(&mut pixels, &request.document, request.origin);
+                let id = request.spec.font;
+                let entry = if let Some(index) = engines.iter().position(|(key, _)| *key == id) {
+                    engines.remove(index).unwrap()
+                } else {
+                    let data = fonts::Library::shared().load(id)?;
+                    (id, TextEngine::from_face(data.bytes(), data.index)?)
+                };
+                engines.push_back(entry);
+                while engines.len() > 2 {
+                    engines.pop_front();
+                }
+                let mut spec = request.spec.clone();
+                spec.font = 0;
+                let raw = engines.back().unwrap().1.render(&spec)?;
+                let (mut pixels, offset) =
+                    palette_core::transform::rotate_raster(&raw, origin, request.angle)?;
+                origin = offset;
+                text::constrain(&mut pixels, &request.document, origin);
                 let image = ColorImage::from_rgba_unmultiplied(
                     [pixels.width() as usize, pixels.height() as usize],
                     &pixels.rgba(),
@@ -97,6 +123,7 @@ pub(super) fn worker() -> (mpsc::SyncSender<TextRequest>, mpsc::Receiver<TextRes
             if results
                 .send(TextResult {
                     job: request.job,
+                    origin,
                     result,
                 })
                 .is_err()
@@ -124,6 +151,7 @@ impl PaletteApp {
                 font: 0,
                 size: 32.0,
                 line_height: 1.2,
+                scroll_y: 0.,
                 alignment: Alignment::Left,
                 width: bounds.width.min(MAX_TEXT_DIMENSION),
                 height: bounds.height.min(MAX_TEXT_DIMENSION),
@@ -132,6 +160,12 @@ impl PaletteApp {
                 background: None,
             },
             origin: [bounds.x as i32, bounds.y as i32],
+            pixels_origin: [bounds.x as i32, bounds.y as i32],
+            angle: 0.,
+            screen_pointer: None,
+            input_mapped: false,
+            body_dragging: false,
+            overflow: false,
             requested: None,
             previewed: None,
             job: 0,
@@ -161,6 +195,7 @@ impl PaletteApp {
                         editor.texture =
                             Some(ctx.load_texture("text-preview", image, TextureOptions::NEAREST));
                     }
+                    editor.pixels_origin = result.origin;
                     editor.pixels = Some(pixels);
                     editor.previewed = editor.requested.clone();
                     editor.error = None;
@@ -176,10 +211,16 @@ impl PaletteApp {
         let Some(editor) = &self.text_editor else {
             return;
         };
+        if editor.box_drag.is_some() {
+            ctx.request_repaint();
+            return;
+        }
         if editor
             .requested
             .as_ref()
-            .is_some_and(|(spec, origin)| *spec == editor.spec && *origin == editor.origin)
+            .is_some_and(|(spec, origin, angle)| {
+                *spec == editor.spec && *origin == editor.origin && *angle == editor.angle
+            })
         {
             if !editor.ready() && editor.error.is_none() {
                 ctx.request_repaint_after(Duration::from_millis(16));
@@ -191,12 +232,13 @@ impl PaletteApp {
             spec: editor.spec.clone(),
             origin: editor.origin,
             document: self.current().document.clone(),
+            angle: editor.angle,
         };
         if self.text_tx.try_send(request).is_ok() {
             let editor = self.text_editor.as_mut().expect("text draft");
             editor.job = self.next_text_job;
             self.next_text_job += 1;
-            editor.requested = Some((editor.spec.clone(), editor.origin));
+            editor.requested = Some((editor.spec.clone(), editor.origin, editor.angle));
             editor.error = None;
         }
         ctx.request_repaint_after(Duration::from_millis(16));
@@ -214,7 +256,7 @@ impl PaletteApp {
                 Some("The document changed. Cancel and place the text again.".into());
             return;
         }
-        let origin = editor.origin;
+        let origin = editor.pixels_origin;
         let name = format!(
             "Text: {}",
             editor.spec.text.lines().next().unwrap_or_default()
@@ -345,8 +387,13 @@ impl PaletteApp {
         let outside = ctx.input(|i| {
             i.pointer.primary_pressed()
                 && i.pointer.interact_pos().is_some_and(|point| {
+                    let point = if editor.input_mapped {
+                        editor.screen_pointer.unwrap_or(point)
+                    } else {
+                        point
+                    };
                     point.y >= self.canvas_rect.top()
-                        && !rect.expand(8.0).contains(point)
+                        && !geometry::BoxGeometry::new(rect, editor.angle).near(point)
                         && !editor.toolbar.contains(point)
                 })
         });
@@ -370,17 +417,7 @@ impl PaletteApp {
                 crate::interface::context_toolbar_frame(ui.style()).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.set_min_height(crate::interface::CONTEXT_CONTROL_HEIGHT);
-                        egui::ComboBox::from_id_salt("text-font")
-                            .width(145.0)
-                            .selected_text(if editor.spec.font == 0 {
-                                "Ubuntu Light"
-                            } else {
-                                "Hack"
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut editor.spec.font, 0, "Ubuntu Light");
-                                ui.selectable_value(&mut editor.spec.font, 1, "Hack");
-                            });
+                        self.text_fonts.show(ui, &mut editor.spec.font);
                         ui.add(
                             egui::DragValue::new(&mut editor.spec.size)
                                 .range(6.0..=256.0)
@@ -420,7 +457,15 @@ impl PaletteApp {
                                 egui::Slider::new(&mut editor.spec.opacity, 0.0..=1.0)
                                     .text("Opacity"),
                             );
-                            ui.label("Text is committed as a separate raster layer.");
+                            ui.label("Rotation");
+                            ui.add(
+                                egui::DragValue::new(&mut editor.angle)
+                                    .range(-180.0..=180.0)
+                                    .suffix("°"),
+                            );
+                            ui.label(
+                                "Only text visible inside the box is committed as a raster layer.",
+                            );
                         });
                         ui.separator();
                         apply = ui
@@ -437,181 +482,12 @@ impl PaletteApp {
                 });
             });
         editor.toolbar = toolbar.response.rect;
-        let family = egui::FontFamily::Name(
-            if editor.spec.font == 0 {
-                "Palette Sans"
-            } else {
-                "Palette Mono"
-            }
-            .into(),
-        );
-        let text_color = Color32::from_rgba_unmultiplied(
-            editor.spec.color[0],
-            editor.spec.color[1],
-            editor.spec.color[2],
-            (f32::from(editor.spec.color[3]) * editor.spec.opacity).round() as u8,
-        );
-        egui::Area::new(egui::Id::unique("inline-text-box"))
-            .fixed_pos(rect.min)
-            .order(egui::Order::Middle)
-            .movable(false)
-            .constrain(false)
-            .show(ctx, |ui| {
-                ui.set_clip_rect(rect.intersect(self.canvas_rect).intersect(canvas));
-                ui.spacing_mut().extra_text_line_spacing =
-                    (editor.spec.line_height - 1.0) * editor.spec.size * zoom;
-                if let Some(color) = editor.spec.background {
-                    ui.painter().rect_filled(
-                        rect,
-                        0,
-                        Color32::from_rgba_unmultiplied(
-                            color[0],
-                            color[1],
-                            color[2],
-                            (f32::from(color[3]) * editor.spec.opacity).round() as u8,
-                        ),
-                    );
-                }
-                let response = ui.add_sized(
-                    rect.size(),
-                    egui::TextEdit::multiline(&mut editor.spec.text)
-                        .id_salt((editor.session, "text-content"))
-                        .char_limit(MAX_TEXT_CHARACTERS)
-                        .font(egui::FontId::new(editor.spec.size * zoom, family))
-                        .text_color(text_color)
-                        .frame(egui::Frame::NONE)
-                        .margin(0.0)
-                        .desired_width(rect.width())
-                        .align(match editor.spec.alignment {
-                            Alignment::Left => egui::Align2::LEFT_TOP,
-                            Alignment::Center => egui::Align2::CENTER_TOP,
-                            Alignment::Right => egui::Align2::RIGHT_TOP,
-                        }),
-                );
-                if editor.focus {
-                    response.request_focus();
-                    editor.focus = false;
-                }
-            });
+        let family = self.text_fonts.family(editor.spec.font, ctx);
+        self.text_box_ui(ctx, &mut editor, family, popup_open || modal_open);
         let painter = ctx.layer_painter(egui::LayerId::new(
             egui::Order::Middle,
             egui::Id::unique("text-boundary"),
         ));
-        let outline = rect.intersect(self.canvas_rect);
-        painter.rect_stroke(
-            outline,
-            0,
-            egui::Stroke::new(1.0, Color32::from_gray(180)),
-            egui::StrokeKind::Outside,
-        );
-        let handles = [
-            (rect.left_top(), [-1, -1]),
-            (rect.center_top(), [0, -1]),
-            (rect.right_top(), [1, -1]),
-            (rect.left_center(), [-1, 0]),
-            (rect.right_center(), [1, 0]),
-            (rect.left_bottom(), [-1, 1]),
-            (rect.center_bottom(), [0, 1]),
-            (rect.right_bottom(), [1, 1]),
-        ];
-        for (index, (point, edges)) in handles.into_iter().enumerate() {
-            if !self.canvas_rect.contains(point) {
-                continue;
-            }
-            let handle = egui::Rect::from_center_size(point, vec2(5.0, 5.0));
-            painter.rect_filled(handle, 0, Color32::WHITE);
-            painter.rect_stroke(
-                handle,
-                0,
-                egui::Stroke::new(0.75, Color32::BLACK),
-                egui::StrokeKind::Inside,
-            );
-            egui::Area::new(egui::Id::unique(("text-handle", index)))
-                .fixed_pos(point - vec2(5.0, 5.0))
-                .order(egui::Order::Middle)
-                .movable(false)
-                .show(ctx, |ui| {
-                    let cursor = if edges[0] == 0 {
-                        egui::CursorIcon::ResizeVertical
-                    } else if edges[1] == 0 {
-                        egui::CursorIcon::ResizeHorizontal
-                    } else if edges[0] == edges[1] {
-                        egui::CursorIcon::ResizeNwSe
-                    } else {
-                        egui::CursorIcon::ResizeNeSw
-                    };
-                    let response = ui
-                        .allocate_response(vec2(10.0, 10.0), Sense::drag())
-                        .on_hover_cursor(cursor);
-                    if response.drag_started() {
-                        editor.box_drag = Some(TextBoxDrag {
-                            edges,
-                            from: ctx.input(|i| i.pointer.press_origin()).unwrap_or(point),
-                            origin: editor.origin,
-                            size: [editor.spec.width, editor.spec.height],
-                            moving: false,
-                        });
-                    }
-                });
-        }
-        egui::Area::new(egui::Id::unique("text-move-edge"))
-            .fixed_pos(rect.left_top() - vec2(0.0, 4.0))
-            .order(egui::Order::Middle)
-            .movable(false)
-            .show(ctx, |ui| {
-                let response = ui
-                    .allocate_response(vec2(rect.width(), 4.0), Sense::drag())
-                    .on_hover_cursor(egui::CursorIcon::Move);
-                if response.drag_started() {
-                    editor.box_drag = Some(TextBoxDrag {
-                        edges: [0, 0],
-                        from: ctx
-                            .input(|i| i.pointer.press_origin())
-                            .unwrap_or(rect.left_top()),
-                        origin: editor.origin,
-                        size: [editor.spec.width, editor.spec.height],
-                        moving: true,
-                    });
-                }
-            });
-        if let Some(drag) = editor.box_drag {
-            if let Some(point) = ctx.input(|i| i.pointer.interact_pos()) {
-                let delta = (point - drag.from) / zoom;
-                let mut origin = drag.origin;
-                let mut size = drag.size;
-                let limits = [
-                    self.current().document.width,
-                    self.current().document.height,
-                ];
-                for axis in 0..2 {
-                    let change = if axis == 0 {
-                        delta.x.round() as i32
-                    } else {
-                        delta.y.round() as i32
-                    };
-                    if drag.moving {
-                        origin[axis] = (drag.origin[axis] + change)
-                            .clamp(0, (limits[axis] - size[axis]) as i32);
-                    } else if drag.edges[axis] < 0 {
-                        let end = drag.origin[axis] + drag.size[axis] as i32;
-                        origin[axis] = (drag.origin[axis] + change)
-                            .clamp((end - MAX_TEXT_DIMENSION as i32).max(0), end - 1);
-                        size[axis] = (end - origin[axis]) as u32;
-                    } else if drag.edges[axis] > 0 {
-                        size[axis] = (drag.size[axis] as i32 + change).clamp(
-                            1,
-                            (limits[axis] - origin[axis] as u32).min(MAX_TEXT_DIMENSION) as i32,
-                        ) as u32;
-                    }
-                }
-                editor.origin = origin;
-                editor.spec.width = size[0];
-                editor.spec.height = size[1];
-            }
-            if !ctx.input(|i| i.pointer.primary_down()) {
-                editor.box_drag = None;
-            }
-        }
         if !popup_open && !modal_open {
             cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
             editor.commit_requested |=
@@ -667,6 +543,7 @@ mod tests {
             results
                 .send(TextResult {
                     job,
+                    origin: [10, 10],
                     result: Ok((pixels.clone(), texture_image(&pixels, 16384))),
                 })
                 .unwrap();

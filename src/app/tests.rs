@@ -7,6 +7,7 @@ mod move_tool;
 mod polygon_selection;
 mod ribbon;
 mod tabs;
+mod text_tool;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, pos2};
 
 fn test_app(ctx: &Context) -> PaletteApp {

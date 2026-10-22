@@ -20,6 +20,7 @@ fn spec() -> TextSpec {
         font: 0,
         size: 32.0,
         line_height: 1.2,
+        scroll_y: 0.,
         alignment: Alignment::Left,
         width: 200,
         height: 100,

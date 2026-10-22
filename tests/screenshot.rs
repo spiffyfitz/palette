@@ -13,6 +13,14 @@ fn main_window_matches_reviewed_baseline() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and the reviewed installed-font baselines"]
+fn text_fonts_rotation_and_overflow_match_reviewed_baselines() {
+    for scene in ["text", "text-fonts", "text-overflow", "text-rotated"] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and reviewed brush material baselines"]
 fn brush_materials_match_reviewed_baselines() {
     // A focused check for material-only changes; the full UI suite also keeps
