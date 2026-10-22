@@ -41,7 +41,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 
 - [x] Continuous round brush, pencil, soft eraser, picker and magnifier.
 - [x] Nine brush families with actual rendered menu samples: Brush, Calligraphy brush/pen, Airbrush, Oil, Crayon, Marker, Natural pencil and Watercolor. Live spray buildup, speed-sensitive calligraphy, grain rubbing, local pigment pickup and force-aware input. [Validation](docs/BRUSH_STYLES_VALIDATION.md).
-- [x] Crayon with larger wax patches, paper cracks and soft tonal transitions, plus fine Natural Pencil grain at fixed source-pixel scale, with cached paper relief and tone buildup. [Validation](docs/PAPER_GRAIN_REFINEMENT.md).
+- [x] Crayon with sparse, disconnected paper gaps in mottled wax, a fresh pattern per stroke, distance-driven wax refresh, same-gesture opacity buildup, blended tones and fading sides; Natural Pencil retains its approved fixed fine grain. [Validation](docs/PAPER_GRAIN_REFINEMENT.md).
 - [x] Lines, rectangles and ellipses with preview and outline/fill.
 - [x] Command undo/redo for source pixels and layer/filter/property mutations.
 - [x] Normal, Multiply and Screen with reference alpha tests.
