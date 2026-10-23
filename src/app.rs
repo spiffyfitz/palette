@@ -1,6 +1,7 @@
 mod advanced;
 pub(crate) mod appearance;
 mod capture;
+pub(crate) mod clipboard;
 mod close;
 pub(crate) mod editing;
 mod feather;
@@ -180,6 +181,7 @@ pub struct PaletteApp {
     gpu_report: Option<PathBuf>,
     capture: capture::CaptureState,
     clipboard: Option<arboard::Clipboard>,
+    copy_job: Option<clipboard::CopyJob>,
     edit_tx: mpsc::Sender<editing::EditResult>,
     edit_rx: mpsc::Receiver<editing::EditResult>,
     pub edit_pending: bool,
@@ -343,6 +345,7 @@ impl PaletteApp {
             gpu_report: None,
             capture: Default::default(),
             clipboard: None,
+            copy_job: None,
             text_editor: None,
             text_fonts: Default::default(),
             text_tx,
@@ -1119,6 +1122,7 @@ impl PaletteApp {
         let ctx = ui.ctx().clone();
         self.poll_workers(&ctx);
         self.poll_edits();
+        self.poll_copy(&ctx);
         self.poll_feather();
         self.poll_selection_brush(&ctx);
         self.poll_processing(&ctx);

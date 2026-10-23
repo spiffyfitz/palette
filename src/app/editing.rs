@@ -5,7 +5,6 @@ use palette_core::{
     editing,
     transform::{self, Orthogonal, Resample},
 };
-use std::borrow::Cow;
 
 pub(super) struct EditResult {
     id: u64,
@@ -87,6 +86,11 @@ impl PaletteApp {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
+        if let Some(target) =
+            super::clipboard::copy_shortcut(&events, ctx.input(|input| input.modifiers))
+        {
+            self.copy_pixels(target, ctx);
+        }
         if self.tool == Tool::SelectBrush && self.current().selection_brush_draft.is_none() {
             let change = ctx.input(|i| {
                 i.key_pressed(Key::CloseBracket) as i32 - i.key_pressed(Key::OpenBracket) as i32
@@ -98,9 +102,11 @@ impl PaletteApp {
         }
         for event in events {
             match event {
-                egui::Event::Copy => self.copy_selection(false, ctx),
                 egui::Event::Cut => self.copy_selection(true, ctx),
                 egui::Event::PasteImage(image) => {
+                    if self.queue_paste_after_copy() {
+                        continue;
+                    }
                     let bytes: Vec<u8> = image
                         .pixels
                         .iter()
@@ -120,13 +126,12 @@ impl PaletteApp {
                 _ => {}
             }
         }
-        let (command, shift, a, d, c, x, v, delete, escape, arrows) = ctx.input(|i| {
+        let (command, shift, a, d, x, v, delete, escape, arrows) = ctx.input(|i| {
             (
                 i.modifiers.command,
                 i.modifiers.shift,
                 i.key_pressed(Key::A),
                 i.key_pressed(Key::D),
-                i.key_pressed(Key::C),
                 i.key_pressed(Key::X),
                 i.key_pressed(Key::V),
                 i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace),
@@ -142,9 +147,6 @@ impl PaletteApp {
         }
         if command && d {
             self.deselect();
-        }
-        if command && c {
-            self.copy_selection(false, ctx);
         }
         if command && x {
             self.copy_selection(true, ctx);
@@ -480,7 +482,7 @@ impl PaletteApp {
         });
     }
 
-    fn clipboard(&mut self) -> Result<&mut arboard::Clipboard, String> {
+    pub(super) fn clipboard(&mut self) -> Result<&mut arboard::Clipboard, String> {
         if self.clipboard.is_none() {
             self.clipboard = Some(
                 arboard::Clipboard::new()
@@ -496,13 +498,7 @@ impl PaletteApp {
         }
         let result = (|| {
             let raster = editing::copy(&self.current().document)?;
-            self.clipboard()?
-                .set_image(arboard::ImageData {
-                    width: raster.width() as usize,
-                    height: raster.height() as usize,
-                    bytes: Cow::Owned(raster.rgba()),
-                })
-                .map_err(|error| format!("Could not copy image: {error}"))
+            self.write_clipboard(&raster)
         })();
         match result {
             Ok(()) => {
@@ -516,6 +512,9 @@ impl PaletteApp {
         }
     }
     pub fn paste_clipboard(&mut self) {
+        if self.queue_paste_after_copy() {
+            return;
+        }
         let result = (|| {
             let image = self.clipboard()?.get_image().map_err(|error| {
                 format!("The clipboard does not contain a readable image: {error}")

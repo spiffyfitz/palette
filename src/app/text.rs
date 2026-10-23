@@ -38,6 +38,7 @@ pub(super) enum AfterText {
     Brush(palette_core::brush::Style),
     Tab(u64),
     Edit(editing::Edit),
+    Copy(super::clipboard::CopyTarget),
     Properties,
     ResizeDialog,
     RotateDialog,
@@ -337,6 +338,7 @@ impl PaletteApp {
                 }
             }
             AfterText::Edit(edit) => self.edit(edit, ctx),
+            AfterText::Copy(target) => self.copy_pixels(target, ctx),
             AfterText::Properties => self.show_canvas_properties(),
             AfterText::ResizeDialog => self.show_resize(),
             AfterText::RotateDialog => self.show_rotation(),

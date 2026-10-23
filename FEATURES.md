@@ -56,7 +56,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 ## Phase 2
 
 - [x] Contiguous fill with tolerance and opacity; source transparency/selection/lock handling.
-- [x] System clipboard image copy/cut/paste and native image-paste events.
+- [x] Edit > Copy Layer (Ctrl/Command+C), Copy Image (Ctrl/Command+Shift+C), selection-aware Cut, image paste and native image-paste events. Copy crops to selection bounds and retains arbitrary coverage/feathering, or copies the full canvas area without a selection. The selection right-click menu shares copy/cut/paste, crop, selection commands and selection-aware rotate/flip paths. Snapshot evaluation runs off-thread; text fields retain normal text-copy shortcuts.
 - [x] Rectangular selection, all/deselect/invert, clear, selected painting/shapes and move/nudge.
 - [x] Crop, canvas bounds resize, nearest/bilinear resampling, rotate and flip.
 - [x] Transforms retain layers, masks and live filter/effect properties.

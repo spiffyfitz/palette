@@ -1,5 +1,6 @@
 mod brush_preview;
 mod construction;
+mod context_menu;
 pub(crate) mod navigation;
 mod overlays;
 mod polygon_selection;
@@ -143,6 +144,8 @@ impl PaletteApp {
         origin.y = (origin.y * dpi).round() / dpi;
         let canvas = Rect::from_min_size(origin, size);
         self.image_rect = canvas;
+        let menu_blocked = self.selection_context_menu(ui, &response, canvas, pointer);
+        let hovered = hovered && !menu_blocked;
         let painter = ui.painter().with_clip_rect(view);
         painter.rect_filled(
             canvas.expand(3.0).translate(vec2(2.0, 2.0)),
@@ -233,7 +236,8 @@ impl PaletteApp {
                 space || middle,
             ],
         );
-        let drawing_allowed = self.close_pending_none()
+        let drawing_allowed = !menu_blocked
+            && self.close_pending_none()
             && self.current().feather_preview.is_none()
             && self.current().selection_brush_draft.is_none()
             && (!self.current().document.active().locked

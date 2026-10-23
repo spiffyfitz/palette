@@ -282,6 +282,51 @@ pub fn clear(document: &mut Document) -> bool {
     changed
 }
 
+/// Copy the visible composite inside the selection bounds, or the whole canvas
+/// without a selection. Spatial processing keeps its full neighborhoods before
+/// cropping; coverage only changes final alpha, never straight RGB edge colors.
+pub fn copy_image(document: &Document) -> Result<Raster, String> {
+    document.validate()?;
+    let rect = copy_bounds(document)?;
+    let mut output = crate::composite::render_region(document, rect)?;
+    if let Some(mask) = &document.selection {
+        for y in 0..rect.height {
+            for x in 0..rect.width {
+                let mut pixel = output.get(x, y);
+                pixel[3] = (f32::from(pixel[3]) * mask.at(x + rect.x, y + rect.y)).round() as u8;
+                output.set(x, y, if pixel[3] == 0 { [0; 4] } else { pixel });
+            }
+        }
+    }
+    Ok(output)
+}
+
+/// Copy the active layer's evaluated selection, or the full layer on a
+/// canvas-sized transparent backing when no selection exists. Hidden/locked
+/// layers can be copied. A floating shape stays isolated from underlying pixels.
+/// Use `copy_image` to include blending against the surrounding visible layers.
+pub fn copy_layer(document: &Document) -> Result<Raster, String> {
+    document.validate()?;
+    if document.selection.is_none() && document.floating_shape.is_some() {
+        let mut full = document.clone();
+        full.floating_shape = None;
+        return copy(&full);
+    }
+    copy(document)
+}
+
+fn copy_bounds(document: &Document) -> Result<PixelRect, String> {
+    match &document.selection {
+        Some(mask) => bounds(mask).ok_or_else(|| "The selection is empty".into()),
+        None => Ok(PixelRect {
+            x: 0,
+            y: 0,
+            width: document.width,
+            height: document.height,
+        }),
+    }
+}
+
 /// Copy the active layer's evaluated appearance, including its selection coverage.
 /// Filters/masks stay live on the source; the system clipboard receives flat RGBA.
 pub fn copy(document: &Document) -> Result<Raster, String> {
@@ -291,15 +336,7 @@ pub fn copy(document: &Document) -> Result<Raster, String> {
         isolated.floating_shape = None;
         return copy(&isolated);
     }
-    let rect = match &document.selection {
-        Some(mask) => bounds(mask).ok_or("The selection is empty")?,
-        None => PixelRect {
-            x: 0,
-            y: 0,
-            width: document.width,
-            height: document.height,
-        },
-    };
+    let rect = copy_bounds(document)?;
     let mut output = Raster::new(rect.width, rect.height, [0; 4])?;
     let layer = document.active();
     let prepared = crate::composite::Renderer::default().layer(document, layer.id, &|| false)?;

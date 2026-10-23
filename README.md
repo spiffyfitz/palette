@@ -60,7 +60,7 @@ New documents use a **1280 x 720** white canvas at **100% zoom**. Image Properti
 - Selection tools show a compact toolbar above the canvas with Replace/Add/Subtract/Intersect icons, inversion, and a feather slider plus numeric field (0–128 image pixels, displayed to one decimal below 5 px). Wand adds tolerance (0–100) and sampling options. Both sliders use a mild shifted-log curve (midpoint about 23–27 units) for finer low-value adjustment; exact fields remain available. The toolbar uses the text strip’s height and fits its contents. Feather previews an existing selection live while dragging and commits one undo step on release; Escape cancels. It also sets the radius applied to new regions before combining. Freeform selection closes on release, has a live ants preview and supports Escape cancellation and undo. Polygonal selection places vertices by clicking; Enter, double-click or clicking the starting point finishes, Backspace removes a vertex and Escape cancels. It shares feather/combine controls and produces one undoable coverage selection. [Validation](docs/POLYGON_SELECTION_VALIDATION.md).
 - Selection > Feather selection previews grayscale coverage relative to the retained original; Apply commits and Cancel discards the draft. Radius zero restores the original. Original contours survive undo, transforms and native saving. Higher Wand tolerance includes more colors; active-layer versus all-visible sampling remains selectable. Layer properties can add a reveal-all mask or create one from selection, then enable/disable, invert, feather or delete it. Source pixels remain unchanged; mask operations support undo and native saving. See [Phase 4 validation](docs/PHASE4_VALIDATION.md).
 - Contiguous fill with adjustable tolerance (0–255) and opacity. Right mouse uses the background color.
-- System image clipboard copy/cut/paste; paste creates a new layer and expands the canvas if needed. Copy samples the active layer's evaluated appearance.
+- System image clipboard: Copy Layer (Ctrl/Command+C) copies the active layer; Copy Image (Ctrl/Command+Shift+C) copies the visible composite. With a selection, both crop to its bounding box and preserve freeform/polygon coverage and feathering; without one they copy the full canvas area. The selection right-click menu offers Copy and Copy visible layers using those same shortcuts. Both retain live processing in the copied appearance. Cut remains selection-aware. Paste creates a new layer and expands the canvas if needed.
 - Crop canvas to selection, horizontal/vertical flip, exact quarter-turns and custom-angle rotation. A selection limits flips/rotations to active-layer selected source pixels; without a selection they transform the whole document. Custom rotation uses alpha-safe bilinear sampling and an OK/Cancel dialog. Resize offers nearest or bilinear sampling with optional aspect lock; layers and live processing stacks are retained.
 - Consistent stroke opacity across pointer events/retracing, tile-sharing-aware undo accounting, and background fill/geometry jobs with stale-result protection.
 
@@ -76,7 +76,8 @@ Save/Save As preserve editable state in `.palette`. Export writes a composite im
 | Save As / Close tab | Ctrl+Shift+S / Ctrl+W |
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y |
 | Next / Previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
-| Copy / Cut / Paste image | Ctrl+C / Ctrl+X / Ctrl+V |
+| Copy Layer / Copy Image (visible layers) | Ctrl+C / Ctrl+Shift+C |
+| Cut / Paste image | Ctrl+X / Ctrl+V |
 | Select all / Deselect | Ctrl+A / Ctrl+D or Escape |
 | Clear selected pixels | Delete / Backspace |
 | Move selected pixels | Arrows; Shift+arrows for ten pixels |
@@ -94,7 +95,7 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 720x520`. The screenshot suite covers 200 full-size Windows states plus eleven responsive-ribbon states at smaller widths. See [video behavior](docs/UI_BEHAVIOR_REFERENCE.md) and [responsive ribbon validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 720x520`. The screenshot suite covers 202 full-size Windows states plus eleven responsive-ribbon states at smaller widths. See [video behavior](docs/UI_BEHAVIOR_REFERENCE.md) and [responsive ribbon validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
 
 See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE5_VALIDATION.md).
 

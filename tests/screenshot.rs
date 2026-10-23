@@ -13,6 +13,16 @@ fn main_window_matches_reviewed_baseline() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed clipboard menu baseline"]
+fn clipboard_menu_matches_reviewed_baseline() {
+    compare_scene(Some("edit-menu"), "ui-edit-menu-windows.png");
+    compare_scene(
+        Some("selection-context"),
+        "ui-selection-context-windows.png",
+    );
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and the reviewed installed-font baselines"]
 fn text_fonts_rotation_and_overflow_match_reviewed_baselines() {
     for scene in [

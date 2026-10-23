@@ -85,7 +85,7 @@ impl PaletteApp {
                     }
                 });
                 self.capture_popup("file-menu", &file.response);
-                ui.menu_button("Edit", |ui| {
+                let edit = ui.menu_button("Edit", |ui| {
                     let undo = self
                         .current()
                         .history
@@ -133,10 +133,7 @@ impl PaletteApp {
                         self.copy_selection(true, &ctx);
                         ui.close();
                     }
-                    if menu_item(ui, "Copy", "Ctrl+C", None, true).clicked() {
-                        self.copy_selection(false, &ctx);
-                        ui.close();
-                    }
+                    self.copy_menu_items(ui, false);
                     if menu_item(ui, "Paste as layer", "Ctrl+V", None, !self.edit_pending).clicked()
                     {
                         self.paste_clipboard();
@@ -168,6 +165,7 @@ impl PaletteApp {
                         ui.close();
                     }
                 });
+                self.capture_popup("edit-menu", &edit.response);
                 ui.menu_button("View", |ui| {
                     ui.set_min_width(230.0);
                     ui.menu_button("Zoom", |ui| {
@@ -317,7 +315,7 @@ impl PaletteApp {
                 {
                     self.redo_current();
                 }
-                if self.busy || self.edit_pending {
+                if self.busy || self.edit_pending || self.copy_job.is_some() {
                     ui.spinner();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -49,6 +49,10 @@ pub enum Icon {
     Save,
     Undo,
     Redo,
+    Copy,
+    Cut,
+    Paste,
+    Delete,
     Fit,
     Hardness,
     Opacity,
@@ -128,6 +132,30 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
         p.rect_stroke(Rect::from_two_pos(a, b), 0, s, StrokeKind::Inside);
     };
     match icon {
+        Icon::Copy => {
+            box_at(at(0.28, 0.08), at(0.87, 0.72));
+            line([0.17, 0.28], [0.08, 0.28]);
+            line([0.08, 0.28], [0.08, 0.92]);
+            line([0.08, 0.92], [0.67, 0.92]);
+            line([0.67, 0.92], [0.67, 0.82]);
+        }
+        Icon::Cut => {
+            p.circle_stroke(at(0.24, 0.78), rect.width() * 0.16, s);
+            p.circle_stroke(at(0.76, 0.78), rect.width() * 0.16, s);
+            line([0.33, 0.64], [0.84, 0.04]);
+            line([0.67, 0.64], [0.16, 0.04]);
+        }
+        Icon::Paste => {
+            box_at(at(0.15, 0.18), at(0.85, 0.95));
+            p.rect_filled(Rect::from_min_max(at(0.33, 0.05), at(0.67, 0.3)), 1, color);
+        }
+        Icon::Delete => {
+            line([0.06, 0.22], [0.94, 0.22]);
+            box_at(at(0.22, 0.25), at(0.78, 0.94));
+            box_at(at(0.35, 0.06), at(0.65, 0.22));
+            line([0.41, 0.4], [0.41, 0.78]);
+            line([0.59, 0.4], [0.59, 0.78]);
+        }
         Icon::Image => {
             box_at(at(0.08, 0.14), at(0.9, 0.86));
             p.circle_filled(at(0.3, 0.35), rect.width() * 0.07, color);

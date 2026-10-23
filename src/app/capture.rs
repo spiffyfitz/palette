@@ -686,6 +686,28 @@ impl PaletteApp {
                     .expect("capture selection");
                 }
             }
+            Some("selection-context") => {
+                self.current_mut().document =
+                    Document::from_raster(Raster::new(819, 594, [90, 140, 190, 255]).unwrap());
+                let doc = &mut self.current_mut().document;
+                for y in 160..430 {
+                    for x in 210..660 {
+                        doc.active_mut()
+                            .source
+                            .set(x, y, [210, (100 + x / 10) as u8, 65, 255]);
+                    }
+                }
+                doc.selection = Some(
+                    palette_core::selection::freeform(
+                        819,
+                        594,
+                        &[[260., 190.], [620., 230.], [570., 430.], [300., 390.]],
+                    )
+                    .unwrap(),
+                );
+                self.tool = Tool::Select;
+                self.current_mut().zoom = 1.;
+            }
             Some("selection-options" | "wand-settings") => self.tool = Tool::Wand,
             Some("mask-layer") | Some("feather-selection") => {
                 self.current_mut().document = Document::new(819, 594).expect("capture canvas");
@@ -1129,6 +1151,10 @@ impl PaletteApp {
     }
     pub(super) fn capture_is_settled(&mut self, ctx: &Context) -> bool {
         if self.screenshot.is_none() {
+            return false;
+        }
+        if self.capture.scene.as_deref() == Some("selection-context") && self.capture.text_probe < 3
+        {
             return false;
         }
         if matches!(
