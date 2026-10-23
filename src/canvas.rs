@@ -6,6 +6,7 @@ mod overlays;
 mod polygon_selection;
 mod selection;
 mod selection_brush;
+pub(crate) mod zoom;
 use crate::{
     app::{ACCENT, PaletteApp},
     icons::{self, Icon},
@@ -53,8 +54,8 @@ impl PaletteApp {
             self.current().document.width as f32,
             self.current().document.height as f32,
         ) * self.current().zoom;
-        let viewport = navigation::layout(workspace, image_size, self.current().fit);
-        let view = viewport.view;
+        let mut viewport = navigation::layout(workspace, image_size, self.current().fit);
+        let mut view = viewport.view;
         self.canvas_rect = view;
         self.processing_toolbar_window(ui.ctx());
         self.selection_toolbar(ui.ctx());
@@ -64,6 +65,8 @@ impl PaletteApp {
             Sense::click_and_drag(),
         );
         if self.current().fit {
+            self.current_mut().zoom_animation.cancel();
+            self.current_mut().pan = Vec2::ZERO;
             let size = vec2(
                 self.current().document.width as f32,
                 self.current().document.height as f32,
@@ -111,25 +114,74 @@ impl PaletteApp {
                 ctx.memory_mut(|m| m.surrender_focus(navigation::id(self.current().id, axis)));
             }
         }
+        let options = ctx.memory(|memory| memory.options.input_options);
+        let (factor, anchor) = ctx.input(|input| zoom::gesture(input, view, &options));
         if hovered {
-            if ctrl && scroll.y != 0.0 {
-                let session = self.current_mut();
-                let old_zoom = session.zoom;
-                let new_zoom = (old_zoom * (scroll.y * 0.005).exp()).clamp(0.05, 32.0);
-                // Keep the image point under the cursor fixed while zoom changes.
-                if let Some(point) = pointer {
-                    session.pan = (point - view.center())
-                        - ((point - view.center()) - session.pan) * (new_zoom / old_zoom);
-                }
-                session.zoom = new_zoom;
-                session.fit = false;
-            } else if !ctrl && scroll != Vec2::ZERO {
+            if !ctrl && factor == 1. && scroll != Vec2::ZERO {
+                self.current_mut().zoom_animation.cancel();
                 self.current_mut().pan += scroll;
             }
             if middle || (space && down) {
                 self.current_mut().pan += delta;
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
             }
+        }
+        let blocked = egui::Popup::is_any_open(&ctx)
+            || self.interface.popup_was_open
+            || ctx.memory(|m| m.top_modal_layer().is_some())
+            || ctx.input(|i| i.pointer.any_down());
+        let zoom_input = anchor
+            .filter(|point| {
+                !blocked
+                    && view.contains(*point)
+                    && !self.selection_toolbar_rect.contains(*point)
+                    && !self.processing_toolbar_rect.contains(*point)
+            })
+            .filter(|_| factor != 1.);
+        if blocked {
+            self.current_mut().zoom_animation.cancel();
+        }
+        let current_zoom = self.current().zoom;
+        let current_size = vec2(
+            self.current().document.width as f32,
+            self.current().document.height as f32,
+        ) * current_zoom;
+        let mut old_origin = view.center() - current_size * 0.5 + self.current().pan;
+        if !self.current().zoom_animation.is_active() {
+            let dpi = ctx.pixels_per_point();
+            old_origin = pos2(
+                (old_origin.x * dpi).round() / dpi,
+                (old_origin.y * dpi).round() / dpi,
+            );
+        }
+        let old_canvas = Rect::from_min_size(old_origin, current_size);
+        let input = zoom_input.map(|at| (factor, at, old_canvas));
+        let step = self.current_mut().zoom_animation.advance(
+            current_zoom,
+            input,
+            ctx.input(|i| i.stable_dt),
+        );
+        let mut zoom_animating = false;
+        if let Some(step) = step {
+            self.current_mut().zoom = step.zoom;
+            self.current_mut().fit = false;
+            let size = vec2(
+                self.current().document.width as f32,
+                self.current().document.height as f32,
+            ) * step.zoom;
+            viewport = navigation::layout(workspace, size, false);
+            view = viewport.view;
+            self.canvas_rect = view;
+            self.current_mut().pan = step.origin + size * 0.5 - view.center();
+            zoom_animating = step.animating;
+            if step.animating {
+                ctx.request_repaint();
+            }
+        }
+        if zoom_input.is_some() {
+            // In particular Ctrl+wheel on macOS isn't egui's default Cmd
+            // modifier. Don't let its scroll delta reach an inline text box.
+            ctx.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
         let zoom = self.current().zoom;
         let size = vec2(
@@ -140,8 +192,10 @@ impl PaletteApp {
         let mut origin = view.center() - size * 0.5 + self.current().pan;
         // Snap display origin to physical pixels; coordinates still use logical points.
         let dpi = ctx.pixels_per_point();
-        origin.x = (origin.x * dpi).round() / dpi;
-        origin.y = (origin.y * dpi).round() / dpi;
+        if !zoom_animating {
+            origin.x = (origin.x * dpi).round() / dpi;
+            origin.y = (origin.y * dpi).round() / dpi;
+        }
         let canvas = Rect::from_min_size(origin, size);
         self.image_rect = canvas;
         let menu_blocked = self.selection_context_menu(ui, &response, canvas, pointer);

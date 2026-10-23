@@ -30,6 +30,30 @@ impl PaletteApp {
             return;
         }
         match self.capture.scene.as_deref() {
+            Some("zoom-wheel" | "zoom-pinch") => {
+                let mut pixels = Raster::new(1280, 720, [255; 4]).unwrap();
+                for y in 120..600 {
+                    for x in 160..1120 {
+                        let line = (x - 160) % 80 < 2 || (y - 120) % 80 < 2;
+                        pixels.set(
+                            x,
+                            y,
+                            if line {
+                                [25, 70, 110, 255]
+                            } else {
+                                [
+                                    (70 + (x - 160) / 8) as u8,
+                                    (100 + (y - 120) / 4) as u8,
+                                    200,
+                                    255,
+                                ]
+                            },
+                        );
+                    }
+                }
+                self.current_mut().document = Document::from_raster(pixels);
+                self.current_mut().zoom = 0.75;
+            }
             Some("brush-styles") => self.prepare_brush_capture(),
             Some("brush-size-preview") => {
                 self.choose_brush(palette_core::brush::Style::Oil);
@@ -1151,6 +1175,13 @@ impl PaletteApp {
     }
     pub(super) fn capture_is_settled(&mut self, ctx: &Context) -> bool {
         if self.screenshot.is_none() {
+            return false;
+        }
+        if matches!(
+            self.capture.scene.as_deref(),
+            Some("zoom-wheel" | "zoom-pinch")
+        ) && (self.capture.text_probe < 2 || self.current().zoom_animation.is_active())
+        {
             return false;
         }
         if self.capture.scene.as_deref() == Some("selection-context") && self.capture.text_probe < 3

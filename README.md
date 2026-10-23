@@ -95,7 +95,7 @@ cargo build --workspace --locked
 cargo test --test screenshot -- --ignored --test-threads=1
 ```
 
-Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 720x520`. The screenshot suite covers 202 full-size Windows states plus eleven responsive-ribbon states at smaller widths. See [video behavior](docs/UI_BEHAVIOR_REFERENCE.md) and [responsive ribbon validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
+Capture the actual wgpu window with `palette --screenshot output.png`. Debug builds also accept `--screenshot-scene colors` and `--screenshot-size 720x520`. The screenshot suite covers 204 full-size Windows states plus eleven responsive-ribbon states at smaller widths. See [video behavior](docs/UI_BEHAVIOR_REFERENCE.md) and [responsive ribbon validation](docs/RESPONSIVE_RIBBON_VALIDATION.md).
 
 See [architecture](ARCHITECTURE.md), [feature checklist](FEATURES.md), [known limitations](KNOWN_LIMITATIONS.md), [file compatibility](docs/FILE_FORMATS.md), [dependency licenses](docs/DEPENDENCIES.md) and [current milestone validation](docs/PHASE5_VALIDATION.md).
 
@@ -118,3 +118,5 @@ Layer workflows now include ten live effect families, multi-selection with an un
 Extended effect controls, material/curve editors, shared lighting and v8 preservation are described in [layer-style settings validation](docs/LAYER_STYLE_SETTINGS_VALIDATION.md).
 
 Layer movement now uses persistent GPU layer textures and GPU composition, preserving filters, masks, effects, opacity and all 19 blend modes. Warmed eligible drags submit no CPU render jobs or layer-image uploads. CPU preparation runs when appearance inputs change; bounded regional CPU rendering remains the fallback. [GPU architecture, measurements and validation](docs/GPU_COMPOSITOR_VALIDATION.md).
+
+Canvas navigation: Ctrl+mousewheel smoothly zooms toward the cursor. On macOS, Command+mousewheel and native trackpad pinch use the same camera path (Control+wheel is also accepted). Plain wheel pans; Space+drag and middle-drag retain their behavior. Fit recenters the canvas and stops zoom easing. Numeric/preset zoom changes and the 100% slider snap remain immediate. See docs/SMOOTH_ZOOM_VALIDATION.md for validation and platform limits.

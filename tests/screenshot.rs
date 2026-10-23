@@ -13,6 +13,14 @@ fn main_window_matches_reviewed_baseline() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed canvas zoom baselines"]
+fn canvas_wheel_and_pinch_zoom_match_reviewed_baselines() {
+    for scene in ["zoom-wheel", "zoom-pinch"] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and reviewed clipboard menu baseline"]
 fn clipboard_menu_matches_reviewed_baseline() {
     compare_scene(Some("edit-menu"), "ui-edit-menu-windows.png");

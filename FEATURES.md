@@ -23,7 +23,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Functional native file dialogs, file drops, background image open/export.
 - [x] PNG/JPEG/BMP/GIF/TIFF/WebP codec round trips.
 - [x] Versioned `.palette` saving, atomic replacement, close prompts.
-- [x] Canvas, checkerboard, smooth wheel zoom, pan, 100% default, actual-size slider snapping and fit.
+- [x] Canvas, checkerboard, cursor-anchored smooth Ctrl/Command+wheel and native pinch zoom, per-tab easing, pan, 100% default, actual-size slider snapping and Fit.
 - [x] Reversible canvas corner resize and coordinate status.
 - [x] New/default canvas 1280 x 720, retaining 100% initial zoom.
 - [x] Vertical size/opacity/hardness controls and numerical adjustment.
@@ -109,7 +109,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Selection and mask feathering; background Apply/Cancel transaction, source preservation and native saving.
 - [x] Reveal-all or selection-derived layer masks, grayscale thumbnail, enable/disable, invert and delete.
 - [x] Original selection ants plus separate 40%-opacity feather-extent ants; inverted selection continues around visible canvas edges.
-- [x] Horizontal/vertical canvas scrollbars outside image hit testing and clear of the layers tray; bounded pan, keyboard controls and Fit handling.
+- [x] Horizontal/vertical canvas scrollbars outside image hit testing and clear of the layers tray; pan ranges retaining zoom-induced whitespace, keyboard controls and Fit handling.
 - [ ] Merge visible layers and confirmed flattening (selected-layer merge is implemented).
 - [x] Freeform/lasso selection with live closed ants, antialiased coverage, combine modes and undo.
 - [x] Canvas selection toolbar matching text-bar height; dynamic width, precise feather input and Wand tolerance.

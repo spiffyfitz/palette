@@ -253,6 +253,12 @@ impl PaletteApp {
     }
 
     fn with_context(ctx: &Context) -> Self {
+        // macOS reports Control separately from Command. Treat either as a
+        // zoom modifier so egui doesn't leave a Control-wheel pan tail behind.
+        ctx.memory_mut(|memory| {
+            memory.options.input_options.zoom_modifier =
+                egui::Modifiers::COMMAND | egui::Modifiers::CTRL
+        });
         ctx.set_theme(egui::Theme::Dark);
         let mut style = (*ctx.global_style()).clone();
         style.visuals = egui::Visuals::dark();

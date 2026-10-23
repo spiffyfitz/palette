@@ -28,6 +28,7 @@ pub struct Session {
     pub texture: Option<TextureHandle>,
     pub rendered: Option<Raster>,
     pub zoom: f32,
+    pub zoom_animation: crate::canvas::zoom::Zoom,
     pub pan: Vec2,
     pub fit: bool,
     /// Selection gestures belong to a tab, so switching documents cannot commit
@@ -76,6 +77,7 @@ impl Session {
             texture: None,
             rendered: None,
             zoom: 1.0,
+            zoom_animation: Default::default(),
             pan: Vec2::ZERO,
             fit: false,
             selection_drag: None,

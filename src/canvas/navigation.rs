@@ -52,15 +52,22 @@ pub(crate) fn has_focus(ctx: &egui::Context, session: u64) -> bool {
 
 impl PaletteApp {
     pub(super) fn canvas_scrollbars(&mut self, ui: &mut Ui, viewport: &Viewport, size: Vec2) {
+        if self.current().fit {
+            self.current_mut().pan = Vec2::ZERO;
+        }
         self.canvas_scrollbars = viewport.rails;
         for axis in 0..2 {
             let Some(track) = viewport.rails[axis] else {
-                self.current_mut().pan[axis] = 0.;
                 continue;
             };
             let length = track.size()[axis];
             let visible = viewport.view.size()[axis];
-            let limit = ((size[axis] - visible) * 0.5 + EDGE_MARGIN).max(0.);
+            // Cursor-anchored zoom can introduce whitespace at an image edge.
+            // Include that existing pan in the rail's range rather than
+            // clamping it away (which would move the image under the cursor).
+            let limit = ((size[axis] - visible) * 0.5 + EDGE_MARGIN)
+                .max(self.current().pan[axis].abs())
+                .max(0.);
             let pan = self.current().pan[axis].clamp(-limit, limit);
             self.current_mut().pan[axis] = pan;
             let thumb_length =
