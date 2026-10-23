@@ -4,7 +4,9 @@
 use super::*;
 mod box_ui;
 pub(super) mod fonts;
+mod formatting;
 mod geometry;
+mod rich;
 use palette_core::text::{
     self, Alignment, MAX_TEXT_CHARACTERS, MAX_TEXT_DIMENSION, TextEngine, TextSpec,
 };
@@ -75,6 +77,10 @@ pub(super) struct TextEditor {
     commit_requested: bool,
     toolbar: egui::Rect,
     box_drag: Option<TextBoxDrag>,
+    cursor: egui::text::CCursorRange,
+    undo: Vec<rich::Snapshot>,
+    redo: Vec<rich::Snapshot>,
+    font_catalog_ready: bool,
 }
 
 impl TextEditor {
@@ -92,24 +98,35 @@ pub(super) fn worker() -> (mpsc::SyncSender<TextRequest>, mpsc::Receiver<TextRes
     let (tx, requests) = mpsc::sync_channel::<TextRequest>(1);
     let (results, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let mut engines = std::collections::VecDeque::new();
         while let Ok(request) = requests.recv() {
             let mut origin = request.origin;
             let result = (|| {
-                let id = request.spec.font;
-                let entry = if let Some(index) = engines.iter().position(|(key, _)| *key == id) {
-                    engines.remove(index).unwrap()
-                } else {
-                    let data = fonts::Library::shared().load(id)?;
-                    (id, TextEngine::from_face(data.bytes(), data.index)?)
-                };
-                engines.push_back(entry);
-                while engines.len() > 2 {
-                    engines.pop_front();
+                let library = fonts::Library::shared();
+                let mut runs = request.spec.runs();
+                let mut ids = Vec::new();
+                let mut engines = Vec::new();
+                for run in &mut runs {
+                    let resolved =
+                        library.resolve(request.spec.font, run.style.bold, run.style.italic);
+                    let index = if let Some(index) = ids.iter().position(|id| *id == resolved.id) {
+                        index
+                    } else {
+                        ids.push(resolved.id);
+                        engines.push(library.engine(resolved.id)?);
+                        ids.len() - 1
+                    };
+                    run.font = index;
+                    run.style.bold = resolved.bold;
+                    run.style.italic = resolved.italic;
                 }
+                // Empty drafts still need a valid metrics face.
+                if engines.is_empty() {
+                    engines.push(library.engine(request.spec.font)?);
+                }
+                let engine = TextEngine::combine(&engines);
                 let mut spec = request.spec.clone();
                 spec.font = 0;
-                let raw = engines.back().unwrap().1.render(&spec)?;
+                let raw = engine.render_runs(&spec, &runs)?;
                 let (mut pixels, offset) =
                     palette_core::transform::rotate_raster(&raw, origin, request.angle)?;
                 origin = offset;
@@ -147,10 +164,12 @@ impl PaletteApp {
             session: self.current().id,
             generation: self.current().generation,
             spec: TextSpec {
+                character_styles: Vec::new(),
                 text: String::new(),
                 font: 0,
                 size: 32.0,
                 line_height: 1.2,
+                style: Default::default(),
                 scroll_y: 0.,
                 alignment: Alignment::Left,
                 width: bounds.width.min(MAX_TEXT_DIMENSION),
@@ -176,6 +195,10 @@ impl PaletteApp {
             commit_requested: false,
             toolbar: egui::Rect::NOTHING,
             box_drag: None,
+            cursor: Default::default(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            font_catalog_ready: false,
         });
     }
 
@@ -384,6 +407,12 @@ impl PaletteApp {
         let popup_open = self.interface.popup_was_open || egui::Popup::is_any_open(ctx);
         let modal_open =
             self.interface.color_editor.is_some() || self.interface.canvas_properties.is_some();
+        rich::normalize(&mut editor.spec);
+        let before = rich::Snapshot::of(&editor);
+        let history_action = !popup_open && !modal_open && rich::history(ctx, &mut editor);
+        if !popup_open && !modal_open {
+            formatting::shortcuts(ctx, &mut editor);
+        }
         let outside = ctx.input(|i| {
             i.pointer.primary_pressed()
                 && i.pointer.interact_pos().is_some_and(|point| {
@@ -417,7 +446,17 @@ impl PaletteApp {
                 crate::interface::context_toolbar_frame(ui.style()).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.set_min_height(crate::interface::CONTEXT_CONTROL_HEIGHT);
+                        let before = editor.spec.font;
                         self.text_fonts.show(ui, &mut editor.spec.font);
+                        if before != editor.spec.font {
+                            let (bold, italic) = fonts::Library::shared().traits(editor.spec.font);
+                            editor.spec.style.bold = bold;
+                            editor.spec.style.italic = italic;
+                            for style in &mut editor.spec.character_styles {
+                                style.bold = bold;
+                                style.italic = italic;
+                            }
+                        }
                         ui.add(
                             egui::DragValue::new(&mut editor.spec.size)
                                 .range(6.0..=256.0)
@@ -425,20 +464,31 @@ impl PaletteApp {
                         )
                         .on_hover_text("Font size in image pixels");
                         ui.separator();
-                        for label in ["B", "I", "U", "S"] {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(label).min_size(vec2(26.0, 28.0)),
-                            )
-                            .on_hover_text("This text style is not implemented yet");
+                        if formatting::buttons(ui, &mut editor) {
+                            editor.focus = true;
                         }
                         ui.separator();
                         for (label, alignment) in [
-                            ("Left", Alignment::Left),
-                            ("Center", Alignment::Center),
-                            ("Right", Alignment::Right),
+                            ("Align left", Alignment::Left),
+                            ("Align center", Alignment::Center),
+                            ("Align right", Alignment::Right),
                         ] {
-                            ui.selectable_value(&mut editor.spec.alignment, alignment, label);
+                            let response = icons::button(
+                                ui,
+                                Icon::TextAlign(alignment),
+                                label,
+                                editor.spec.alignment == alignment,
+                                true,
+                                vec2(30., 28.),
+                            );
+                            ui.interact(
+                                response.rect,
+                                egui::Id::unique(("text-alignment", alignment as u8)),
+                                Sense::hover(),
+                            );
+                            if response.clicked() {
+                                editor.spec.alignment = alignment;
+                            }
                         }
                         ui.separator();
                         let mut opaque = editor.spec.background.is_some();
@@ -482,8 +532,17 @@ impl PaletteApp {
                 });
             });
         editor.toolbar = toolbar.response.rect;
-        let family = self.text_fonts.family(editor.spec.font, ctx);
-        self.text_box_ui(ctx, &mut editor, family, popup_open || modal_open);
+        let families = rich::families(&mut self.text_fonts, &editor.spec, ctx);
+        let catalog_ready = fonts::Library::shared().ready();
+        if catalog_ready != editor.font_catalog_ready {
+            editor.font_catalog_ready = catalog_ready;
+            editor.requested = None;
+            editor.previewed = None;
+        }
+        self.text_box_ui(ctx, &mut editor, families, popup_open || modal_open);
+        if !history_action {
+            rich::record(&mut editor, before);
+        }
         let painter = ctx.layer_painter(egui::LayerId::new(
             egui::Order::Middle,
             egui::Id::unique("text-boundary"),

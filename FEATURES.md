@@ -66,6 +66,8 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Live brush/pencil/eraser region compositing and partial texture uploads; progressive render fallback.
 - [x] Inline text with floating formatting strip, eight resize handles, move border, rotation handle, installed-font previews, layout/color controls and bounded rasterization.
 - [x] System outline-font discovery (including collection faces and installed styles); virtual font list, selected-row highlight and bounded asynchronous font loading.
+- [x] Compact text-alignment icons with tooltips/selected states; stable visible-font caching, shared collection-file data, and readable labels for symbol-only fonts.
+- [x] Selection-scoped Bold/Italic/Underline/Strikethrough, mixed styles, preserved highlighting, insertion styles, draft undo/redo and platform Command/Ctrl shortcuts. Real installed weight/slant variants are preferred; missing variants use local shared glyph synthesis. Underline/strike follow wrapping and scrolling, preserve text alpha and commit as one undoable raster layer.
 - [x] Internal vertical scrollbar for overflowing text; draft content survives scrolling and resizing; rotation-aware caret, text selection, scrollbar and box handles. [Validation](docs/TEXT_TOOL_VALIDATION.md).
 - [x] Text Done/outside-click commitment, Cancel/Escape, queued document/tool actions and one-command raster-layer insertion.
 - [ ] Exact interactive/committed text metrics, selection-preview parity and global shortcuts during typing.

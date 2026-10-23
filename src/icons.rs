@@ -33,6 +33,11 @@ pub enum Icon {
     Rotate,
     Flip,
     Text,
+    TextBold,
+    TextItalic,
+    TextUnderline,
+    TextStrike,
+    TextAlign(palette_core::text::Alignment),
     Fill,
     Line,
     Rectangle,
@@ -427,6 +432,57 @@ pub fn draw(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
             line([0.1, 0.9], [0.5, 0.05]);
             line([0.5, 0.05], [0.9, 0.9]);
             line([0.27, 0.6], [0.73, 0.6]);
+        }
+        Icon::TextBold | Icon::TextStrike => {
+            let bold = matches!(icon, Icon::TextBold);
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                if bold { "B" } else { "S" },
+                egui::FontId::new(
+                    rect.height() * 1.2,
+                    if bold {
+                        egui::FontFamily::Name("Dialog Semibold".into())
+                    } else {
+                        egui::FontFamily::Proportional
+                    },
+                ),
+                color,
+            );
+            if !bold {
+                line([0., 0.55], [1., 0.55]);
+            }
+        }
+        Icon::TextItalic => {
+            line([0.3, 0.1], [0.9, 0.1]);
+            line([0.6, 0.1], [0.4, 0.9]);
+            line([0.1, 0.9], [0.7, 0.9]);
+        }
+        Icon::TextUnderline => {
+            p.add(egui::Shape::line(
+                vec![
+                    at(0.2, 0.05),
+                    at(0.2, 0.55),
+                    at(0.27, 0.72),
+                    at(0.5, 0.8),
+                    at(0.73, 0.72),
+                    at(0.8, 0.55),
+                    at(0.8, 0.05),
+                ],
+                s,
+            ));
+            line([0.05, 1.], [0.95, 1.]);
+        }
+        Icon::TextAlign(alignment) => {
+            use palette_core::text::Alignment;
+            for (y, width) in [(0.18, 0.95), (0.5, 0.62), (0.82, 0.95)] {
+                let x = match alignment {
+                    Alignment::Left => 0.025,
+                    Alignment::Center => (1. - width) * 0.5,
+                    Alignment::Right => 0.975 - width,
+                };
+                line([x, y], [x + width, y]);
+            }
         }
         Icon::Fill => {
             p.add(egui::Shape::closed_line(

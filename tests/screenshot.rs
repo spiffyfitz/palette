@@ -15,7 +15,18 @@ fn main_window_matches_reviewed_baseline() {
 #[test]
 #[ignore = "requires an interactive Windows desktop and the reviewed installed-font baselines"]
 fn text_fonts_rotation_and_overflow_match_reviewed_baselines() {
-    for scene in ["text", "text-fonts", "text-overflow", "text-rotated"] {
+    for scene in [
+        "text",
+        "text-fonts",
+        "text-fonts-symbols",
+        "text-overflow",
+        "text-rotated",
+        "text-styled",
+        "text-styled-real",
+        "text-styled-committed",
+        "text-mixed",
+        "text-mixed-committed",
+    ] {
         compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
     }
 }

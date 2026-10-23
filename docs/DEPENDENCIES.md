@@ -16,6 +16,7 @@ Direct versions were resolved using Cargo; the lockfile is authoritative. `depen
 | tempfile | Same-directory atomic file replacement | MIT OR Apache-2.0 |
 | fontdue 0.9.4 | GUI-independent text layout and grayscale rasterization | MIT OR Apache-2.0 OR Zlib |
 | fontdb 0.24.0 | Background system-font and collection-face discovery | MIT |
+| ttf-parser 0.25.1 | Unicode/symbol cmap inspection for readable font-picker names; reuses Fontdue's resolved version with defaults disabled | MIT OR Apache-2.0 |
 | windows-sys 0.61.2 (Windows only) | Read-only installed-font registry enumeration; reuses resolved Win32 bindings | MIT OR Apache-2.0 |
 | epaint_default_fonts 0.37 | Reuse bundled Ubuntu Light/Hack font bytes | (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0 |
 

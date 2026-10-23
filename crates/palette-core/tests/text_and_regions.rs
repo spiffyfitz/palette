@@ -16,10 +16,12 @@ fn engine() -> &'static TextEngine {
 
 fn spec() -> TextSpec {
     TextSpec {
+        character_styles: Vec::new(),
         text: "Palette".into(),
         font: 0,
         size: 32.0,
         line_height: 1.2,
+        style: Default::default(),
         scroll_y: 0.,
         alignment: Alignment::Left,
         width: 200,
@@ -187,6 +189,7 @@ fn text_selection_new_layer_history_and_native_roundtrip_preserve_existing_pixel
             &mut doc,
             engine()
                 .render(&TextSpec {
+                    character_styles: Vec::new(),
                     text: "   \n".into(),
                     ..spec()
                 })
@@ -203,31 +206,38 @@ fn text_selection_new_layer_history_and_native_roundtrip_preserve_existing_pixel
 fn text_rejects_invalid_parameters_before_allocating() {
     for invalid in [
         TextSpec {
+            character_styles: Vec::new(),
             size: f32::NAN,
             ..spec()
         },
         TextSpec {
+            character_styles: Vec::new(),
             size: 500.0,
             ..spec()
         },
         TextSpec {
+            character_styles: Vec::new(),
             width: u32::MAX,
             ..spec()
         },
         TextSpec {
+            character_styles: Vec::new(),
             height: 0,
             ..spec()
         },
         TextSpec { font: 1, ..spec() },
         TextSpec {
+            character_styles: Vec::new(),
             text: "a".repeat(4097),
             ..spec()
         },
         TextSpec {
+            character_styles: Vec::new(),
             opacity: -0.1,
             ..spec()
         },
         TextSpec {
+            character_styles: Vec::new(),
             line_height: f32::INFINITY,
             ..spec()
         },

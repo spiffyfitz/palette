@@ -765,7 +765,9 @@ impl PaletteApp {
             }
             Some("colors") => self.edit_color(crate::interface::ColorTarget::Foreground),
             Some("properties") => self.show_canvas_properties(),
-            Some("text" | "text-fonts" | "text-overflow" | "text-rotated") => {
+            Some(
+                "text" | "text-fonts" | "text-fonts-symbols" | "text-overflow" | "text-rotated",
+            ) => {
                 self.tool = Tool::Text;
                 self.start_text(palette_core::editing::PixelRect {
                     x: 100,
@@ -788,6 +790,40 @@ impl PaletteApp {
                         0.
                     };
                 }
+            }
+            Some("text-mixed" | "text-mixed-committed") => {
+                self.tool = Tool::Text;
+                self.brush.color = [40, 95, 170, 210];
+                self.start_text(palette_core::editing::PixelRect {
+                    x: 280,
+                    y: 210,
+                    width: 600,
+                    height: 200,
+                });
+                let editor = self.text_editor.as_mut().unwrap();
+                editor.spec.text = "Keep this plain\nFormat only this\nKeep this plain".into();
+                editor.spec.size = 36.;
+                editor.spec.opacity = 0.7;
+            }
+            Some("text-styled" | "text-styled-real" | "text-styled-committed") => {
+                self.tool = Tool::Text;
+                self.brush.color = [40, 95, 170, 210];
+                self.start_text(palette_core::editing::PixelRect {
+                    x: 280,
+                    y: 210,
+                    width: 540,
+                    height: 185,
+                });
+                let editor = self.text_editor.as_mut().unwrap();
+                editor.spec.text = "Bold Italic\nUnderline + Strikethrough".into();
+                editor.spec.size = 36.;
+                editor.spec.opacity = 0.7;
+                editor.spec.style = palette_core::text::TextStyle {
+                    bold: true,
+                    italic: true,
+                    underline: true,
+                    strikethrough: true,
+                };
             }
             Some("layers") => {
                 self.current_mut().command("Capture layers", |doc| {
@@ -1095,7 +1131,59 @@ impl PaletteApp {
         if self.screenshot.is_none() {
             return false;
         }
-        if self.capture.scene.as_deref() == Some("text-fonts") && self.capture.text_probe < 4 {
+        if matches!(
+            self.capture.scene.as_deref(),
+            Some("text-mixed" | "text-mixed-committed")
+        ) {
+            if self.capture.text_probe < 14 {
+                return false;
+            }
+            if self.capture.scene.as_deref() == Some("text-mixed-committed")
+                && let Some(editor) = &self.text_editor
+            {
+                if editor.ready() {
+                    self.apply_text();
+                }
+                ctx.request_repaint_after(Duration::from_millis(20));
+                return false;
+            }
+        }
+        if self.capture.scene.as_deref() == Some("text-styled-real") && self.capture.text_probe == 0
+        {
+            let library = text::fonts::Library::shared();
+            if library.ready() {
+                if let Some((id, _)) = library
+                    .faces()
+                    .into_iter()
+                    .find(|(_, name)| name == "Arial")
+                {
+                    self.text_editor.as_mut().unwrap().spec.font =
+                        library.resolve(id, true, true).id;
+                }
+                self.capture.text_probe = 1;
+            }
+            ctx.request_repaint_after(Duration::from_millis(20));
+            return false;
+        }
+        if self.capture.scene.as_deref() == Some("text-styled-committed")
+            && let Some(editor) = &self.text_editor
+        {
+            if editor.ready() {
+                self.apply_text();
+            }
+            ctx.request_repaint_after(Duration::from_millis(20));
+            return false;
+        }
+        let text_steps = if self.capture.scene.as_deref() == Some("text-fonts-symbols") {
+            6
+        } else {
+            4
+        };
+        if matches!(
+            self.capture.scene.as_deref(),
+            Some("text-fonts" | "text-fonts-symbols")
+        ) && self.capture.text_probe < text_steps
+        {
             return false;
         }
         if matches!(
