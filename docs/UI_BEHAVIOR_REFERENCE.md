@@ -4,6 +4,8 @@ Current follow-up: selected-pixel move/resize/rotation handles and live previews
 
 2026-10-21 follow-up: [responsive ribbon](RESPONSIVE_RIBBON_VALIDATION.md) records the two additional root-directory videos, collapse ordering, split/whole button behavior, nested flyouts and compact-window validation.
 
+2026-10-23 follow-up: [color dialog](COLOR_DIALOG_VALIDATION.md) records the additional colorselection.mp4 reference, RGB/HSV switching, named-color tooltips, live hexadecimal/channel synchronization and the 24-slot custom palette. The older table below describes the initial pass.
+
 # Paint video: interface behavior and validation
 
 ## Reference inspected

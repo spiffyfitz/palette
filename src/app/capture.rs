@@ -2,6 +2,7 @@
 //! command-line diagnostic and is never part of the editor's visible workflow.
 use super::*;
 mod brush_scenes;
+mod color_scenes;
 mod gpu_probe;
 mod layer_scenes;
 mod reorder_scenes;
@@ -809,7 +810,29 @@ impl PaletteApp {
                     manifest: PathBuf::from("target/capture.json"),
                 }];
             }
-            Some("colors") => self.edit_color(crate::interface::ColorTarget::Foreground),
+            Some(
+                "colors"
+                | "colors-hsv"
+                | "colors-tooltip"
+                | "colors-from-black"
+                | "colors-hsv-from-black",
+            ) => {
+                self.edit_color(crate::interface::ColorTarget::Foreground);
+                if matches!(
+                    self.capture.scene.as_deref(),
+                    Some("colors-hsv" | "colors-tooltip")
+                ) {
+                    let draft = self.interface.color_editor.as_mut().unwrap();
+                    draft.set_rgb([106, 255, 231]);
+                    if self.capture.scene.as_deref() == Some("colors-hsv") {
+                        draft.model = crate::interface::ColorModel::Hsv;
+                    }
+                }
+                if self.capture.scene.as_deref() == Some("colors-hsv-from-black") {
+                    self.interface.color_editor.as_mut().unwrap().model =
+                        crate::interface::ColorModel::Hsv;
+                }
+            }
             Some("properties") => self.show_canvas_properties(),
             Some(
                 "text" | "text-fonts" | "text-fonts-symbols" | "text-overflow" | "text-rotated",
@@ -1175,6 +1198,13 @@ impl PaletteApp {
     }
     pub(super) fn capture_is_settled(&mut self, ctx: &Context) -> bool {
         if self.screenshot.is_none() {
+            return false;
+        }
+        if matches!(
+            self.capture.scene.as_deref(),
+            Some("colors-from-black" | "colors-hsv-from-black")
+        ) && self.capture.text_probe < 11
+        {
             return false;
         }
         if matches!(

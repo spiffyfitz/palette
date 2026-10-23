@@ -1,5 +1,6 @@
 use super::*;
 mod brushes;
+mod colors;
 mod floating_shapes;
 mod gpu;
 mod layer_movement;

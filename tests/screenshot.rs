@@ -21,6 +21,22 @@ fn canvas_wheel_and_pinch_zoom_match_reviewed_baselines() {
 }
 
 #[test]
+#[ignore = "requires an interactive Windows desktop and reviewed color-dialog baselines"]
+fn color_dialog_models_tooltip_and_compact_layout_match_reviewed_baselines() {
+    for scene in [
+        "colors",
+        "colors-hsv",
+        "colors-tooltip",
+        "colors-from-black",
+        "colors-hsv-from-black",
+        "canvas-background-colors",
+    ] {
+        compare_scene(Some(scene), &format!("ui-{scene}-windows.png"));
+    }
+    compare_scene_size(Some("colors"), "ui-colors-compact-windows.png", (720, 520));
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop and reviewed clipboard menu baseline"]
 fn clipboard_menu_matches_reviewed_baseline() {
     compare_scene(Some("edit-menu"), "ui-edit-menu-windows.png");
@@ -90,6 +106,8 @@ fn menus_dialogs_text_and_layers_match_reviewed_baselines() {
         "brush-styles",
         "brush-size-preview",
         "colors",
+        "colors-hsv",
+        "colors-tooltip",
         "text",
         "properties",
         "layers",

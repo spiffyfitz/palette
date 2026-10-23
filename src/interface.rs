@@ -159,7 +159,10 @@ pub struct ColorEditor {
     pub target: ColorTarget,
     pub rgb: [u8; 3],
     pub hex: String,
+    /// HSV over encoded sRGB components, as in conventional color dialogs.
+    /// Do not convert via Color32::from(Hsva), which assumes linear RGB.
     pub hsv: egui::ecolor::Hsva,
+    pub model: ColorModel,
     pub field: Option<egui::TextureHandle>,
     pub document: Option<(u64, u64)>,
 }
@@ -168,12 +171,20 @@ impl ColorEditor {
         Self {
             target,
             rgb,
-            hsv: Color32::from_rgb(rgb[0], rgb[1], rgb[2]).into(),
+            hsv: egui::ecolor::Hsva::from_rgb(rgb.map(|c| f32::from(c) / 255.)),
+            model: ColorModel::Rgb,
             hex: format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]),
             field: None,
             document: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum ColorModel {
+    #[default]
+    Rgb,
+    Hsv,
 }
 
 pub fn configure(ctx: &Context) {

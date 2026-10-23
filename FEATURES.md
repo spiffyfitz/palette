@@ -32,6 +32,7 @@ Current phase review: [ROADMAP.md](ROADMAP.md). Current validation: [noise clean
 - [x] Inspect supplied Paint video; timed reference notes for menus, dialogs, inline text and layers.
 - [x] Compact split-button flyouts, aligned shortcuts, original stroke samples, hover/press transitions and animated layer tray.
 - [x] Centered transactional color/image-property dialogs with compact-window scrolling.
+- [x] Reference-style Edit colors dialog: named-color tooltips, RGB/HSV selector, live synchronized hexadecimal/channel values, 48 basic colors and 24 custom slots. [Validation](docs/COLOR_DIALOG_VALIDATION.md).
 - [x] Contextual sliders; View grid/status/ribbon/layers toggles and zoom preset menu.
 - [ ] Exact native menu reveal/easing and full keyboard-focus parity.
 - [ ] Full keyboard accessibility audit and additional DPI/tablet testing.
